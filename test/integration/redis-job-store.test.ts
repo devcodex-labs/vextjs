@@ -1,6 +1,10 @@
+import { randomUUID } from "node:crypto";
 import Redis from "ioredis";
 import { describe, expect, it } from "vitest";
 import { createRedisJobStore } from "../../src/lib/jobs/stores/redis-store.js";
+import { resolveVextRedisKeyPrefix } from "../../src/lib/redis/index.js";
+import type { VextJobStore } from "../../src/lib/jobs/types.js";
+import { jobStoreCompletionCases } from "../helpers/job-store-completion-cases.js";
 
 const redisUrl =
   process.env.VEXT_TEST_REDIS_URL ??
@@ -8,37 +12,16 @@ const redisUrl =
   "redis://127.0.0.1:6379";
 
 describe("RedisJobStore", () => {
+  it.each(jobStoreCompletionCases)("$name", async ({ run }) => {
+    await withRedisJobStore(run);
+  });
   it("claims, renews, and completes runs with owner protection", async () => {
-    const client = new Redis(redisUrl, {
-      lazyConnect: true,
-      maxRetriesPerRequest: 0,
-      connectTimeout: 500,
-    });
-    try {
-      await client.connect();
-      await client.ping();
-    } catch {
-      console.warn(
-        `[vextjs:test] Redis unavailable at ${redisUrl}; skipping RedisJobStore integration assertion.`,
-      );
-      client.disconnect();
-      return;
-    }
-
-    const namespace = `test-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const store = createRedisJobStore({
-      client,
-      namespace,
-      rootDir: process.cwd(),
-      runtimeMode: "test",
-    });
-
-    try {
-      await store.init?.();
+    await withRedisJobStore(async (store) => {
       const run = await store.enqueueRun({
         jobName: "billing.sync",
         trigger: "enqueue",
         payload: { id: 1 },
+        runAt: new Date("2026-09-13T00:00:00.000Z"),
       });
       const claimed = await store.claimRun(run.id, {
         ownerId: "worker-a",
@@ -77,38 +60,11 @@ describe("RedisJobStore", () => {
       await expect(store.getRun(run.id)).resolves.toMatchObject({
         status: "success",
       });
-    } finally {
-      await store.close?.();
-    }
+    });
   });
 
   it("serializes scheduler lease acquisition and idempotent enqueue", async () => {
-    const client = new Redis(redisUrl, {
-      lazyConnect: true,
-      maxRetriesPerRequest: 0,
-      connectTimeout: 500,
-    });
-    try {
-      await client.connect();
-      await client.ping();
-    } catch {
-      console.warn(
-        `[vextjs:test] Redis unavailable at ${redisUrl}; skipping RedisJobStore integration assertion.`,
-      );
-      client.disconnect();
-      return;
-    }
-
-    const namespace = `test-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const store = createRedisJobStore({
-      client,
-      namespace,
-      rootDir: process.cwd(),
-      runtimeMode: "test",
-    });
-
-    try {
-      await store.init?.();
+    await withRedisJobStore(async (store) => {
       const at = new Date("2026-09-13T00:00:00.000Z");
       const [leaseA, leaseB] = await Promise.all([
         store.acquireSchedulerLease("scheduler-a", 10_000, at),
@@ -134,8 +90,48 @@ describe("RedisJobStore", () => {
       await expect(
         store.listRuns({ jobName: "billing.sync" }),
       ).resolves.toHaveLength(1);
-    } finally {
-      await store.close?.();
-    }
+    });
   });
 });
+
+/** Use an owned namespace and delete its known keys without scanning shared Redis. */
+async function withRedisJobStore(
+  run: (store: VextJobStore) => Promise<void>,
+): Promise<void> {
+  const client = new Redis(redisUrl, {
+    lazyConnect: true,
+    maxRetriesPerRequest: 0,
+    connectTimeout: 1000,
+  });
+  const options = {
+    client,
+    namespace: `job-completion-${randomUUID()}`,
+    rootDir: process.cwd(),
+    runtimeMode: "test",
+  };
+  const prefix = resolveVextRedisKeyPrefix({ ...options, module: "job" });
+  const store = createRedisJobStore(options);
+  try {
+    await client.connect();
+    await store.init?.();
+    await run(store);
+  } finally {
+    try {
+      if (client.status === "ready") {
+        await client.del(
+          ...[
+            "scheduler:lease",
+            "workers",
+            "runs",
+            "queue",
+            "running",
+            "idem:billing.sync:same-business-key",
+          ].map((suffix) => `${prefix}${suffix}`),
+        );
+      }
+      await store.close?.();
+    } finally {
+      client.disconnect();
+    }
+  }
+}

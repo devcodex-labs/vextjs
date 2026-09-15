@@ -1,3 +1,4 @@
+import { StaticModuleGraph } from "../project-index/static-module-graph.js";
 import { relative } from "node:path";
 import { SourceViewError } from "../source-view/types.js";
 import { normalizeSourcePath } from "../source-view/policy.js";
@@ -45,6 +46,7 @@ export function analyzeIndexedServiceDependencies(
   const graph = new Map<string, Set<string>>();
   const incompleteFiles: string[] = [];
 
+  const modules = new StaticModuleGraph(index.source.view);
   for (const entry of index.serviceEntries) {
     const sourcePath = normalizeSourcePath(
       relative(index.source.rootDir, entry.filePath),
@@ -59,11 +61,22 @@ export function analyzeIndexedServiceDependencies(
           ".",
       );
     }
+    let resolved: Parameters<typeof collectServiceDependencies>[4];
+    try {
+      const expression = modules.exported(index.source.rootId, sourcePath);
+      resolved = {
+        program: expression.module.program,
+        definition: expression.node,
+      };
+    } catch {
+      /* CJS/动态导出继续使用原单文件分析，未知保持 incomplete。 */
+    }
     const collected = collectServiceDependencies(
       source,
       entry.filePath,
       entry.serviceKey,
       knownKeys,
+      resolved,
     );
     graph.set(entry.serviceKey, collected.dependencies);
     if (collected.incomplete) incompleteFiles.push(entry.filePath);

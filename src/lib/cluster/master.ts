@@ -55,6 +55,8 @@ function shouldLogStartupLifecycle(): boolean {
  * 通过 constructor 传入，运行时不可变。
  */
 export interface ClusterMasterConfig {
+  /** 内部宿主在所有 worker 停止后完成诊断落盘；异常不阻断关闭。 */
+  onStopped?: () => Promise<void>;
   /** Worker 数量配置 */
   workers: "auto" | "auto-1" | number;
   /** Worker 崩溃后是否自动重启 */
@@ -397,6 +399,14 @@ export class ClusterMaster extends EventEmitter {
 
     this.cleanup();
 
+    try {
+      await this.config.onStopped?.();
+    } catch (error) {
+      console.warn(
+        "[cluster] stopped observation failed:",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
     console.log("[cluster] all workers stopped, master exiting");
     process.exit(0);
   }

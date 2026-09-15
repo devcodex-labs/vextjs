@@ -36,6 +36,8 @@ export async function collectSourceView(
   options: SourceViewOptions & {
     readonly files: Iterable<SourceFileRef>;
     readonly signal?: AbortSignal;
+    /** 在封存前复读已选内容以发现采集期间修改；仍不承诺跨文件原子快照。 */
+    readonly verifyUnchanged?: boolean;
     /** 仅扩展声明的读取清单；新增项仍通过同一根、去重、字节与数量校验。 */
     readonly dependencies?: (
       input: SourceInput,
@@ -118,6 +120,24 @@ export async function collectSourceView(
       if (inputs.length % 16 === 0) await yieldToEventLoop();
     }
     checkCancellation(signal);
+    if (options.verifyUnchanged) {
+      for (const [index, input] of inputs.entries()) {
+        checkCancellation(signal);
+        const root = rootsById.get(input.rootId)!;
+        const latest = readProjectFile(
+          root.realPath,
+          input.path,
+          limits.maxFileBytes,
+        );
+        if (latest === null || !latest.equals(Buffer.from(input.bytes))) {
+          throw new SourceViewError(
+            "VEXT_SOURCE_CHANGED",
+            `Source changed during collection: ${input.rootId}/${input.path}.`,
+          );
+        }
+        if (index % 16 === 0) await yieldToEventLoop();
+      }
+    }
     for (const { root, stat } of roots) {
       const after = fs.lstatSync(root.realPath, { bigint: true });
       if (

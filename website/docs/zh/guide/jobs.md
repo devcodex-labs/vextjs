@@ -56,11 +56,6 @@ export default defineJob<{ invoiceId: string }, { closed: boolean }>({
   name: "billing.closeInvoice",
   description: "关闭逾期账单。",
   tags: ["billing"],
-  schedule: {
-    cron: "0 */5 * * * *",
-    timezone: "Asia/Shanghai",
-    singleton: true,
-  },
   queue: {
     priority: 10,
   },
@@ -75,6 +70,8 @@ export default defineJob<{ invoiceId: string }, { closed: boolean }>({
   },
 });
 ```
+
+这个例子适合 `vext job run`、`vext job enqueue` 或业务代码显式入队，因为它需要 `invoiceId`。内置 scheduler 创建 scheduled run 时不会自动携带业务 payload；定时任务应在 handler 内部推导待处理数据，或把到点逻辑拆成“扫描待处理记录并逐条入队”的 Job。
 
 handler 可访问 `app`、`payload`、`logger`、`signal`、`attempt`、`runId` 和归一化后的 Job 定义。它可以使用 services、models、`app.fetch`、i18n、logger、config 和插件扩展，但不会收到 HTTP 请求或响应对象。长耗时任务应把 `signal` 继续传给数据库、fetch、队列或内部循环，方便超时和优雅关闭中断。
 
@@ -153,13 +150,15 @@ vext job status <runId>
 
 默认 store 是 `file`，位置为 `.vext/jobs`。它会保存 scheduler lease、worker heartbeat、run record、run lease、trigger、payload、status、attempts、duration、result 和 error 摘要。
 
-`memory` store 适合测试和本地演示，进程退出后数据丢失。`file` store 适合同机多进程和单机部署；如果多个容器共享同一个持久卷，也可以用于简单多实例。`redis` 是内置分布式 store，适合跨进程或跨节点的 scheduler/worker 共享 run record 与租约。可配置 `jobs.store: { type: "redis", url: "redis://127.0.0.1:6379" }`；只有确认通过 `VEXT_REDIS_URL`/`REDIS_URL` 提供 Redis 目标时才使用 `jobs.store: "auto"`。Vext 默认根据包名、配置 profile、运行模式和模块生成 Redis key 前缀；只有多个服务需要显式共享或隔离 key 时才设置 `namespace` 或 `keyPrefix`。严格 exactly-once 或更高吞吐队列仍建议接入自定义 runner、BullMQ、数据库或云队列。
+`memory` store 适合测试和本地演示，进程退出后数据丢失。`file` store 适合同机多进程和单机部署；如果多个容器共享同一个持久卷，也可以用于简单多实例。`redis` 是内置分布式 store，适合跨进程或跨节点的 scheduler/worker 共享 run record 与租约。可配置 `jobs.store: { type: "redis", url: "redis://127.0.0.1:6379" }`；只有确认通过 `VEXT_REDIS_URL`/`REDIS_URL` 提供 Redis 目标时才使用 `jobs.store: "auto"`。Vext 默认根据包名、配置 profile、运行模式和模块生成 Redis key 前缀；只有多个服务需要显式共享或隔离 key 时才设置 `namespace` 或 `keyPrefix`。
+
+三个内置 store 都要求 `completeRun()` 只能由当前 running 记录的非空 owner 完成。完成会清除 run lease；缺失、queued、terminal、owner 不匹配或重复完成都会返回 `false`，并保持已有记录不变。租约过期后如果新 owner 已接管并完成，旧 owner 的迟到结果不会覆盖终态。这个保护只保证 store 中的最终记录不被旧 owner 覆写，不等于外部副作用严格执行一次；支付、发券、发邮件等仍需要业务唯一键、数据库唯一索引或第三方幂等键。
 
 ## 运行时边界
 
 - `vext start` 和 HTTP cluster worker 默认不执行 Job，避免每个 HTTP worker 都触发同一任务。
 - Scheduler 由 `vext job scheduler` 显式启动；多个 scheduler 同时存在时，只有拿到 scheduler lease 的实例会创建 due run。
-- Worker 由 `vext job worker` 显式启动；多个 worker 可并行运行，通过 run lease 避免同一 run 被重复执行。Worker 会同时遵守 `jobs.worker.concurrency` 全局并发和单个 Job 的 `concurrency` / `jobs.defaults.concurrency` 上限。
+- Worker 由 `vext job worker` 显式启动；多个 worker 可并行运行，通过 run lease 避免同一 run 被重复执行。每个 worker 进程会遵守 `jobs.worker.concurrency` 进程内并发和单个 Job 的 `concurrency` / `jobs.defaults.concurrency` 上限。
 - HTTP rolling restart 不会自动重启 Job scheduler/worker，部署系统应分别管理 HTTP、scheduler 和 worker。
 - Job runtime 关闭时会走与 HTTP 启动一致的 `app.onClose()` 生命周期，释放数据库、插件和日志资源。
 
@@ -207,7 +206,7 @@ vext-scheduler replicas: 1+  command: vext job scheduler --config production
 vext-worker    replicas: M   command: vext job worker --config production
 ```
 
-`scheduler` 可以有多个副本做高可用，但它们必须共享同一个 store，且 `jobs.scheduler.lease.enabled` 应保持开启。`worker` 可以横向扩容，扩容前需要确认外部依赖的连接池、API 限流、数据库锁和 Job 自身幂等策略能承受并发。`file` store 只适合同机或共享卷；跨节点高可用和高吞吐场景应使用自定义数据库/Redis/队列 store。
+`scheduler` 可以有多个副本做高可用，但它们必须共享同一个 store，且 `jobs.scheduler.lease.enabled` 应保持开启。`worker` 可以横向扩容，扩容前需要确认外部依赖的连接池、API 限流、数据库锁和 Job 自身幂等策略能承受并发。`file` store 只适合同机或共享卷；跨节点高可用应使用 Redis 或自定义数据库/队列 store。更高吞吐的队列系统仍不能替代业务幂等设计。
 
 ## 测试
 

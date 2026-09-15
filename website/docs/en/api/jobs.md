@@ -11,11 +11,6 @@ export default defineJob({
   name: "emails.sendWelcome",
   description: "Send a welcome email.",
   tags: ["email"],
-  schedule: {
-    cron: "0 */5 * * * *",
-    timezone: "Asia/Shanghai",
-    singleton: true,
-  },
   queue: { priority: 5 },
   timeout: 10_000,
   retry: { attempts: 3, delay: 500, backoff: "exponential" },
@@ -26,6 +21,8 @@ export default defineJob({
 ```
 
 The `name` field is optional. Without it, Vext infers the job name from the file path, for example `src/jobs/billing/close.ts` becomes `billing.close`.
+
+Jobs with required business payloads should be run with `vext job run`, `vext job enqueue`, or explicit application enqueueing. The built-in scheduler creates scheduled runs without payload; scheduled jobs should query their own pending input or schedule only a scanner job.
 
 ## Core types
 
@@ -58,11 +55,13 @@ The scheduler lease is controlled by `jobs.scheduler.lease.ttl` and renewed on `
 
 Starts the worker polling loop. The worker heartbeats, claims pending runs, executes jobs, and writes success, failed, timeout, or cancelled status back to the store. Multiple workers can run in parallel; run leases prevent the same run from being executed twice at the same time.
 
-Workers enforce both global and per-job concurrency. The global limit comes from `jobs.worker.concurrency`; the per-job limit comes from `defineJob({ concurrency })`, falls back to `jobs.defaults.concurrency`, and is clamped to at least `1`.
+Workers enforce both per-process and per-job concurrency. The process-local limit comes from `jobs.worker.concurrency`; the per-job limit comes from `defineJob({ concurrency })`, falls back to `jobs.defaults.concurrency`, and is clamped to at least `1`.
 
 ## `createJobStore(options)`
 
 Creates the built-in store from `config.jobs.store`. `memory` is for tests. `file` is the default persistent store under `.vext/jobs`, suitable for same-machine multi-process and single-node deployments. `redis` opens a Redis-backed store for run records, scheduler leases, worker heartbeats, run claims, lease renewal, and owner-checked completion. `auto` requires `VEXT_REDIS_URL` or `REDIS_URL`; it fails fast when no Redis target is available.
+
+Built-in stores accept `completeRun(runId, patch, { ownerId })` only for the nonempty owner of the current running record. Completion clears the lease; missing, queued, terminal, differently owned, or repeated completion returns `false` without overwriting the terminal record. Handlers should still be written for at-least-once execution, and external side effects need business idempotency.
 
 ## Testing API
 
@@ -157,7 +156,7 @@ export default {
 | `jobs.scheduler.tickInterval`        | `1000`         | Scheduler tick interval in milliseconds                              |
 | `jobs.scheduler.lease.ttl`           | `30000`        | Scheduler lease TTL                                                  |
 | `jobs.scheduler.lease.renewInterval` | `10000`        | Scheduler lease renewal interval; keep it no larger than the TTL     |
-| `jobs.worker.concurrency`            | `4`            | Worker global concurrency                                            |
+| `jobs.worker.concurrency`            | `4`            | Per-worker-process concurrency                                       |
 | `jobs.worker.pollInterval`           | `1000`         | Worker polling interval in milliseconds                              |
 | `jobs.worker.shutdownTimeout`        | `10000`        | Time to wait for running jobs during shutdown                        |
 | `jobs.defaults`                      | See example    | Default timeout/retry/concurrency for jobs                           |

@@ -1,26 +1,46 @@
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
+import { format } from "prettier";
 import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { getVextMcpSkillManifest } from "../../../src/assistant/skill.js";
+import {
+  getVextMcpSkillManifest,
+  VEXT_MCP_SKILL_CONTENT,
+  VEXT_MCP_SKILL_NAME,
+  VEXT_MCP_SKILL_DESCRIPTION,
+} from "../../../src/assistant/skill.js";
 import { mcpCommand } from "../../../src/cli/mcp.js";
 
 describe("Vext MCP bundled Skill", () => {
-  it("exposes a stable manifest", () => {
+  it("exposes a stable manifest", async () => {
     const manifest = getVextMcpSkillManifest();
     expect(manifest).toMatchObject({
       schemaVersion: 1,
-      name: "vextjs-official-mcp",
-      version: "1",
+      name: "vextjs",
+      version: "2",
     });
     expect(manifest.digest).toMatch(/^[a-f0-9]{64}$/);
     expect(manifest.bytes).toBeGreaterThan(1000);
+    const header = VEXT_MCP_SKILL_CONTENT.match(/^---\n([^]*?)\n---\n/u)?.[1];
+    expect(header).toBeDefined();
+    await expect(format(header!, { parser: "yaml" })).resolves.toContain(
+      "name: vextjs",
+    );
+    const fields = Object.fromEntries(
+      header!.split("\n").map((line) => {
+        const split = line.indexOf(":");
+        return [line.slice(0, split), line.slice(split + 1).trim()];
+      }),
+    );
+    expect(fields.name).toBe(VEXT_MCP_SKILL_NAME);
+    expect(JSON.parse(fields.description!)).toBe(VEXT_MCP_SKILL_DESCRIPTION);
   });
 
   it("prints and writes the bundled Skill without host config mutation", async () => {
     const logs: string[] = [];
+    let root: string | undefined;
     const spy = vi
       .spyOn(console, "log")
       .mockImplementation((message?: unknown) => {
@@ -36,12 +56,12 @@ describe("Vext MCP bundled Skill", () => {
       await mcpCommand(["skill", "print"]);
       expect(logs.pop()).toContain("VextJS Official MCP Skill");
 
-      const root = await mkdtemp(path.join(os.tmpdir(), "vext-mcp-skill-"));
+      root = await mkdtemp(path.join(os.tmpdir(), "vext-mcp-skill-"));
       const output = path.join(
         root,
         ".vext",
         "skills",
-        "vextjs-official-mcp",
+        VEXT_MCP_SKILL_NAME,
         "SKILL.md",
       );
       await mcpCommand(["skill", "write", "--output", output]);
@@ -56,6 +76,12 @@ describe("Vext MCP bundled Skill", () => {
       });
     } finally {
       spy.mockRestore();
+      if (
+        root &&
+        path.dirname(root) === os.tmpdir() &&
+        path.basename(root).startsWith("vext-mcp-skill-")
+      )
+        await rm(root, { recursive: true, force: true });
     }
   });
 });

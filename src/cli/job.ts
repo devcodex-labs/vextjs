@@ -11,6 +11,7 @@ import {
   readRequiredOptionValueOrExit,
 } from "./utils/command-args.js";
 import {
+  createRuntimeSnapshotIdentity,
   patchRuntimeSnapshot,
   writeRuntimeSnapshot,
 } from "../lib/runtime-snapshot.js";
@@ -176,11 +177,12 @@ async function runWorker(options: JobCliOptions): Promise<void> {
     outDir: options.outdir,
   }).rootDir;
   const runtime = await createCliJobRuntime(options);
+  const runtimeIdentity = createRuntimeSnapshotIdentity(rootDir, "job-worker");
   const controller = new AbortController();
   const stop = async () => {
     if (!controller.signal.aborted) controller.abort();
     await patchRuntimeSnapshotSafe(rootDir, {
-      runtimeIdentity: { mode: "job-worker", pid: process.pid },
+      runtimeIdentity,
       summary: { state: "stopped" },
       event: { type: "shutdown" },
     });
@@ -196,7 +198,7 @@ async function runWorker(options: JobCliOptions): Promise<void> {
       `[vextjs] job worker ready (${jobs.length} job(s)). Press Ctrl+C to stop.`,
     );
   await writeRuntimeSnapshotSafe(rootDir, {
-    runtimeIdentity: { mode: "job-worker", pid: process.pid },
+    runtimeIdentity,
     summary: {
       state: "ready",
       jobs: jobs.length,
@@ -213,11 +215,15 @@ async function runScheduler(options: JobCliOptions): Promise<void> {
     outDir: options.outdir,
   }).rootDir;
   const runtime = await createCliJobRuntime(options);
+  const runtimeIdentity = createRuntimeSnapshotIdentity(
+    rootDir,
+    "job-scheduler",
+  );
   const controller = new AbortController();
   const stop = async () => {
     if (!controller.signal.aborted) controller.abort();
     await patchRuntimeSnapshotSafe(rootDir, {
-      runtimeIdentity: { mode: "job-scheduler", pid: process.pid },
+      runtimeIdentity,
       summary: { state: "stopped" },
       event: { type: "shutdown" },
     });
@@ -235,7 +241,7 @@ async function runScheduler(options: JobCliOptions): Promise<void> {
       `[vextjs] job scheduler ready (${jobs.length} scheduled job(s)). Press Ctrl+C to stop.`,
     );
   await writeRuntimeSnapshotSafe(rootDir, {
-    runtimeIdentity: { mode: "job-scheduler", pid: process.pid },
+    runtimeIdentity,
     summary: {
       state: "ready",
       jobs: jobs.length,

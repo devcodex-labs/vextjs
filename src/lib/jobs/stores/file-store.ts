@@ -190,8 +190,13 @@ export function createFileJobStore(
       return withLock(lockDir, async () => {
         const state = await readState(stateFile);
         const record = state.runs.find((run) => run.id === runId);
-        if (!record) return false;
-        if (record.leaseOwner && record.leaseOwner !== options?.ownerId)
+        // Check and update under the same file lock, including after lease removal.
+        if (
+          !record ||
+          record.status !== "running" ||
+          !record.leaseOwner ||
+          record.leaseOwner !== options?.ownerId
+        )
           return false;
         Object.assign(record, patch);
         record.leaseOwner = undefined;

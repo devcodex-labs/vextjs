@@ -22,6 +22,42 @@ const collect = (source: string) =>
   );
 
 describe("service injection binding contract", () => {
+  it.each([false, true])(
+    "checks loaded service facades without hiding cycles (cycle=%s)",
+    async (cycle) => {
+      const root = await mkdtemp(join(tmpdir(), "vext-service-facade-"));
+      roots.push(root);
+      await mkdir(join(root, "services"), { recursive: true });
+      await mkdir(join(root, "features"), { recursive: true });
+      await writeFile(join(root, "package.json"), '{"type":"module"}');
+      await writeFile(
+        join(root, "services", "a.js"),
+        'export { default } from "../features/a.js";',
+      );
+      await writeFile(
+        join(root, "features", "a.js"),
+        "export default class A { constructor(app) { this.app = app; } run() { return this.app.services.b.run(); } }",
+      );
+      await writeFile(
+        join(root, "services", "b.js"),
+        cycle
+          ? "export default class B { constructor(app) { this.app = app; } run() { return this.app.services.a.run(); } }"
+          : "export default class B { run() { return 42; } }",
+      );
+      const { app } = createApp(DEFAULT_CONFIG);
+      const warn = vi.spyOn(app.logger, "warn");
+      if (cycle)
+        await expect(
+          loadServices(app, join(root, "services"), { rootDir: root }),
+        ).rejects.toThrow(/Circular dependency/);
+      else {
+        await loadServices(app, join(root, "services"), { rootDir: root });
+        expect((app.services.a as { run(): number }).run()).toBe(42);
+      }
+      expect(warn.mock.calls.flat().join(" ")).not.toContain("incomplete");
+    },
+  );
+
   it.each([
     "export default class A { constructor(private application: any) {} run() { return this.application.services.b.run(); } }",
     "export default class A { constructor(application) { this.backend = application; } run() { const alias = this.backend; return alias.services.b.run(); } }",

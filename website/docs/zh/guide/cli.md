@@ -8,15 +8,15 @@
 
 当前开发线新增 `vext mcp --root <dir>`，用于启动随包提供的 stdio MCP 服务。它绑定单个 Vext 项目根，注册 7 个 Tools、11 个 Resources 和 4 个 Prompts，并提供有界项目检查、内置 Vext 知识搜索、17 条 Recipe 的 create-only ChangeSet 草稿、候选校验和应用后宿主验证计划。MCP 服务不执行 shell 命令、不启动或重启服务、不应用文件修改、不运行测试，也不修改宿主 MCP 配置；它只返回分析结果、机器可校验诊断和需要宿主执行的步骤。
 
-`vext_knowledge_search` 可检索框架能力、规则、Recipe、工作流和主要依赖知识。依赖知识覆盖 `schema-dsl`、`response-cache-kit`、`cache-hub`、`flex-rate-limit`、`esbuild`、`monsqlize`、`croner`、`ioredis`、`@modelcontextprotocol/server` 的当前版本、Vext 使用入口和边界，版本来自当前安装包的 `package.json`。
+`vext_knowledge_search` 返回随包知识、原生 API 示例与适用性，区分框架声明范围、知识审查版本和服务/框架各自解析的安装版本。版本不匹配或缺包时明确标注，MCP 不联网抓取文档或连接数据库。目录覆盖、全部 17 条 Recipe、JS/TS 类型、注释及实际接入流程见 [MCP 代码生成与依赖知识](./mcp-generation)。
 
-`vext_validate_changes` 会校验候选的项目身份、目录策略、已有文件覆盖、重复路径、编码、create-only 边界和基础代码质量，并返回每个文件的判定、命中的目录来源以及 `requiredHostSteps`。目录策略来自项目结构、默认 Vext 目录和 `vext.workspace.json(c)` 的 services/sharedPackages；默认目录只是建议，不会强制创建空目录。校验会拦截常见 MCP 生成偏差，例如一行式长代码、JSON route 缺少顶层 `RouteOptions.responses`、仍使用已废弃的 `docs.tags`、service 自建 Mongo driver 类型或在 service 内强转 `app.db`、测试只有 `expect(true).toBe(true)`。
+`vext_validate_changes` 校验内容身份、源码覆盖、目录/物理边界、已有文件、重复路径、UTF-8、内容摘要、语法及导入，并将候选放入共享 overlay 检查路由冲突等问题。返回文件判定、目录来源与 requiredHostSteps；未知或不完整证据不能获得 applyReady。默认目录可覆盖，不强制创建空目录，也不按一行代码或 function 数量判定业务正确；格式和注释遵从项目规范并由宿主复核。
 
-`vext_project_check` 会执行有界静态诊断，覆盖目录缺失、路由 response schema 缺失、过期 docs.tags、service 依赖分析不完整、数据库 cursorSecret 配置选择、Redis store 目标缺失或依赖未配置环境变量、SVG 上传审查、前端 form/API 边界和占位测试等问题。返回值包含 `diagnostics`、`totalBySeverity`、`affectedConsumers` 和 `generatedState`；命令建议仍由宿主执行。`vext_runtime_inspect` 会读取框架运行时写入的 `.vext/runtime/snapshot.json` 受管快照；MCP 不启动服务、不执行 Job、不读取原始日志；宿主 MCP 配置写入由 `vext mcp sync` 负责。
+`vext_project_check` 会执行有界静态诊断，覆盖目录缺失、路由 response schema 缺失、过期 docs.tags、service 依赖分析不完整、数据库 cursorSecret 配置选择、Redis store 目标缺失或依赖未配置环境变量、SVG 上传审查、前端 form/API 边界和占位测试等问题。返回值包含 `diagnostics`、`totalBySeverity`、`affectedConsumers` 和 `generatedState`；命令建议仍由宿主执行。`vext_runtime_inspect` 会读取框架运行时写入的 `.vext/runtime/snapshots/<instanceId>.json` 受管快照；MCP 不启动服务、不执行 Job、不读取原始日志；宿主 MCP 配置写入由 `vext mcp sync` 负责。
 
 `vext_project_inspect` 的 `jobs` section 会静态读取 `config.jobs` 和 Job 源文件，返回 Job 名称、来源文件、queue、schedule、payload schema presence、scheduler/worker/store 配置摘要、可由宿主执行的 `vext job ...` 命令和多进程/cluster 部署提示。MCP 不执行 Job、不连接队列、不读取运行时队列表。
 
-在 monorepo 中，`services` section 会展开 `vext.workspace.json(c)` 的 service root、当前 root 判断和 service 依赖的 shared package；`models` section 会同时返回本地 models 目录与 kind 为 `models` 的 shared package、sourceExports 和消费者 service。候选校验会把 workspace service 与 shared package 目录都纳入允许目录策略。
+monorepo 通过实际 workspace 成员、共享包声明、package exports/sourceExports 和消费者依赖验证源码归属；相邻服务不会自动进入读取范围。显式配置的外部 models/locales/前端源目录仅在路径可证明时作为只读来源。跨根候选不因目录名称或共享声明而自动获得写入许可。
 
 普通 CI 会显式运行 MCP 定向单测、`npm run verify:mcp` 和 `npm run verify:public-surface`，避免 MCP 协议面、公共清单和 CLI stdio 行为在普通 PR 中漂移。Redis 相关能力由独立 Redis service lane 覆盖；本地无 Redis 时集成测试可以提示跳过，但 CI 中该 lane 必须连接真实 Redis。
 

@@ -89,11 +89,14 @@ describe("Vext MCP catalog", () => {
 describe("Vext MCP project inspector", () => {
   it("inspects a bounded Vext project structure without creating files", async () => {
     rootDir = await createFixtureProject();
-    const inspection = inspectVextProject({
+    const inspection = await inspectVextProject({
       rootDir,
       frameworkVersion: "2.0.0",
     });
-    expect(inspection.identity.sourceState).toBe("complete");
+    expect(
+      inspection.identity.sourceState,
+      inspection.warnings.join("\n"),
+    ).toBe("complete");
     expect(inspection.identity.contextRevision).toMatch(/^[a-f0-9]{64}$/);
     expect(inspection.snapshot.sections.config?.state).toBe("known");
     expect(inspection.snapshot.sections.jobs?.state).toBe("known");
@@ -210,7 +213,7 @@ describe("Vext MCP server", () => {
             {
               id: "models",
               kind: "models",
-              sourceExports: { user: "src/user.ts" },
+              sourceExports: { "./user": "src/user.ts" },
               consumers: ["api"],
             },
           ],
@@ -257,6 +260,18 @@ describe("Vext MCP server", () => {
       expect(JSON.stringify(dependencyKnowledge.structuredContent)).toContain(
         "K05",
       );
+      expect(dependencyKnowledge.structuredContent).toMatchObject({
+        dependencyContext: { digest: expect.any(String), issue: null },
+        matches: expect.arrayContaining([
+          expect.objectContaining({
+            id: "K05",
+            dependency: expect.objectContaining({
+              reviewedVersions: ["3.3.0"],
+              applicability: expect.objectContaining({ runtime: "unverified" }),
+            }),
+          }),
+        ]),
+      });
       const redisKnowledge = await client.callTool({
         name: "vext_knowledge_search",
         arguments: {
@@ -271,7 +286,10 @@ describe("Vext MCP server", () => {
         arguments: {
           recipeId: "RCP-11",
           name: "Billing Event",
-          options: { description: "Billing event contract." },
+          options: {
+            description: "Billing event contract.",
+            fields: { id: "string" },
+          },
         },
       });
       expect(draft.structuredContent).toMatchObject({
@@ -351,7 +369,7 @@ describe("Vext MCP server", () => {
         arguments: {
           files: [
             {
-              path: "docs/notes.md",
+              path: "storage/notes.md",
               action: "create",
               encoding: "utf8",
               content: "# Notes\n",
@@ -363,7 +381,7 @@ describe("Vext MCP server", () => {
         status: "ok",
         data: {
           verdict: "invalid",
-          files: [{ path: "docs/notes.md", verdict: "invalid" }],
+          files: [{ path: "storage/notes.md", verdict: "invalid" }],
         },
       });
       expect(JSON.stringify(unsupportedDirectory.structuredContent)).toContain(
@@ -385,7 +403,11 @@ describe("Vext MCP server", () => {
       );
       const serviceDraft = await client.callTool({
         name: "vext_generate_changes",
-        arguments: { recipeId: "RCP-05", name: "Billing Account" },
+        arguments: {
+          recipeId: "RCP-05",
+          name: "Billing Account",
+          options: { output: { ok: "boolean", checkedAt: "string" } },
+        },
       });
       expect(JSON.stringify(serviceDraft.structuredContent)).toContain(
         "src/types/server/services/billing-account.ts",
@@ -552,10 +574,12 @@ describe("Vext MCP server", () => {
         status: "ok",
         data: { availability: "unavailable", snapshot: null },
       });
-      const identity = inspectVextProject({
-        rootDir,
-        frameworkVersion: "2.0.0",
-      }).identity;
+      const identity = (
+        await inspectVextProject({
+          rootDir,
+          frameworkVersion: "2.0.0",
+        })
+      ).identity;
       await mkdir(join(rootDir, ".vext", "runtime"), { recursive: true });
       await writeFile(
         join(rootDir, ".vext", "runtime", "snapshot.json"),
@@ -588,10 +612,15 @@ describe("Vext MCP server", () => {
       expect(runtimeEvents.structuredContent).toMatchObject({
         status: "ok",
         data: {
-          availability: "available",
-          runtimeIdentity: { mode: "development", pid: 1234 },
-          events: [{ id: "event-1" }],
-          pageInfo: { nextCursor: "1" },
+          availability: "legacy",
+          runtimeIdentity: null,
+          events: [],
+          evidence: {
+            ownership: "unverified",
+            liveness: "unverified",
+            sourceFreshness: "unverified",
+          },
+          pageInfo: { nextCursor: null },
           resyncRequired: false,
         },
       });
@@ -599,7 +628,7 @@ describe("Vext MCP server", () => {
         uri: "vext://runtime/snapshot",
       });
       expect(runtimeResource.contents[0]?.text).toContain(
-        '"availability": "available"',
+        '"availability": "legacy"',
       );
       const hostSyncCapability = await client.callTool({
         name: "vext_capability_check",
@@ -662,7 +691,7 @@ async function createFixtureProject(): Promise<string> {
       {
         name: "fixture-app",
         version: "1.0.0",
-        dependencies: { vextjs: "2.0.0" },
+        dependencies: { vextjs: "2.0.0", "@fixture/models": "workspace:*" },
       },
       null,
       2,
@@ -676,6 +705,19 @@ async function createFixtureProject(): Promise<string> {
     join(dir, "src", "config", "default.ts"),
     'export default { server: { port: 3000 }, jobs: { scheduler: { mode: "enqueue", tickInterval: 1000 }, worker: { concurrency: 2 }, store: { type: "file", dir: ".vext/jobs" } }, dev: { mcp: { enabled: true, hosts: ["codex"], sync: "check" } } };\n',
   );
+  await mkdir(join(dir, "packages/models/src"), { recursive: true });
+  await writeFile(
+    join(dir, "packages/models/package.json"),
+    JSON.stringify({
+      name: "@fixture/models",
+      version: "1.0.0",
+      exports: { "./user": "./dist/user.js" },
+    }),
+  );
+  await writeFile(
+    join(dir, "packages/models/src/user.ts"),
+    "export const user = {};",
+  );
   await writeFile(
     join(dir, "vext.workspace.jsonc"),
     JSON.stringify(
@@ -688,7 +730,7 @@ async function createFixtureProject(): Promise<string> {
             id: "models",
             root: "packages/models",
             kind: "models",
-            sourceExports: { user: "src/user.ts" },
+            sourceExports: { "./user": "src/user.ts" },
           },
         ],
         policyDefaults: { outputLanguage: "zh" },
@@ -699,7 +741,7 @@ async function createFixtureProject(): Promise<string> {
   );
   await writeFile(
     join(dir, "src", "routes", "hello.ts"),
-    "export default function routes() {}\n",
+    "export default app => { app.get('/', { responses: { 200: { ok: 'boolean!' } } }, (req, res) => res.json({ ok: true })); };\n",
   );
   await writeFile(
     join(dir, "src", "jobs", "billing", "close.ts"),

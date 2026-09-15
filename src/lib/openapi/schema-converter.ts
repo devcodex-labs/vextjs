@@ -641,44 +641,13 @@ function isRawJsonSchemaFragment(value: Record<string, unknown>): boolean {
     return true;
   }
 
-  if (typeof type !== "string" || !JSON_SCHEMA_TYPES.has(type)) return false;
-
-  // `{ type: "string" }` is ambiguous in Vext DSL because it can mean a
-  // nested object whose field is literally named `type`. Only treat a
-  // single-type object as raw JSON Schema when another value has a shape that
-  // cannot be a Vext field declaration.
-  return Object.entries(value).some(([key, candidate]) => {
-    if (key === "type") return false;
-    if (
-      [
-        "minLength",
-        "maxLength",
-        "minimum",
-        "maximum",
-        "exclusiveMinimum",
-        "exclusiveMaximum",
-        "minItems",
-        "maxItems",
-        "minProperties",
-        "maxProperties",
-        "multipleOf",
-      ].includes(key)
-    ) {
-      return typeof candidate === "number";
-    }
-    if (key === "enum" || key === "required") return Array.isArray(candidate);
-    if (key === "nullable" || key === "readOnly" || key === "writeOnly") {
-      return typeof candidate === "boolean";
-    }
-    if (key === "additionalProperties") {
-      return typeof candidate === "boolean" || isRecord(candidate);
-    }
-    return false;
-  });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  // Field-level raw schema follows the runtime compiler, including a bare type,
+  // enum, or const. Treating these as nested DSL invents an incompatible API contract.
+  return (
+    (typeof type === "string" && JSON_SCHEMA_TYPES.has(type)) ||
+    Array.isArray(value.enum) ||
+    Object.hasOwn(value, "const")
+  );
 }
 
 function isSchemaWithNullType(schema: JsonSchema): boolean {

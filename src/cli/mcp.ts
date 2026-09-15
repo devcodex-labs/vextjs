@@ -11,6 +11,12 @@ import {
   VEXT_MCP_SKILL_CONTENT,
 } from "../assistant/skill.js";
 import { createVextMcpHostSyncPlan } from "../mcp/hosts/plan.js";
+import { inspectHostAdoption } from "../mcp/hosts/readback.js";
+import {
+  inspectImplementationIdentity,
+  inspectFrameworkSourceBuild,
+  IMPLEMENTATION_CODE_ROOT,
+} from "../assistant/implementation-identity.js";
 import { applyVextMcpHostSyncPlan } from "../mcp/hosts/sync.js";
 import { parseMcpCliArgs, serveVextMcpStdio } from "../mcp/server.js";
 
@@ -59,7 +65,7 @@ function printMcpHelp(): void {
   Skill:
     vext mcp skill check
     vext mcp skill print
-    vext mcp skill write --output .vext/skills/vextjs-official-mcp/SKILL.md
+    vext mcp skill write --output .vext/skills/vextjs/SKILL.md
 `);
 }
 
@@ -69,7 +75,7 @@ async function mcpSyncCommand(args: string[]): Promise<void> {
     printMcpSyncHelp();
     return;
   }
-  const plan = createVextMcpHostSyncPlan({
+  const plan = await createVextMcpHostSyncPlan({
     rootDir: options.rootDir,
     frameworkVersion: readFrameworkVersion(),
     host: options.host,
@@ -79,6 +85,10 @@ async function mcpSyncCommand(args: string[]): Promise<void> {
   const result = {
     status: "ok",
     plan,
+    implementation: inspectImplementationIdentity(),
+    sourceBuild: inspectFrameworkSourceBuild(IMPLEMENTATION_CODE_ROOT),
+    adoption:
+      options.mode === "write" ? undefined : await inspectHostAdoption(plan),
     applied:
       options.mode === "write"
         ? await applyVextMcpHostSyncPlan(plan)

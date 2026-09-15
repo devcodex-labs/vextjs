@@ -11,11 +11,6 @@ export default defineJob({
   name: "emails.sendWelcome",
   description: "发送欢迎邮件。",
   tags: ["email"],
-  schedule: {
-    cron: "0 */5 * * * *",
-    timezone: "Asia/Shanghai",
-    singleton: true,
-  },
   queue: { priority: 5 },
   timeout: 10_000,
   retry: { attempts: 3, delay: 500, backoff: "exponential" },
@@ -26,6 +21,8 @@ export default defineJob({
 ```
 
 `name` 是可选字段。不声明时，Vext 会根据文件路径推导 Job 名称，例如 `src/jobs/billing/close.ts` 会成为 `billing.close`。
+
+带必填业务 payload 的 Job 应通过 `vext job run`、`vext job enqueue` 或业务代码显式入队。内置 scheduler 创建 scheduled run 时不会自动携带 payload；定时 Job 应在 handler 中自行查询待处理数据，或只把扫描任务定时化。
 
 ## 核心类型
 
@@ -58,11 +55,13 @@ Scheduler lease 通过 `jobs.scheduler.lease.ttl` 控制持有时间，通过 `j
 
 启动 worker 轮询循环。worker 会 heartbeat、claim pending run、执行 Job，并把 success、failed、timeout 或 cancelled 写回 store。多个 worker 可以并行运行，run lease 会避免同一个 run 被两个 worker 同时执行。
 
-Worker 认领 run 时会同时检查全局并发和单 Job 并发：全局上限来自 `jobs.worker.concurrency`，单 Job 上限来自 `defineJob({ concurrency })`，未声明时使用 `jobs.defaults.concurrency`，最低为 `1`。
+Worker 认领 run 时会同时检查当前 worker 进程内并发和单 Job 并发：进程内上限来自 `jobs.worker.concurrency`，单 Job 上限来自 `defineJob({ concurrency })`，未声明时使用 `jobs.defaults.concurrency`，最低为 `1`。
 
 ## `createJobStore(options)`
 
 根据 `config.jobs.store` 创建内置 store。`memory` 适合测试；`file` 是默认持久化 store，默认目录 `.vext/jobs`，适合同机多进程和单机部署。`redis` 会打开 Redis-backed store，用于 run record、scheduler lease、worker heartbeat、run claim、运行租约续期和 owner 校验完成。`auto` 只在 `VEXT_REDIS_URL` 或 `REDIS_URL` 存在时可用；没有 Redis 目标会 fail fast。
+
+内置 store 的 `completeRun(runId, patch, { ownerId })` 只接受当前 running 记录的非空 owner。完成后会清除 lease；缺失、queued、terminal、owner 不匹配或重复完成返回 `false`，不会覆盖已有终态。handler 本身仍按至少一次执行设计，外部副作用需要业务幂等。
 
 ## 测试 API
 
@@ -157,7 +156,7 @@ export default {
 | `jobs.scheduler.tickInterval`        | `1000`         | scheduler tick 间隔，毫秒                              |
 | `jobs.scheduler.lease.ttl`           | `30000`        | scheduler lease 过期时间                               |
 | `jobs.scheduler.lease.renewInterval` | `10000`        | scheduler lease 续期间隔，需小于等于 TTL               |
-| `jobs.worker.concurrency`            | `4`            | worker 全局并发                                        |
+| `jobs.worker.concurrency`            | `4`            | 单个 worker 进程内并发                                 |
 | `jobs.worker.pollInterval`           | `1000`         | worker 轮询间隔，毫秒                                  |
 | `jobs.worker.shutdownTimeout`        | `10000`        | 关闭时等待 running job 的时间                          |
 | `jobs.worker.lease.renewInterval`    | `10000`        | run lease 续期间隔，需小于等于 TTL                     |

@@ -453,7 +453,8 @@ local patch = cjson.decode(ARGV[3])
 local raw = redis.call('HGET', runsKey, runId)
 if not raw then return 0 end
 local record = cjson.decode(raw)
-if record.leaseOwner ~= nil and record.leaseOwner ~= ownerId then return 0 end
+-- A completed record has no lease; it must still reject late or repeated commits.
+if record.status ~= 'running' or ownerId == '' or record.leaseOwner ~= ownerId then return 0 end
 for key, value in pairs(patch) do
   if value ~= cjson.null then record[key] = value end
 end

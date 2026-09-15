@@ -7,6 +7,27 @@ import {
 } from "../../../src/assistant/contracts.js";
 
 describe("Vext MCP assistant contracts", () => {
+  it("rejects invalid enable flags instead of changing their meaning", () => {
+    expect(normalizeDevMcpConfig({ enabled: "false" }).ok).toBe(false);
+    expect(normalizeDevMcpConfig({ http: { enabled: 1 } }).ok).toBe(false);
+  });
+
+  it("canonicalizes the existing service alias and rejects ambiguous roles", () => {
+    const result = normalizePolicyPatch({
+      roles: { service: "src/domain/services" },
+    });
+    expect(result.ok && result.value.patch.roles).toEqual({
+      services: "src/domain/services",
+    });
+    expect(
+      normalizePolicyPatch({ roles: { imaginary: "src/custom" } }).ok,
+    ).toBe(false);
+    expect(
+      normalizePolicyPatch({ roles: { service: "src/a", services: "src/b" } })
+        .ok,
+    ).toBe(false);
+  });
+
   it("normalizes dev.mcp defaults without enabling undeclared projects", () => {
     const absent = normalizeDevMcpConfig(undefined, { declared: false });
     expect(absent.ok).toBe(true);

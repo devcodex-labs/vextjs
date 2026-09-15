@@ -21,6 +21,27 @@ function expectNoDslInternalFields(value: Record<string, unknown>) {
 // ═════════════════════════════════════════════════════════════
 
 describe("SchemaConverter", () => {
+  it("projects bare JSON field types and enum exactly as runtime validation consumes them", () => {
+    const fields = {
+      featured: { type: "boolean" },
+      title: { type: "string" },
+      status: { enum: ["draft", "published"] },
+    };
+    const runtime = schemaAdapter.compile(fields);
+    const projected = createConverter().convertValidateObject(fields).schema;
+    expect(projected.properties).toEqual(runtime.properties);
+    expect(
+      schemaAdapter.validate(runtime, {
+        featured: true,
+        title: "Post",
+        status: "draft",
+      }).valid,
+    ).toBe(true);
+    expect(
+      schemaAdapter.validate(runtime, { featured: {}, status: "hidden" }).valid,
+    ).toBe(false);
+  });
+
   // ── convertDSLString：基础类型 ────────────────────────────
 
   describe("convertDSLString — 基础类型", () => {
@@ -629,11 +650,11 @@ describe("SchemaConverter", () => {
       expect(profile.properties!.bio.nullable).toBeUndefined();
     });
 
-    it("名为 type 的普通 DSL 字段不会被误判为 raw JSON Schema", () => {
+    it("通过显式字段 schema 表达名为 type 的嵌套 DSL 字段", () => {
       const c = createConverter();
       const result = c.convertValidateObject({
         metadata: {
-          type: "string",
+          type: { type: "string" },
           label: "string!",
         },
       });

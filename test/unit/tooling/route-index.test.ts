@@ -539,6 +539,28 @@ export default defineRoutes((app) => {
     expect(routePaths).toEqual(["/alias", "/bound", "/named", "/phantom"]);
   });
 
+  it("projects a sealed re-export using definition bindings and the loader entry path", async () => {
+    projectRoot = await mkdtemp(join(tmpdir(), "vext-route-facade-"));
+    await writeProjectFile(
+      projectRoot,
+      "src/routes/account.ts",
+      'export { default } from "../features/account.js";',
+    );
+    await writeProjectFile(
+      projectRoot,
+      "src/features/account.ts",
+      'import { defineRoutes } from "vextjs"; const detail = "/detail"; const response = { 200: { schema: { id: "string!" } } }; const register = (app) => { app.get(detail, { responses: response }, (_req, res) => { res.json({ id: "one" }); }); }; export default defineRoutes(register);',
+    );
+    const entries = await buildRouteIndex(projectRoot);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      fileRelativePath: "src/routes/account.ts",
+      path: "/account/detail",
+      method: "GET",
+    });
+    expect(entries[0]?.schema.responses).toHaveLength(1);
+  });
+
   it.each([
     [
       "async factory",
@@ -563,7 +585,7 @@ export const routeDefinition = defineRoutes((app) => {
       `import { defineRoutes } from "vextjs";
 export { routeDefinition as default } from "./shared.js";
 `,
-      /src\/routes\/index\.ts.*must not re-export/u,
+      /src\/routes\/index\.ts.*import.*missing or outside/u,
     ],
     [
       "callback identifier",
@@ -571,7 +593,7 @@ export { routeDefinition as default } from "./shared.js";
 const register = (app) => app.get("/", handler);
 export default defineRoutes(register);
 `,
-      /src\/routes\/index\.ts.*requires an inline arrow or function expression/u,
+      /src\/routes\/index\.ts.*block body/u,
     ],
     [
       "property callee",
@@ -580,7 +602,7 @@ export default helpers.defineRoutes((app) => {
   app.get("/", handler);
 });
 `,
-      /src\/routes\/index\.ts.*default export must be a local defineRoutes/u,
+      /src\/routes\/index\.ts.*default export must resolve to a proven defineRoutes/u,
     ],
   ])(
     "fails closed for unsupported route module shape: %s",

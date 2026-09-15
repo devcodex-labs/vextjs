@@ -1,17 +1,6 @@
 #!/usr/bin/env node
 
-import { startCommand } from "./start.js";
-import { devCommand } from "./dev.js";
-import { buildCommand } from "./build.js";
-import { createCommand } from "./create.js";
-import { deployCommand } from "./deploy.js";
-import { stopCommand } from "./stop.js";
-import { reloadCommand } from "./reload.js";
-import { statusCommand } from "./status.js";
-import { doctorCommand } from "./doctor.js";
-import { typegenCommand } from "./typegen.js";
-import { jobCommand } from "./job.js";
-import { mcpCommand } from "./mcp.js";
+import { inspectImplementationIdentity } from "../assistant/implementation-identity.js";
 
 /**
  * vext CLI — 框架命令行入口（Phase 1）
@@ -47,18 +36,18 @@ import { mcpCommand } from "./mcp.js";
 //
 
 const COMMANDS: Record<string, (args: string[]) => Promise<void>> = {
-  start: startCommand,
-  dev: devCommand,
-  build: buildCommand,
-  create: createCommand,
-  deploy: deployCommand,
-  stop: stopCommand,
-  reload: reloadCommand,
-  status: statusCommand,
-  doctor: doctorCommand,
-  typegen: typegenCommand,
-  job: jobCommand,
-  mcp: mcpCommand,
+  start: async (args) => (await import("./start.js")).startCommand(args),
+  dev: async (args) => (await import("./dev.js")).devCommand(args),
+  build: async (args) => (await import("./build.js")).buildCommand(args),
+  create: async (args) => (await import("./create.js")).createCommand(args),
+  deploy: async (args) => (await import("./deploy.js")).deployCommand(args),
+  stop: async (args) => (await import("./stop.js")).stopCommand(args),
+  reload: async (args) => (await import("./reload.js")).reloadCommand(args),
+  status: async (args) => (await import("./status.js")).statusCommand(args),
+  doctor: async (args) => (await import("./doctor.js")).doctorCommand(args),
+  typegen: async (args) => (await import("./typegen.js")).typegenCommand(args),
+  job: async (args) => (await import("./job.js")).jobCommand(args),
+  mcp: async (args) => (await import("./mcp.js")).mcpCommand(args),
 };
 
 // ── 未实现命令占位 ──────────────────────────────────────────
@@ -133,6 +122,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  inspectImplementationIdentity(); // Establish before-import evidence; handlers report later changes through the same tracker.
   await handler(commandArgs);
 }
 

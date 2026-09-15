@@ -92,6 +92,9 @@ defineRoutes((app) => {
         age: "number:0-!",
         "tags!": ["string"],
         profile: { active: "boolean!" },
+        "label!": { type: "string", minLength: 2, maxLength: 10 },
+        "flags!": { type: "array", uniqueItems: true, items: { type: "boolean" } },
+        publishedAt: { anyOf: [{ type: "string", format: "date-time" }, { type: "null" }] },
       },
     },
   }, async (req, res) => {
@@ -104,6 +107,11 @@ defineRoutes((app) => {
     const age: number = body.age;
     const tags: string[] = body.tags;
     const active: boolean | undefined = body.profile?.active;
+    const label: string = body.label;
+    const flags: boolean[] = body.flags;
+    const publishedAt: string | null | undefined = body.publishedAt;
+    // @ts-expect-error field-level schema keywords do not erase validated value types.
+    const wrongLabel: number = body.label;
     const cookie: undefined = req.valid("cookie");
     const legacy = req.valid<{ legacy: boolean }>("body");
     const legacyFlag: boolean = legacy.legacy;

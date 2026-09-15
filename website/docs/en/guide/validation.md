@@ -825,3 +825,7 @@ app.post(
 - View [OpenAPI Documentation](/guide/openapi) how to link with verification rules
 - Learn the complete usage of the three-stage expression in [Routing](/guide/routing)
 - Explore [plugins](/guide/plugins) how to replace the validation engine
+
+## Field-level JSON Schema and generated contracts
+
+A request location takes a DSL field map, for example `{ featured: { type: "boolean" }, status: { enum: ["draft", "published"] } }`. Bare field type/enum schemas retain the runtime compiler's meaning in OpenAPI and typed clients. The root field map may contain a business field named type. Inside a nested object, make that field explicit: `{ metadata: { type: { type: "string" }, label: "string!" } }`. Otherwise `metadata.type: "string"` identifies metadata itself as a raw string schema at runtime.

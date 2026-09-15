@@ -2,6 +2,8 @@ import { McpServer, fromJsonSchema } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { inspectKnowledgeDependencies } from "../assistant/knowledge/context.js";
+import { includesAnalysisProfile } from "../tooling/diagnostics/contracts.js";
 import {
   VEXT_MCP_CAPABILITIES,
   VEXT_MCP_PROMPT_NAMES,
@@ -24,6 +26,7 @@ import {
   type VextAssistantFailure,
   type VextExpectedIdentity,
   type VextMcpToolInputMap,
+  type VextProjectInputPolicy,
 } from "../assistant/contracts.js";
 import {
   inspectVextProjectJobDetails,
@@ -31,6 +34,12 @@ import {
   resolveMcpProjectRoot,
   type VextMcpProjectInspection,
 } from "../assistant/project-inspector.js";
+import { projectAssistantSection } from "../assistant/section-projection.js";
+import { paginateAssistantItems } from "../assistant/pagination.js";
+import {
+  PROJECT_INSPECT_SECTIONS,
+  type VextProjectInspectInput,
+} from "../assistant/contracts.js";
 import { inspectRuntimeSnapshot } from "./runtime-snapshot.js";
 
 export interface CreateVextMcpServerOptions {
@@ -96,12 +105,24 @@ function registerTools(
       ),
       annotations: TOOL_ANNOTATIONS,
     },
-    async (args) => {
+    async (args, context) => {
       const input = parseMcpToolInput("vext_project_inspect", args);
       if (!input.ok) return toolFailure(input.failure);
-      return toolResult(
-        filterInspection(inspect(rootDir, version), input.value.section),
+      const project = await inspect(
+        rootDir,
+        version,
+        input.value,
+        context.mcpReq.signal,
       );
+      const identityFailure = verifyExpectedIdentity(
+        input.value.expectedIdentity,
+        project,
+      );
+      if (identityFailure) return identityFailure;
+      const filtered = filterInspection(project, input.value);
+      return filtered.ok
+        ? toolResult(filtered.value)
+        : toolFailure(filtered.failure);
     },
   );
 
@@ -116,13 +137,28 @@ function registerTools(
       ),
       annotations: TOOL_ANNOTATIONS,
     },
-    async (args) => {
+    async (args, context) => {
       const input = parseMcpToolInput("vext_knowledge_search", args);
       if (!input.ok) return toolFailure(input.failure);
+      const result = searchMcpCatalog(input.value);
+      // 只为知识命中读取有界 package 元信息；不重复扫描源码，也不加载依赖入口。
+      const dependencies = result.matches.some((item) => item.dependency)
+        ? inspectKnowledgeDependencies(rootDir, context.mcpReq.signal)
+        : undefined;
       return toolResult({
-        schemaVersion: 1,
+        schemaVersion: 2,
         status: "ok",
-        ...searchMcpCatalog(input.value),
+        ...(dependencies
+          ? {
+              dependencyContext: {
+                digest: dependencies.digest,
+                issue: dependencies.issue,
+              },
+            }
+          : {}),
+        ...(dependencies
+          ? searchMcpCatalog(input.value, dependencies.facts)
+          : result),
       });
     },
   );
@@ -138,10 +174,20 @@ function registerTools(
       ),
       annotations: TOOL_ANNOTATIONS,
     },
-    async (args) => {
+    async (args, context) => {
       const input = parseMcpToolInput("vext_capability_check", args);
       if (!input.ok) return toolFailure(input.failure);
-      const project = inspect(rootDir, version);
+      const project = await inspect(
+        rootDir,
+        version,
+        input.value,
+        context.mcpReq.signal,
+      );
+      const identityFailure = verifyExpectedIdentity(
+        input.value.expectedIdentity,
+        project,
+      );
+      if (identityFailure) return identityFailure;
       const item = VEXT_MCP_CAPABILITIES.find(
         (capability) => capability.id === input.value.capability,
       );
@@ -155,9 +201,10 @@ function registerTools(
         );
       }
       return toolResult({
-        schemaVersion: 1,
+        schemaVersion: 2,
         status: "ok",
         data: {
+          identity: project.identity,
           capabilityId: item.id,
           frameworkSupport: item.status === "planned" ? "partial" : "supported",
           projectState: projectStateForCapability(project, item),
@@ -186,15 +233,28 @@ function registerTools(
       ),
       annotations: TOOL_ANNOTATIONS,
     },
-    async (args) => {
+    async (args, context) => {
       const input = parseMcpToolInput("vext_generate_changes", args);
       if (!input.ok) return toolFailure(input.failure);
-      const project = inspect(rootDir, version);
+      const project = await inspect(
+        rootDir,
+        version,
+        input.value,
+        context.mcpReq.signal,
+      );
       const identityFailure = verifyExpectedIdentity(
         input.value.expectedIdentity,
         project,
       );
       if (identityFailure) return identityFailure;
+      if (project.implementation.state !== "current")
+        return toolFailure(
+          createAssistantFailure(
+            "VEXT_IMPLEMENTATION_STALE",
+            "The loaded MCP implementation differs from the installed package or cannot be verified. Restart MCP before generating or validating changes.",
+            "restart-mcp",
+          ),
+        );
       const recipe = VEXT_MCP_RECIPES.find(
         (item) =>
           item.id === input.value.recipeId ||
@@ -203,7 +263,7 @@ function registerTools(
       const generated = generateMcpChangeSet(input.value, project);
       if (generated.status === "ready" && generated.changeSet) {
         return toolResult({
-          schemaVersion: 1,
+          schemaVersion: 2,
           status: "ok",
           data: {
             kind: "change-set",
@@ -218,13 +278,13 @@ function registerTools(
         });
       }
       return toolResult({
-        schemaVersion: 1,
+        schemaVersion: 2,
         status: "ok",
         data: {
           kind: "blocked",
           recipeId: input.value.recipeId,
           decisions: recipe ? [recipe.summary] : [],
-          verdict: recipe ? "incomplete" : "invalid",
+          verdict: recipe ? generated.status : "invalid",
           diagnostics: recipe
             ? generated.diagnostics
             : [`Unknown recipeId ${input.value.recipeId}.`],
@@ -232,7 +292,7 @@ function registerTools(
           applyReadiness: "blocked",
           requiredHostSteps: [
             "Run vext_project_inspect before requesting generation.",
-            "Wait for the matching Recipe work package to land.",
+            "Resolve the reported inputs/prerequisites and request the candidate again; no files were changed.",
           ],
         },
       });
@@ -250,22 +310,38 @@ function registerTools(
       ),
       annotations: TOOL_ANNOTATIONS,
     },
-    async (args) => {
+    async (args, context) => {
       const input = parseMcpToolInput("vext_validate_changes", args);
       if (!input.ok) return toolFailure(input.failure);
-      const project = inspect(rootDir, version);
+      const project = await inspect(
+        rootDir,
+        version,
+        input.value,
+        context.mcpReq.signal,
+      );
       const identityFailure = verifyExpectedIdentity(
         input.value.expectedIdentity,
         project,
       );
       if (identityFailure) return identityFailure;
+      if (project.implementation.state !== "current")
+        return toolFailure(
+          createAssistantFailure(
+            "VEXT_IMPLEMENTATION_STALE",
+            "The loaded MCP implementation differs from the installed package or cannot be verified. Restart MCP before generating or validating changes.",
+            "restart-mcp",
+          ),
+        );
       const validation = validateMcpChangeSetInput(input.value, project);
       return toolResult({
-        schemaVersion: 1,
+        schemaVersion: 2,
         status: "ok",
         data: {
           kind: "candidate-validation",
           verdict: validation.verdict,
+          staticVerdict: validation.staticVerdict,
+          applyReady: validation.applyReady,
+          runtimeVerified: false,
           steps: ["Input shape was accepted by the protocol layer."],
           diagnostics: validation.diagnostics,
           fileCount: validation.fileCount,
@@ -274,7 +350,10 @@ function registerTools(
           missingEvidence:
             validation.verdict === "valid"
               ? []
-              : ["Fix the reported candidate diagnostics before applying."],
+              : [
+                  ...validation.missingEvidence,
+                  "Fix the reported candidate diagnostics or supply missing source evidence before applying.",
+                ],
           requiredHostSteps: validation.requiredHostSteps,
         },
       });
@@ -292,10 +371,15 @@ function registerTools(
       ),
       annotations: TOOL_ANNOTATIONS,
     },
-    async (args) => {
+    async (args, context) => {
       const input = parseMcpToolInput("vext_project_check", args);
       if (!input.ok) return toolFailure(input.failure);
-      const project = inspect(rootDir, version);
+      const project = await inspect(
+        rootDir,
+        version,
+        input.value,
+        context.mcpReq.signal,
+      );
       const identityFailure = verifyExpectedIdentity(
         input.value.expectedIdentity,
         project,
@@ -303,43 +387,63 @@ function registerTools(
       if (identityFailure) return identityFailure;
       const diagnosticLimit = input.value.diagnosticLimit ?? 100;
       const sectionDiagnostics = project.partitions
-        .filter((partition) => partition.state !== "known")
-        .slice(0, diagnosticLimit)
+        .filter((partition) => partition.state === "unknown")
         .map((partition) => ({
           severity: "info" as const,
           code: "VEXT_MCP_SECTION_NOT_DETECTED",
+          domain: "structure" as const,
+          minimumProfile: "quick" as const,
+          evidence: "review" as const,
           message: `${partition.section} not detected at ${partition.defaultPath}.`,
           recommendedAction:
             "Treat this as an optional convention unless the current task needs that role.",
           affectedCapabilityIds: ["C02"],
         }));
-      const diagnostics = filterProjectDiagnostics(
-        [...project.diagnostics, ...sectionDiagnostics],
+      const matchingDiagnostics = filterProjectDiagnostics(
+        [...project.diagnostics, ...sectionDiagnostics].filter((diagnostic) =>
+          includesAnalysisProfile(
+            input.value.profile ?? "standard",
+            diagnostic.minimumProfile,
+          ),
+        ),
         input.value.domain,
-      ).slice(0, diagnosticLimit);
+      );
+      const diagnostics = matchingDiagnostics.slice(0, diagnosticLimit);
       const staticDiagnosticCount = filterProjectDiagnostics(
         project.diagnostics,
         input.value.domain,
       ).length;
-      const totalBySeverity = countProjectCheckDiagnostics(diagnostics);
+      const totalBySeverity = countProjectCheckDiagnostics(matchingDiagnostics);
+      const missingEvidence = [
+        ...(project.identity.sourceState === "complete"
+          ? []
+          : ["Project source/config baseline is incomplete."]),
+        ...matchingDiagnostics
+          .filter((item) => item.incomplete)
+          .map((item) => item.message),
+      ];
+      const staticVerdict =
+        totalBySeverity.error > 0
+          ? "invalid"
+          : missingEvidence.length
+            ? "incomplete"
+            : "valid";
       return toolResult({
-        schemaVersion: 1,
+        schemaVersion: 2,
         status: "ok",
         data: {
-          verdict:
-            totalBySeverity.error > 0
-              ? "invalid"
-              : project.identity.sourceState === "complete"
-                ? "valid"
-                : "incomplete",
+          identity: project.identity,
+          verdict: staticVerdict,
+          staticVerdict,
+          runtimeVerified: false,
           profile: input.value.profile ?? "standard",
           diagnostics,
           totalBySeverity,
-          affectedConsumers: affectedProjectCheckCapabilities(diagnostics),
-          missingEvidence:
-            project.identity.sourceState === "complete"
-              ? []
-              : ["Project source/config baseline is incomplete."],
+          affectedConsumers:
+            affectedProjectCheckCapabilities(matchingDiagnostics),
+          total: matchingDiagnostics.length,
+          truncated: matchingDiagnostics.length > diagnostics.length,
+          missingEvidence,
           generatedState: staticDiagnosticCount > 0 ? "diagnosed" : "not-run",
         },
       });
@@ -357,10 +461,15 @@ function registerTools(
       ),
       annotations: TOOL_ANNOTATIONS,
     },
-    async (args) => {
+    async (args, context) => {
       const input = parseMcpToolInput("vext_runtime_inspect", args);
       if (!input.ok) return toolFailure(input.failure);
-      const project = inspect(rootDir, version);
+      const project = await inspect(
+        rootDir,
+        version,
+        input.value,
+        context.mcpReq.signal,
+      );
       const identityFailure = verifyExpectedIdentity(
         input.value.expectedIdentity,
         project,
@@ -386,19 +495,8 @@ function filterProjectDiagnostics(
   diagnostics: VextProjectCheckDiagnostic[],
   domain: string | undefined,
 ): VextProjectCheckDiagnostic[] {
-  if (!domain) return diagnostics;
-  const needle = domain.toLowerCase();
-  return diagnostics.filter((diagnostic) => {
-    const haystack = [
-      diagnostic.code,
-      diagnostic.message,
-      diagnostic.sourceFile ?? "",
-      ...diagnostic.affectedCapabilityIds,
-    ]
-      .join(" ")
-      .toLowerCase();
-    return haystack.includes(needle);
-  });
+  if (!domain || domain === "all") return diagnostics;
+  return diagnostics.filter((diagnostic) => diagnostic.domain === domain);
 }
 
 function countProjectCheckDiagnostics(
@@ -432,16 +530,14 @@ function registerResources(
         title: uri,
         mimeType: "application/json",
       },
-      async (resourceUri) => ({
+      async (resourceUri, context) => ({
         contents: [
           {
             uri: resourceUri.href,
             mimeType: "application/json",
-            text: JSON.stringify(
-              await readResource(uri, rootDir, version),
-              null,
-              2,
-            ),
+            text: boundedResponse(
+              await readResource(uri, rootDir, version, context.mcpReq.signal),
+            ).text,
           },
         ],
       }),
@@ -561,157 +657,159 @@ async function readResource(
   uri: string,
   rootDir: string,
   version: string,
+  signal?: AbortSignal,
 ): Promise<unknown> {
-  const project = inspect(rootDir, version);
-  const catalog = buildMcpCatalog();
-  switch (uri) {
-    case "vext://catalog/capabilities":
-      return {
-        schemaVersion: 1,
-        status: "ok",
-        catalogDigest: catalog.digest,
-        items: VEXT_MCP_CAPABILITIES,
-      };
-    case "vext://catalog/rules":
-      return {
-        schemaVersion: 1,
-        status: "ok",
-        catalogDigest: catalog.digest,
-        items: VEXT_MCP_RULES,
-      };
-    case "vext://catalog/recipes":
-      return {
-        schemaVersion: 1,
-        status: "ok",
-        catalogDigest: catalog.digest,
-        items: VEXT_MCP_RECIPES,
-      };
-    case "vext://catalog/workflows":
-      return {
-        schemaVersion: 1,
-        status: "ok",
-        catalogDigest: catalog.digest,
-        items: VEXT_MCP_WORKFLOWS,
-      };
-    case "vext://project/snapshot":
-      return project;
-    case "vext://project/routes":
-      return projectSection(project, "routes");
-    case "vext://project/services":
-      return projectSection(project, "services");
-    case "vext://project/frontend":
-      return projectSection(project, "frontend");
-    case "vext://project/ownership":
-      return projectSection(project, "ownership");
-    case "vext://project/structure":
-      return {
-        schemaVersion: 1,
-        status: "ok",
-        identity: project.identity,
-        structureDecisions: project.structureDecisions,
-        assistant: project.assistant,
-      };
-    case "vext://runtime/snapshot":
-      return await inspectRuntimeSnapshot({
+  signal?.throwIfAborted();
+  const catalogs: Record<string, unknown> = {
+    "vext://catalog/capabilities": VEXT_MCP_CAPABILITIES,
+    "vext://catalog/rules": VEXT_MCP_RULES,
+    "vext://catalog/recipes": VEXT_MCP_RECIPES,
+    "vext://catalog/workflows": VEXT_MCP_WORKFLOWS,
+  };
+  if (Object.hasOwn(catalogs, uri))
+    return {
+      schemaVersion: 2,
+      status: "ok",
+      catalogDigest: buildMcpCatalog().digest,
+      items: catalogs[uri],
+    };
+  const project = await inspect(rootDir, version, {}, signal);
+  if (uri === "vext://runtime/snapshot")
+    return {
+      ...(await inspectRuntimeSnapshot({
         rootDir,
         project,
         options: { section: "summary" },
-      });
-    default:
-      return failure("VEXT_VALIDATION_FAILED", `Unknown resource ${uri}.`);
-  }
-}
-
-function projectSection(project: VextMcpProjectInspection, section: string) {
-  return {
-    schemaVersion: 1,
-    status: "ok",
-    identity: project.identity,
-    section,
-    summary: project.snapshot.sections[section] ?? null,
-    details: projectSectionDetails(project, section),
-    availability:
-      project.snapshot.sections[section]?.state === "known"
-        ? "available"
-        : "absent",
-  };
+      })),
+      schemaVersion: 2,
+    };
+  const section =
+    uri === "vext://project/snapshot"
+      ? "summary"
+      : uri.replace("vext://project/", "");
+  const filtered = filterInspection(project, { section });
+  return filtered.ok
+    ? filtered.value
+    : { schemaVersion: 2, status: "error", failure: filtered.failure };
 }
 
 function filterInspection(
   project: VextMcpProjectInspection,
-  section?: string,
-): unknown {
-  if (!section || section === "summary" || section === "all") return project;
-  if (section === "identity") {
-    return { schemaVersion: 1, status: "ok", identity: project.identity };
-  }
-  if (section === "structure") {
+  input: VextProjectInspectInput,
+): import("../assistant/contracts.js").VextAssistantValidationResult<
+  Record<string, unknown>
+> {
+  const section = input.section ?? "summary";
+  if (input.cursor && ["summary", "identity", "all"].includes(section))
     return {
-      schemaVersion: 1,
-      status: "ok",
-      identity: project.identity,
-      structureDecisions: project.structureDecisions,
-      assistant: project.assistant,
-    };
-  }
-  return projectSection(project, section);
-}
-
-function projectSectionDetails(
-  project: VextMcpProjectInspection,
-  section: string,
-) {
-  if (section === "config") {
-    return {
-      devMcp: project.assistant.devMcp,
-      devMcpSources: project.assistant.devMcpSources,
-      workspaceConfig: project.assistant.workspace
-        ? {
-            path: project.assistant.workspace.path,
-            digest: project.assistant.workspace.digest,
-            policyDefaultsDigest:
-              project.assistant.workspace.policyDefaultsDigest,
-          }
-        : null,
-    };
-  }
-  if (section === "services") {
-    return {
-      workspaceServices: workspaceServiceDetails(project),
-      sharedPackages: workspaceSharedPackageDetails(project),
-      workspaceSource: project.assistant.workspace
-        ? {
-            path: project.assistant.workspace.path,
-            digest: project.assistant.workspace.digest,
-          }
-        : null,
-    };
-  }
-  if (section === "models") {
-    return {
-      localModels: project.snapshot.sections.models ?? null,
-      sharedModelPackages: workspaceSharedPackageDetails(project).filter(
-        (item) => item.kind === "models",
+      ok: false,
+      warnings: [],
+      failure: createAssistantFailure(
+        "VEXT_VALIDATION_FAILED",
+        "Cursor requires a specific collection section.",
       ),
     };
-  }
-  if (section === "jobs") {
-    return inspectVextProjectJobDetails(project);
-  }
-  if (section === "ownership" || section === "structure") {
+  if (section === "identity")
     return {
-      workspace: project.assistant.workspace,
+      ok: true,
+      warnings: [],
+      value: { schemaVersion: 2, status: "ok", identity: project.identity },
     };
+  if (section === "summary" || section === "all") {
+    const limit = input.limit ?? 100;
+    const value: Record<string, unknown> = {
+      ...project,
+      diagnostics: project.diagnostics.slice(0, limit),
+      diagnosticTotal: project.diagnostics.length,
+      diagnosticsTruncated: project.diagnostics.length > limit,
+    };
+    if (section === "all") {
+      const details: Record<string, unknown> = {};
+      for (const name of PROJECT_INSPECT_SECTIONS) {
+        if (["summary", "identity", "all"].includes(name)) continue;
+        const projected = projectSection(project, { ...input, section: name });
+        if (!projected.ok) return projected;
+        details[name] = projected.value;
+      }
+      value.details = details;
+    }
+    return { ok: true, warnings: [], value };
   }
-  return null;
+  return projectSection(project, input);
+}
+
+function projectSection(
+  project: VextMcpProjectInspection,
+  input: VextProjectInspectInput,
+): import("../assistant/contracts.js").VextAssistantValidationResult<
+  Record<string, unknown>
+> {
+  const section = input.section!;
+  const projection = projectAssistantSection(project, section);
+  const page = paginateAssistantItems(projection.items, {
+    identity: project.identity,
+    section,
+    limit: input.limit,
+    cursor: input.cursor,
+  });
+  if (!page.ok) return page;
+  const details: Record<string, unknown> = {
+    ...projection.metadata,
+    ...page.value,
+    missingEvidence: projection.missingEvidence,
+  };
+  if (section === "jobs") details.jobs = page.value.items;
+  if (section === "services") {
+    details.workspaceServices = workspaceServiceDetails(project);
+    details.sharedPackages = workspaceSharedPackageDetails(project);
+  }
+  if (section === "models") {
+    details.localModels = project.snapshot.sections.models;
+    details.sharedModelPackages = workspaceSharedPackageDetails(project).filter(
+      (item) => item.kind === "models",
+    );
+  }
+  return {
+    ok: true,
+    warnings: [],
+    value: {
+      schemaVersion: 2,
+      status: "ok",
+      identity: project.identity,
+      section,
+      summary: project.snapshot.sections[section] ?? {
+        sourceState: projection.state,
+      },
+      details,
+      ...page.value,
+      coverage: projection.state,
+      missingEvidence: projection.missingEvidence,
+      availability:
+        projection.state === "complete"
+          ? "available"
+          : projection.state === "absent"
+            ? "absent"
+            : "partial",
+      ...(section === "structure"
+        ? { structureDecisions: page.value.items, assistant: project.assistant }
+        : {}),
+    },
+  };
 }
 
 function workspaceServiceDetails(project: VextMcpProjectInspection) {
   return (project.assistant.workspace?.config.services ?? []).map(
     (service) => ({
       ...service,
-      isCurrentRoot: normalizeWorkspacePath(service.root) === ".",
-      absoluteRoot: path.resolve(project.identity.rootDir, service.root),
+      isCurrentRoot:
+        path.relative(
+          path.resolve(project.assistant.workspace!.rootDir, service.root),
+          project.identity.rootDir,
+        ) === "",
+      absoluteRoot: path.resolve(
+        project.assistant.workspace!.rootDir,
+        service.root,
+      ),
       sharedPackages: (service.sharedPackages ?? []).map((packageId) => ({
         id: packageId,
         package:
@@ -727,7 +825,10 @@ function workspaceSharedPackageDetails(project: VextMcpProjectInspection) {
   return (project.assistant.workspace?.config.sharedPackages ?? []).map(
     (sharedPackage) => ({
       ...sharedPackage,
-      absoluteRoot: path.resolve(project.identity.rootDir, sharedPackage.root),
+      absoluteRoot: path.resolve(
+        project.assistant.workspace!.rootDir,
+        sharedPackage.root,
+      ),
       consumers: (project.assistant.workspace?.config.services ?? [])
         .filter((service) =>
           (service.sharedPackages ?? []).includes(sharedPackage.id),
@@ -737,13 +838,23 @@ function workspaceSharedPackageDetails(project: VextMcpProjectInspection) {
   );
 }
 
-function normalizeWorkspacePath(value: string): string {
-  const normalized = value.replaceAll("\\", "/").replace(/\/+$/u, "");
-  return normalized === "" ? "." : normalized;
-}
-
-function inspect(rootDir: string, version: string): VextMcpProjectInspection {
-  return inspectVextProject({ rootDir, frameworkVersion: version });
+function inspect(
+  rootDir: string,
+  version: string,
+  options: VextProjectInputPolicy & {
+    sourceMode?: "auto" | "baseline";
+    refresh?: boolean;
+  } = {},
+  signal?: AbortSignal,
+): Promise<VextMcpProjectInspection> {
+  return inspectVextProject({
+    rootDir,
+    frameworkVersion: version,
+    policyPatch: options.policyPatch,
+    sourceMode: options.sourceMode,
+    refresh: options.refresh,
+    signal,
+  });
 }
 
 function verifyExpectedIdentity(
@@ -774,7 +885,7 @@ function requiredOperationsForCapability(capabilityId: string): string[] {
   }
   if (capabilityId === "C18") {
     return [
-      "Use vext_runtime_inspect to read the framework-managed .vext/runtime/snapshot.json; MCP does not start services or read raw logs.",
+      "Use vext_runtime_inspect to read the framework-managed .vext/runtime/snapshots/<instanceId>.json; MCP does not start services or read raw logs.",
     ];
   }
   if (["C15", "C16", "C17", "C28"].includes(capabilityId)) {
@@ -835,19 +946,33 @@ function jsonSchema<T>(schema: Record<string, unknown>) {
   return fromJsonSchema<T>(schema);
 }
 
+function boundedResponse(data: unknown) {
+  let isError = false;
+  let text = JSON.stringify(data, null, 2);
+  if (Buffer.byteLength(text, "utf8") > 512 * 1024) {
+    data = failure(
+      "VEXT_RESPONSE_LIMIT",
+      "Response exceeds 512 KiB. Request an individual section or a smaller page.",
+    );
+    text = JSON.stringify(data);
+    isError = true;
+  }
+  return { data, text, isError };
+}
+
 function toolResult(data: unknown, isError = false) {
-  const text = JSON.stringify(data, null, 2);
+  const response = boundedResponse(data);
   return {
-    isError,
-    content: [{ type: "text" as const, text }],
-    structuredContent: data,
+    isError: isError || response.isError,
+    content: [{ type: "text" as const, text: response.text }],
+    structuredContent: response.data,
   };
 }
 
 function toolFailure(failureDetail: VextAssistantFailure) {
   return toolResult(
     {
-      schemaVersion: 1,
+      schemaVersion: 2,
       status: "error",
       failure: failureDetail,
     },
@@ -868,7 +993,7 @@ function promptResult(text: string) {
 
 function failure(code: string, message: string) {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     status: "error",
     failure: {
       code,

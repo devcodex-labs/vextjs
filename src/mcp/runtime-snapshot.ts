@@ -1,32 +1,47 @@
-import { readFile, stat } from "node:fs/promises";
-import path from "node:path";
-
 import type { VextRuntimeInspectInput } from "../assistant/contracts.js";
 import type { VextMcpProjectInspection } from "../assistant/project-inspector.js";
-
-const RUNTIME_SNAPSHOT_PATH = path.join(".vext", "runtime", "snapshot.json");
-const MAX_RUNTIME_SNAPSHOT_BYTES = 1024 * 1024;
+import { paginateAssistantItems } from "../assistant/pagination.js";
+import {
+  RUNTIME_SNAPSHOT_DIRECTORY,
+  LEGACY_RUNTIME_SNAPSHOT_PATH,
+  isRuntimeRecord,
+} from "../lib/runtime-snapshot-contract.js";
+import { readRuntimeInstances } from "./runtime-snapshot-reader.js";
 
 export interface VextRuntimeSnapshotResult {
-  schemaVersion: 1;
+  schemaVersion: 2;
   status: "ok";
   data: {
-    availability: "available" | "unavailable" | "invalid";
+    availability:
+      | "available"
+      | "partial"
+      | "unavailable"
+      | "invalid"
+      | "legacy";
     source: string;
     projectIdentity: VextMcpProjectInspection["identity"];
     runtimeIdentity: unknown | null;
     section: "summary" | "workers" | "reloads" | "events";
     snapshot: unknown | null;
+    instances: unknown[];
     items: unknown[];
     events: unknown[];
+    evidence: {
+      ownership: "verified" | "unverified";
+      liveness: "unverified";
+      sourceFreshness: "current" | "stale" | "unverified";
+    };
     pageInfo: {
       limit: number;
       cursor: string | null;
       nextCursor: string | null;
+      total: number;
+      truncated: boolean;
     };
     gap: string | null;
     resyncRequired: boolean;
     reason: string | null;
+    issues: string[];
   };
 }
 
@@ -38,235 +53,135 @@ export async function inspectRuntimeSnapshot(input: {
   const section = input.options?.section ?? "summary";
   const limit = input.options?.limit ?? 20;
   const cursor = input.options?.cursor ?? null;
-  const absolutePath = path.join(input.rootDir, RUNTIME_SNAPSHOT_PATH);
-  const file = await readSnapshotFile(absolutePath);
-  if (file.status === "missing") {
-    return runtimeResult({
-      availability: "unavailable",
-      project: input.project,
-      section,
-      limit,
-      cursor,
-      reason:
-        "Runtime snapshot is not present. Start or inspect runtime through the host; MCP does not start services.",
-    });
-  }
-  if (file.status === "invalid") {
-    return runtimeResult({
-      availability: "invalid",
-      project: input.project,
-      section,
-      limit,
-      cursor,
-      reason: file.reason,
-    });
-  }
-  const parsed = parseSnapshot(file.content);
-  if (parsed.status === "invalid") {
-    return runtimeResult({
-      availability: "invalid",
-      project: input.project,
-      section,
-      limit,
-      cursor,
-      reason: parsed.reason,
-    });
-  }
-  return availableRuntimeResult({
-    snapshot: parsed.snapshot,
-    project: input.project,
-    section,
-    limit,
-    cursor,
+  const read = await readRuntimeInstances(
+    input.rootDir,
+    input.project.identity.projectId,
+  );
+  const snapshots = input.options?.instanceId
+    ? read.snapshots.filter(
+        (snapshot) =>
+          snapshot.runtimeIdentity.instanceId === input.options!.instanceId,
+      )
+    : read.snapshots;
+  const evidence = snapshots.map((snapshot) => {
+    const source = snapshot.runtimeIdentity.sourceRevision;
+    return {
+      instanceId: snapshot.runtimeIdentity.instanceId,
+      runtimeIdentity: snapshot.runtimeIdentity,
+      updatedAt: snapshot.updatedAt,
+      summary: snapshot.summary,
+      counts: {
+        workers: snapshot.workers.length,
+        reloads: snapshot.reloads.length,
+        events: snapshot.events.length,
+      },
+      evidence: {
+        ownership: "verified" as const,
+        liveness: "unverified" as const,
+        sourceFreshness:
+          source && input.project.identity.sourceRevision
+            ? source === input.project.identity.sourceRevision
+              ? ("current" as const)
+              : ("stale" as const)
+            : ("unverified" as const),
+      },
+    };
   });
-}
-
-async function readSnapshotFile(
-  absolutePath: string,
-): Promise<
-  | { status: "ok"; content: string }
-  | { status: "missing" }
-  | { status: "invalid"; reason: string }
-> {
-  try {
-    const info = await stat(absolutePath);
-    if (!info.isFile()) {
-      return {
-        status: "invalid",
-        reason: "Runtime snapshot path exists but is not a file.",
-      };
-    }
-    if (info.size > MAX_RUNTIME_SNAPSHOT_BYTES) {
-      return {
-        status: "invalid",
-        reason: `Runtime snapshot exceeds ${MAX_RUNTIME_SNAPSHOT_BYTES} bytes.`,
-      };
-    }
-    return { status: "ok", content: await readFile(absolutePath, "utf8") };
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return { status: "missing" };
-    }
-    throw error;
-  }
-}
-
-function parseSnapshot(
-  content: string,
-):
-  | { status: "ok"; snapshot: Record<string, unknown> }
-  | { status: "invalid"; reason: string } {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    return {
-      status: "invalid",
-      reason: "Runtime snapshot is not valid JSON.",
-    };
-  }
-  if (!isRecord(parsed)) {
-    return {
-      status: "invalid",
-      reason: "Runtime snapshot must be a JSON object.",
-    };
-  }
-  if (parsed.schemaVersion !== 1) {
-    return {
-      status: "invalid",
-      reason: "Runtime snapshot schemaVersion must be 1.",
-    };
-  }
-  return { status: "ok", snapshot: parsed };
-}
-
-function availableRuntimeResult(input: {
-  snapshot: Record<string, unknown>;
-  project: VextMcpProjectInspection;
-  section: "summary" | "workers" | "reloads" | "events";
-  limit: number;
-  cursor: string | null;
-}): VextRuntimeSnapshotResult {
-  const runtimeIdentity = readRecord(input.snapshot.runtimeIdentity);
-  const snapshotIdentity = readRecord(input.snapshot.identity);
-  const snapshotRevision =
-    readString(snapshotIdentity?.contextRevision) ??
-    readString(runtimeIdentity?.contextRevision);
-  const resyncRequired =
-    typeof snapshotRevision === "string" &&
-    snapshotRevision !== input.project.identity.contextRevision;
-  const offset = decodeCursor(input.cursor);
-  const items = sectionItems(input.snapshot, input.section);
-  const page = paginate(items, offset, input.limit);
+  const items =
+    section === "summary"
+      ? evidence
+      : snapshots.flatMap((snapshot) =>
+          snapshot[section].map((item) => ({
+            ...(isRuntimeRecord(item) ? item : {}),
+            instanceId: snapshot.runtimeIdentity.instanceId,
+          })),
+        );
+  const page = paginateAssistantItems(items, {
+    identity: {
+      projectId: input.project.identity.projectId,
+      contextRevision: input.project.identity.contextRevision,
+      revision: read.revision,
+      instanceId: input.options?.instanceId ?? null,
+    },
+    section: "runtime:" + section,
+    limit,
+    cursor: cursor ?? undefined,
+    maxBytes: 64 * 1024,
+  });
+  const stale = evidence.some(
+    (item) => item.evidence.sourceFreshness === "stale",
+  );
+  const legacy =
+    !snapshots.length && !input.options?.instanceId && read.legacy !== null;
+  let reason: string | null = !page.ok
+    ? page.failure.message
+    : read.issues.length
+      ? "Runtime inventory is partial; inspect issues and retry."
+      : snapshots.length
+        ? null
+        : legacy
+          ? "Legacy single-file snapshot has no verified instance ownership, liveness or source freshness. Restart through the current framework to create per-instance records."
+          : "No matching runtime snapshot. MCP does not start services.";
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     status: "ok",
     data: {
-      availability: "available",
-      source: RUNTIME_SNAPSHOT_PATH,
+      availability: !page.ok
+        ? "invalid"
+        : snapshots.length
+          ? read.issues.length
+            ? "partial"
+            : "available"
+          : read.issues.length
+            ? "invalid"
+            : legacy
+              ? "legacy"
+              : "unavailable",
+      source: legacy
+        ? LEGACY_RUNTIME_SNAPSHOT_PATH
+        : RUNTIME_SNAPSHOT_DIRECTORY,
       projectIdentity: input.project.identity,
-      runtimeIdentity,
-      section: input.section,
+      runtimeIdentity:
+        evidence.length === 1 ? evidence[0]!.runtimeIdentity : null,
+      section,
       snapshot:
-        input.section === "summary"
-          ? {
-              summary: input.snapshot.summary ?? null,
-              updatedAt: readString(input.snapshot.updatedAt) ?? null,
-              counts: {
-                workers: readArray(input.snapshot.workers).length,
-                reloads: readArray(input.snapshot.reloads).length,
-                events: readArray(input.snapshot.events).length,
-              },
-            }
+        page.ok && evidence.length === 1 && section === "summary"
+          ? evidence[0]
           : null,
-      items: page.items,
-      events: input.section === "events" ? page.items : [],
-      pageInfo: {
-        limit: input.limit,
-        cursor: input.cursor,
-        nextCursor: page.nextCursor,
+      // Only return this page's summaries. Detail queries carry per-item ownership.
+      instances: section === "summary" && page.ok ? page.value.items : [],
+      items: page.ok ? page.value.items : [],
+      events: section === "events" && page.ok ? page.value.items : [],
+      evidence: {
+        ownership: snapshots.length ? "verified" : "unverified",
+        liveness: "unverified",
+        sourceFreshness: stale
+          ? "stale"
+          : evidence.length &&
+              evidence.every(
+                (item) => item.evidence.sourceFreshness === "current",
+              )
+            ? "current"
+            : "unverified",
       },
-      gap: null,
-      resyncRequired,
-      reason: resyncRequired
-        ? "Runtime snapshot contextRevision differs from the current project inspection."
-        : null,
+      pageInfo: {
+        limit,
+        cursor,
+        nextCursor: page.ok ? page.value.nextCursor : null,
+        total: items.length,
+        truncated: page.ok ? page.value.truncated : false,
+      },
+      gap: !page.ok
+        ? page.failure.code
+        : read.issues.length
+          ? "partial-inventory"
+          : null,
+      resyncRequired: !page.ok || stale || read.issues.length > 0,
+      reason:
+        stale && reason === null
+          ? "Recorded source revision differs from current source."
+          : reason,
+      issues: read.issues,
     },
   };
-}
-
-function runtimeResult(input: {
-  availability: "unavailable" | "invalid";
-  project: VextMcpProjectInspection;
-  section: "summary" | "workers" | "reloads" | "events";
-  limit: number;
-  cursor: string | null;
-  reason: string;
-}): VextRuntimeSnapshotResult {
-  return {
-    schemaVersion: 1,
-    status: "ok",
-    data: {
-      availability: input.availability,
-      source: RUNTIME_SNAPSHOT_PATH,
-      projectIdentity: input.project.identity,
-      runtimeIdentity: null,
-      section: input.section,
-      snapshot: null,
-      items: [],
-      events: [],
-      pageInfo: {
-        limit: input.limit,
-        cursor: input.cursor,
-        nextCursor: null,
-      },
-      gap: null,
-      resyncRequired: false,
-      reason: input.reason,
-    },
-  };
-}
-
-function sectionItems(
-  snapshot: Record<string, unknown>,
-  section: "summary" | "workers" | "reloads" | "events",
-): unknown[] {
-  if (section === "summary") return [];
-  return readArray(snapshot[section]);
-}
-
-function paginate(
-  items: unknown[],
-  offset: number,
-  limit: number,
-): { items: unknown[]; nextCursor: string | null } {
-  const page = items.slice(offset, offset + limit);
-  const nextOffset = offset + page.length;
-  return {
-    items: page,
-    nextCursor: nextOffset < items.length ? String(nextOffset) : null,
-  };
-}
-
-function decodeCursor(cursor: string | null): number {
-  if (!cursor) return 0;
-  const value = Number.parseInt(cursor, 10);
-  if (!Number.isFinite(value) || value < 0) return 0;
-  return value;
-}
-
-function readArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-
-function readRecord(value: unknown): Record<string, unknown> | null {
-  return isRecord(value) ? value : null;
-}
-
-function readString(value: unknown): string | null {
-  return typeof value === "string" ? value : null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

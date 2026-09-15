@@ -1,0 +1,11 @@
+{
+  "databaseUnavailable": "Blog database is unavailable",
+  "adminUnavailable": "Blog admin is not configured",
+  "unauthorized": "Blog admin authorization required",
+  "notFound": "Blog post not found",
+  "slugConflict": "Blog slug already exists",
+  "invalid": "Invalid {{field}}",
+  "slugRequired": "Provide a valid slug",
+  "emptyUpdate": "An update must contain a field",
+  "privateProbe": "BACKEND_ONLY_LOCALE"
+}

@@ -56,11 +56,6 @@ export default defineJob<{ invoiceId: string }, { closed: boolean }>({
   name: "billing.closeInvoice",
   description: "Close an overdue invoice.",
   tags: ["billing"],
-  schedule: {
-    cron: "0 */5 * * * *",
-    timezone: "Asia/Shanghai",
-    singleton: true,
-  },
   queue: {
     priority: 10,
   },
@@ -75,6 +70,8 @@ export default defineJob<{ invoiceId: string }, { closed: boolean }>({
   },
 });
 ```
+
+This example is meant for `vext job run`, `vext job enqueue`, or explicit application enqueueing because it needs an `invoiceId`. The built-in scheduler creates scheduled runs without a business payload. Scheduled handlers should derive their own input, or split the design into a scheduled scanner that enqueues one run per discovered record.
 
 The handler receives `app`, `payload`, `logger`, `signal`, `attempt`, `runId`, and the normalized job definition. It can use services, models, `app.fetch`, i18n, logger, config, and plugin-provided extensions. It does not receive an HTTP request or response object. Long-running jobs should pass `signal` to database calls, fetch calls, queues, or internal loops so timeout and graceful shutdown can interrupt work.
 
@@ -153,13 +150,15 @@ Production deployments should prefer scheduled enqueue mode. The scheduler stays
 
 The default store is `file`, stored under `.vext/jobs`. It records scheduler leases, worker heartbeats, run records, run leases, trigger, payload, status, attempts, duration, result, and error summary.
 
-`memory` is for tests and local demos and loses state on process exit. `file` supports same-machine multi-process and single-node production deployments; with a shared persistent volume it can also support simple multi-instance deployments. `redis` is the built-in distributed store for schedulers and workers across processes or nodes. Configure `jobs.store: { type: "redis", url: "redis://127.0.0.1:6379" }`, or use `jobs.store: "auto"` only when `VEXT_REDIS_URL`/`REDIS_URL` is deliberately provided. Vext generates a Redis key prefix from package name, config profile, runtime mode, and module; set `namespace` or `keyPrefix` only when several services intentionally share or isolate Redis keys. For strict exactly-once or high-throughput queues beyond the built-in run store, connect a custom runner backed by a database, BullMQ, or a cloud queue.
+`memory` is for tests and local demos and loses state on process exit. `file` supports same-machine multi-process and single-node production deployments; with a shared persistent volume it can also support simple multi-instance deployments. `redis` is the built-in distributed store for schedulers and workers across processes or nodes. Configure `jobs.store: { type: "redis", url: "redis://127.0.0.1:6379" }`, or use `jobs.store: "auto"` only when `VEXT_REDIS_URL`/`REDIS_URL` is deliberately provided. Vext generates a Redis key prefix from package name, config profile, runtime mode, and module; set `namespace` or `keyPrefix` only when several services intentionally share or isolate Redis keys.
+
+All three built-in stores allow `completeRun()` only for the nonempty owner of the current running record. Completion clears the run lease; missing, queued, terminal, differently owned, or repeated completion returns `false` and leaves the stored record unchanged. If a lease expires, a new owner takes over, and the new owner completes the run, the old owner cannot overwrite the terminal state later. This protects the stored result, but external side effects are still at-least-once: payments, coupons, email, and third-party API calls still need business unique keys, database unique indexes, or external idempotency keys.
 
 ## Runtime boundaries
 
 - `vext start` and HTTP cluster workers do not run jobs by default, so every HTTP worker does not create the same scheduled job.
 - Scheduler is started explicitly with `vext job scheduler`; when several schedulers exist, only the owner of the scheduler lease creates due runs.
-- Worker is started explicitly with `vext job worker`; several workers can run in parallel, and run leases prevent the same run from being executed twice. Workers honor both the global `jobs.worker.concurrency` limit and each job's `concurrency` / `jobs.defaults.concurrency` limit.
+- Worker is started explicitly with `vext job worker`; several workers can run in parallel, and run leases prevent the same run from being executed twice. Each worker process honors its own `jobs.worker.concurrency` limit and each job's `concurrency` / `jobs.defaults.concurrency` limit.
 - HTTP rolling restart does not restart job scheduler or workers. Manage HTTP, scheduler, and worker processes separately.
 - Job runtime shutdown uses the same `app.onClose()` lifecycle as HTTP startup, releasing database, plugin, and logger resources.
 
@@ -207,7 +206,7 @@ vext-scheduler replicas: 1+  command: vext job scheduler --config production
 vext-worker    replicas: M   command: vext job worker --config production
 ```
 
-The scheduler may run with more than one replica for availability only when all replicas share the same store and `jobs.scheduler.lease.enabled` remains enabled. Workers can scale horizontally, but first verify downstream connection pools, API rate limits, database locks, and job idempotency. The built-in `file` store is for same-machine or shared-volume use; multi-node HA and high-throughput workloads should use a custom database, Redis, or queue-backed store.
+The scheduler may run with more than one replica for availability only when all replicas share the same store and `jobs.scheduler.lease.enabled` remains enabled. Workers can scale horizontally, but first verify downstream connection pools, API rate limits, database locks, and job idempotency. The built-in `file` store is for same-machine or shared-volume use; multi-node HA should use Redis or a custom database/queue store. A higher-throughput queue still does not replace business-level idempotency.
 
 ## Testing
 

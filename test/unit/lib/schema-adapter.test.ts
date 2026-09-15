@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { schemaAdapter } from "../../../src/lib/schema-adapter.js";
+import { describe, expect, it, vi } from "vitest";
+import {
+  schemaAdapter,
+  compileStaticSchema,
+} from "../../../src/lib/schema-adapter.js";
 
 describe("schemaAdapter.createI18nError", () => {
   it("keeps legacy {{param}} interpolation compatible", () => {
@@ -29,6 +32,42 @@ describe("schemaAdapter.createI18nError", () => {
 });
 
 describe("schemaAdapter v3 boundary", () => {
+  it("keeps MCP schemas explicit when the installed parser cannot compile tuple shorthand", () => {
+    expect(() => compileStaticSchema({ tags: ["string"] })).toThrow(
+      "Array shorthand",
+    );
+    expect(
+      compileStaticSchema({
+        tags: { type: "array", items: { type: "string" } },
+        status: { enum: ["draft", "published"] },
+      }).properties,
+    ).toMatchObject({
+      tags: { type: "array" },
+      status: { enum: ["draft", "published"] },
+    });
+  });
+
+  it("enforces numeric and boolean keywords on field-level JSON schemas", () => {
+    const schema = schemaAdapter.compile({
+      "label!": { type: "string", minLength: 2, maxLength: 10 },
+      "flags!": {
+        type: "array",
+        uniqueItems: true,
+        items: { type: "boolean" },
+      },
+    });
+    expect(
+      schemaAdapter.validate(schema, { label: "okay", flags: [true] }).valid,
+    ).toBe(true);
+    expect(
+      schemaAdapter.validate(schema, { label: "x", flags: [true] }).valid,
+    ).toBe(false);
+    expect(
+      schemaAdapter.validate(schema, { label: "okay", flags: [true, true] })
+        .valid,
+    ).toBe(false);
+  });
+
   it("compiles a clean object schema and derives required from the object node", () => {
     const schema = schemaAdapter.compile({
       name: schemaAdapter.compileField("string!").description("Name"),
@@ -116,5 +155,27 @@ describe("schemaAdapter compile cache", () => {
     const after = schemaAdapter.compile({ code: "string!" });
 
     expect(after).not.toBe(before);
+  });
+});
+
+describe("static schema compilation isolation", () => {
+  it("rejects unknown types without changing the application's legacy resolution mode", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(() =>
+        compileStaticSchema({ value: "vext_unregistered_static_type!" }),
+      ).toThrow("Unknown type");
+      expect(
+        schemaAdapter.compile({ value: "vext_unregistered_static_type!" })
+          .properties?.value,
+      ).toMatchObject({ type: "string" });
+      const schema = compileStaticSchema({
+        page: { type: "integer", minimum: 1 },
+      });
+      expect(schemaAdapter.validate(schema, { page: 0 }).valid).toBe(false);
+      expect(schemaAdapter.validate(schema, { page: 2 }).valid).toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

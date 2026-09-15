@@ -1,6 +1,14 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { resolvePathInside } from "../../lib/path-boundary.js";
 import { applyEdits, modify, parse, type ParseError } from "jsonc-parser";
+import {
+  inspectHostAdoption,
+  resolveTargetConfigPath,
+  readOptionalHostText,
+  matchesHostTarget,
+  createTomlManagedBlock,
+} from "./readback.js";
 
 import { VEXT_MCP_SKILL_CONTENT } from "../../assistant/skill.js";
 import type { VextMcpHostSyncPlan, VextMcpHostSyncTarget } from "./plan.js";
@@ -13,11 +21,12 @@ export interface VextMcpHostSyncApplyResult {
   targets: VextMcpHostSyncApplyTarget[];
   skills: VextMcpHostSkillApplyTarget[];
   nextSteps: VextMcpHostSyncNextStep[];
+  adoption: Awaited<ReturnType<typeof inspectHostAdoption>>;
 }
 
 export interface VextMcpWrittenFile {
   path: string;
-  status: "written" | "up-to-date";
+  status: "written" | "up-to-date" | "skipped";
 }
 
 export interface VextMcpHostSyncApplyTarget {
@@ -48,12 +57,30 @@ export interface VextMcpHostSyncNextStep {
 export async function applyVextMcpHostSyncPlan(
   plan: VextMcpHostSyncPlan,
 ): Promise<VextMcpHostSyncApplyResult> {
+  const statePath = path.join(plan.rootDir, ".vext", "mcp", "hosts.json");
+  if (!plan.targets.length)
+    return {
+      schemaVersion: 1,
+      status: "ok",
+      launcher: { path: plan.launcher.absolutePath, status: "skipped" },
+      state: { path: statePath, status: "skipped" },
+      targets: [],
+      skills: [],
+      nextSteps: [],
+      adoption: [],
+    };
   const launcher = await writeIfChanged(
-    plan.launcher.absolutePath,
+    resolvePathInside(plan.rootDir, plan.launcher.path, "host launcher", {
+      realpath: true,
+    }),
     plan.launcher.content,
   );
-  const statePath = path.join(plan.rootDir, ".vext", "mcp", "hosts.json");
-  const state = await writeIfChanged(statePath, createStateContent(plan));
+  const state = await writeIfChanged(
+    resolvePathInside(plan.rootDir, ".vext/mcp/hosts.json", "host state", {
+      realpath: true,
+    }),
+    createStateContent(plan),
+  );
   const targets: VextMcpHostSyncApplyTarget[] = [];
   for (const target of plan.targets) {
     targets.push(await applyTarget(plan, target));
@@ -77,6 +104,7 @@ export async function applyVextMcpHostSyncPlan(
     targets,
     skills,
     nextSteps: createNextSteps(plan, launcher, targets, skills),
+    adoption: await inspectHostAdoption(plan),
   };
 }
 
@@ -171,7 +199,12 @@ async function applySkillTarget(
   plan: VextMcpHostSyncPlan,
   target: VextMcpHostSyncTarget,
 ): Promise<VextMcpHostSkillApplyTarget> {
-  const absolutePath = path.join(plan.rootDir, target.skillPath);
+  const absolutePath = resolvePathInside(
+    plan.rootDir,
+    target.skillPath,
+    "host Skill",
+    { realpath: true },
+  );
   const content = `${VEXT_MCP_SKILL_CONTENT.trimEnd()}\n`;
   const current = await readOptionalText(absolutePath);
   if (current !== null && current !== content) {
@@ -200,7 +233,7 @@ async function applySkillTarget(
 async function writeIfChanged(
   filePath: string,
   content: string,
-): Promise<VextMcpWrittenFile> {
+): Promise<VextMcpWrittenFile & { status: "written" | "up-to-date" }> {
   const current = await readOptionalText(filePath);
   if (current === content) return { path: filePath, status: "up-to-date" };
   await mkdir(path.dirname(filePath), { recursive: true });
@@ -209,12 +242,7 @@ async function writeIfChanged(
 }
 
 async function readOptionalText(filePath: string): Promise<string | null> {
-  try {
-    return await readFile(filePath, "utf8");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-    throw error;
-  }
+  return readOptionalHostText(filePath);
 }
 
 function createStateContent(plan: VextMcpHostSyncPlan): string {
@@ -245,16 +273,6 @@ function createStateContent(plan: VextMcpHostSyncPlan): string {
     null,
     2,
   )}\n`;
-}
-
-function resolveTargetConfigPath(
-  plan: VextMcpHostSyncPlan,
-  target: VextMcpHostSyncTarget,
-): string {
-  if (target.configScope === "user" || path.isAbsolute(target.configPath)) {
-    return target.configPath;
-  }
-  return path.join(plan.rootDir, target.configPath);
 }
 
 function createNextSteps(
@@ -311,7 +329,7 @@ function createTomlManagedEntry(
         "Host TOML config contains an incomplete Vext managed block; it was not modified.",
     };
   }
-  const block = createTomlManagedBlock(target, begin, end);
+  const block = createTomlManagedBlock(target);
   if (hasBegin) {
     const beginIndex = source.indexOf(begin);
     const endIndex = source.indexOf(end, beginIndex);
@@ -349,57 +367,14 @@ function createTomlManagedEntry(
   return { status: "ok", content: `${source}${separator}${block}` };
 }
 
-function createTomlManagedBlock(
-  target: VextMcpHostSyncTarget,
-  begin: string,
-  end: string,
-): string {
-  return `${begin}
-[${target.configRootKey}.${tomlQuotedString(target.entryKey)}]
-command = ${tomlQuotedString(target.command)}
-args = [${target.args.map(tomlQuotedString).join(", ")}]
-${end}
-`;
-}
-
 async function verifyJsonTarget(
   absolutePath: string,
   target: VextMcpHostSyncTarget,
 ): Promise<boolean> {
   const source = await readOptionalText(absolutePath);
-  if (source === null) return false;
-  const errors: ParseError[] = [];
-  const config = parse(source, errors, {
-    allowTrailingComma: true,
-    disallowComments: false,
-  }) as unknown;
-  if (errors.length > 0 || !isRecord(config)) return false;
-  const root = config[target.configRootKey];
-  if (!isRecord(root)) return false;
-  const entry = root[target.entryKey];
-  return (
-    isRecord(entry) &&
-    entry.command === target.command &&
-    Array.isArray(entry.args) &&
-    entry.args.length === target.args.length &&
-    entry.args.every((arg, index) => arg === target.args[index])
-  );
+  return source !== null && matchesHostTarget(source, target);
 }
-
-async function verifyTomlTarget(
-  absolutePath: string,
-  target: VextMcpHostSyncTarget,
-): Promise<boolean> {
-  const source = await readOptionalText(absolutePath);
-  if (source === null) return false;
-  const begin = `# BEGIN VEXT MCP MANAGED ${target.entryKey}`;
-  const end = `# END VEXT MCP MANAGED ${target.entryKey}`;
-  return source.includes(createTomlManagedBlock(target, begin, end));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+const verifyTomlTarget = verifyJsonTarget;
 
 function hasTomlMcpServerTable(source: string, entryKey: string): boolean {
   const escaped = escapeRegExp(entryKey);
@@ -407,12 +382,6 @@ function hasTomlMcpServerTable(source: string, entryKey: string): boolean {
     String.raw`^\s*\[\s*mcp_servers\s*\.\s*(?:"${escaped}"|${escaped})\s*\]\s*(?:#.*)?$`,
     "m",
   ).test(source);
-}
-
-function tomlQuotedString(value: string): string {
-  return JSON.stringify(value)
-    .replace(/\u2028/g, "\\u2028")
-    .replace(/\u2029/g, "\\u2029");
 }
 
 function escapeRegExp(value: string): string {

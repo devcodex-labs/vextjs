@@ -214,7 +214,7 @@ export default {
       memory: {
         enabled: true,
         maxSize: 1000, // Maximum number of cached items
-        ttl: 300, //Default TTL (seconds)
+        ttl: 300_000, // Default TTL in milliseconds (5 minutes)
       },
 
       // L2 Redis cache (optional)
@@ -222,7 +222,7 @@ export default {
         enabled: true,
         uri: "redis://localhost:6379",
         prefix: "myapp:cache:",
-        ttl: 600,
+        ttl: 600_000, // Milliseconds, 10 minutes
       },
     },
   },
@@ -384,8 +384,23 @@ Get the registered Model operation object (you need to define the Model first, s
 const User = app.db.model("users");
 
 // Model provides more advanced API (paging, caching, verification, etc.)
-const result = await User.findPage({ role: "admin" }, { page: 1, limit: 20 });
+const result = await User.findPage({
+  query: { role: "admin" },
+  page: 1,
+  limit: 20,
+  sort: { createdAt: -1, _id: -1 },
+  totals: { mode: "sync" },
+});
+const { items, pageInfo, totals } = result;
 ```
+
+`findPage(options)` takes one options object with a `query` filter. It returns `items`, `pageInfo`, and optional `totals/meta`; do not pass two arguments or read `result.data`. Cursor pagination uses `after` / `before` with consistent filters and stable ordering.
+
+`findAndCount(query, options)` returns `{ data, total }`; `find(query, options)` is also a valid native API. Use native pagination instead of fetching a fixed number of documents and filtering, counting, or slicing them in a service. Validate page, limit, cursor, and limit-exceeded behavior with request and database tests.
+
+TypeScript consumers use `app.db.model<PostDocument>(registeredKey)` for native query result types. Domain documents may live in `src/types/server/models/`, while service input/output contracts belong in `src/types/server/services/`; project conventions can override these defaults. Do not duplicate Collection or Repository interfaces. Some write inputs accept `unknown`, so input types, request schemas, and model schemas remain necessary.
+
+Query `cache`, `cache.memory.ttl`, and `cache.redis.ttl` values are milliseconds. Session store `ttlSeconds` uses seconds and is converted by its adapter. Configuration values are forwarded unchanged; this documentation correction does not convert runtime values.
 
 ### use(dbName)
 
@@ -1221,3 +1236,11 @@ New usage:
 // ✅ v0.3.0 — Switch connection pool first, then switch database
 app.db.pool("cn").use("billing");
 ```
+
+## Pagination and validation boundaries verified by MCP consumers
+
+In monSQLize 3.3.0, `findPage({ totals: { mode: "sync" } })` may still read totals from an independent cache, with a default `totals.ttlMs` of 600000 milliseconds. `cache: 0` does not force a recount; a failed count reported as `null/error` must not become zero. For numbered pages requiring a fresh count, use native `findAndCount(query, { skip, limit, sort })` and consume `data/total`. Its two reads do not form a transaction snapshot under concurrent writes.
+
+Use `{ type: "array", items: { type: "string" } }` or `array<string>` DSL for model arrays. The installed schema-dsl 3.0.4 does not correctly compile `["string"]` shorthand, so MCP static candidate checks request an explicit form. Verify model validation with real writes; successful TypeScript compilation alone is insufficient.
+
+monSQLize may map MongoDB duplicate-key code 11000 to `code: "DUPLICATE_KEY"`. Map the actual code and constraint to the business conflict response while propagating other database failures. Do not swallow errors based on loose message matching.

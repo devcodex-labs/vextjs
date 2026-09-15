@@ -224,7 +224,9 @@ function scanRouteEntries(
       throw routeModuleError(fileRelativePath, "invalid canonical registrar");
     const method = call.callee.property.name.toUpperCase();
     const baseContext: RouteProjectionContext = { fileRelativePath, method };
-    const args = call.arguments.map((node) => graph.expression(module, node));
+    const args = call.arguments.map((node) =>
+      graph.expression(staticContext.module, node),
+    );
     const routePath = readStaticStringExpression(
       args[0],
       staticContext,
@@ -372,49 +374,44 @@ function findDefaultExportedDefineRoutesCalls(
   file: string,
 ) {
   const { graph, module } = context;
-  const declaration = module.exports.get("default");
-  if (!declaration)
+  if (!module.exports.has("default"))
     throw routeModuleError(
       file,
       "must default-export its defineRoutes(...) result",
     );
-  if (!("type" in declaration))
-    throw routeModuleError(
-      file,
-      "must not re-export its default route definition from another module",
-    );
-  const exported = graph.resolve(graph.expression(module, declaration));
-  if (exported.module !== module)
-    throw routeModuleError(
-      file,
-      "must not re-export its default route definition from another module",
-    );
+  const exported = graph.exported(module.rootId, module.path);
+  // 路径身份属于 Loader 入口；契约字段属于实际定义模块，不能混用两个词法上下文。
+  context.module = exported.module;
   const call = exported.node;
   if (
     call.type !== "CallExpression" ||
     call.callee.type !== "Identifier" ||
     !graph.frameworkBinding(
-      graph.expression(module, call.callee),
+      graph.expression(exported.module, call.callee),
       "defineRoutes",
     )
   )
     throw routeModuleError(
       file,
-      "default export must be a local defineRoutes(...) call or a top-level const bound to one",
+      "default export must resolve to a proven defineRoutes(...) call",
     );
   if (call.arguments.length !== 1)
     throw routeModuleError(
       file,
       "defineRoutes(...) requires exactly one inline synchronous factory",
     );
-  const factory = unwrapStaticNode(call.arguments[0]!);
+  const resolvedFactory = graph.resolve(
+    graph.expression(exported.module, call.arguments[0]!),
+  );
+  context.module = resolvedFactory.module;
+  const factory = unwrapStaticNode(resolvedFactory.node);
   if (
     factory.type !== "ArrowFunctionExpression" &&
     factory.type !== "FunctionExpression"
   )
     throw routeModuleError(
       file,
-      "defineRoutes(...) requires an inline arrow or function expression with one app parameter",
+      "defineRoutes(...) requires a statically resolved arrow or function expression with one app parameter",
     );
   if (factory.async)
     throw routeModuleError(file, "defineRoutes factory must be synchronous");

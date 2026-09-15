@@ -39,6 +39,7 @@ import {
 } from "./utils/command-args.js";
 import { markUniqueOption } from "./utils/option-occurrence.js";
 import {
+  createRuntimeSnapshotIdentity,
   patchRuntimeSnapshot,
   writeRuntimeSnapshot,
 } from "../lib/runtime-snapshot.js";
@@ -278,10 +279,14 @@ async function runDevCommand(
   });
   const commandStartedAt = performance.now();
   let pendingReadyStartedAt = commandStartedAt;
-  const runtimeIdentity = {
-    mode: "development" as const,
-    pid: process.pid,
-  };
+  const runtimeIdentity = createRuntimeSnapshotIdentity(
+    project.rootDir,
+    "development",
+  );
+  await writeRuntimeSnapshotSafe(project.rootDir, {
+    runtimeIdentity,
+    summary: { state: "starting" },
+  });
   const readyLogger = {
     info(message: string) {
       console.log(message);
@@ -571,7 +576,7 @@ async function runDevCommand(
           console.log("");
         }
 
-        void writeRuntimeSnapshotSafe(project.rootDir, {
+        void patchRuntimeSnapshotSafe(project.rootDir, {
           runtimeIdentity,
           summary: {
             state: "ready",
@@ -579,13 +584,11 @@ async function runDevCommand(
             port: readyMessage.server?.port ?? null,
             softReload: true,
           },
-          events: [
-            {
-              type: "ready",
-              host: readyMessage.server?.host,
-              port: readyMessage.server?.port,
-            },
-          ],
+          event: {
+            type: "ready",
+            host: readyMessage.server?.host,
+            port: readyMessage.server?.port,
+          },
         });
 
         const startupProfile = readyMessage.startupProfile;

@@ -123,6 +123,55 @@ describe("DEFAULT_CLUSTER_CONFIG", () => {
   });
 });
 
+describe("cluster stopped observation", () => {
+  it("awaits stopped diagnostics before exit and preserves shutdown on observation errors", async () => {
+    let complete!: () => void;
+    const observed = new Promise<void>((resolve) => {
+      complete = resolve;
+    });
+    const onStopped = vi.fn(() => observed);
+    const master = new ClusterMaster({ onStopped });
+    const cleanup = vi
+      .spyOn(master as any, "cleanup")
+      .mockImplementation(() => {});
+    const exit = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => undefined) as never);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const stopping = master.gracefulShutdown("test");
+      await Promise.resolve();
+      expect(onStopped).toHaveBeenCalledOnce();
+      expect(exit).not.toHaveBeenCalled();
+      complete();
+      await stopping;
+      expect(cleanup).toHaveBeenCalledOnce();
+      expect(exit).toHaveBeenCalledWith(0);
+      const failed = new ClusterMaster({
+        onStopped: async () => {
+          throw new Error("disk unavailable");
+        },
+      });
+      const failedCleanup = vi
+        .spyOn(failed as any, "cleanup")
+        .mockImplementation(() => {});
+      try {
+        await failed.gracefulShutdown("test");
+        expect(exit).toHaveBeenCalledTimes(2);
+        expect(warn).toHaveBeenCalled();
+      } finally {
+        failedCleanup.mockRestore();
+      }
+    } finally {
+      cleanup.mockRestore();
+      exit.mockRestore();
+      log.mockRestore();
+      warn.mockRestore();
+    }
+  });
+});
+
 // ── Worker 环境变量传递 ────────────────────────────────────
 
 describe("cluster worker environment", () => {

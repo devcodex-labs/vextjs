@@ -1,0 +1,11 @@
+{
+  "databaseUnavailable": "博客数据库暂不可用",
+  "adminUnavailable": "博客管理凭据尚未配置",
+  "unauthorized": "需要博客管理凭据",
+  "notFound": "文章不存在",
+  "slugConflict": "文章标识已存在",
+  "invalid": "字段 {{field}} 无效",
+  "slugRequired": "请提供有效的文章标识",
+  "emptyUpdate": "更新至少需要一个字段",
+  "privateProbe": "BACKEND_ONLY_LOCALE"
+}

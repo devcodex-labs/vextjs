@@ -1,7 +1,20 @@
 import { createHash } from "node:crypto";
+import { catalogDomains } from "./catalog-domains.js";
+import {
+  normalizeAnalysisDomain,
+  type AnalysisDomain,
+} from "../tooling/diagnostics/contracts.js";
+import { VEXT_RECIPE_DEFINITIONS } from "./recipe-registry.js";
 import { createRequire } from "node:module";
+import { DEPENDENCY_KNOWLEDGE } from "./knowledge/index.js";
+import {
+  knowledgeApplicability,
+  type DependencyKnowledge,
+  type DependencyKnowledgeEntry,
+} from "./knowledge/contracts.js";
+import type { ProjectDependencyFact } from "../tooling/project-index/dependencies.js";
 
-export const VEXT_MCP_SCHEMA_VERSION = 1 as const;
+export const VEXT_MCP_SCHEMA_VERSION = 2 as const;
 
 export const VEXT_MCP_TOOL_NAMES = [
   "vext_project_inspect",
@@ -50,183 +63,27 @@ export interface VextMcpCatalogItem {
   sourceRefs: string[];
   relatedIds?: string[];
   limitations?: string[];
+  domains?: AnalysisDomain[];
+  dependency?: DependencyKnowledge & {
+    declaredRange: string | null;
+    applicability: ReturnType<typeof knowledgeApplicability>;
+  };
 }
 
-export const VEXT_MCP_KNOWLEDGE: VextMcpCatalogItem[] = [
-  dependencyKnowledge(
-    "K01",
-    "schema-dsl",
-    "schema-dsl",
-    "Vext 默认请求/响应校验和 OpenAPI schema 转换的 DSL 引擎。",
-    [
-      "RouteOptions.validate、Job payload、app.getValidator() 默认走 schema-dsl 适配层。",
-      "业务 service 优先使用 app.getValidator()，避免直接 import schema-dsl 绕过全局替换能力。",
-      "OpenAPI 转换保留 schema-dsl v3 的干净 JSON Schema 输出，Vext 只补充 description/example/nullable 等文档字段。",
-    ],
-    [
-      "website/docs/zh/guide/validation.md",
-      "website/docs/zh/api/route-definition.md",
-      "src/lib/openapi/schema-converter.ts",
-      "node_modules/schema-dsl/README.md",
-    ],
-  ),
-  dependencyKnowledge(
-    "K02",
-    "response-cache-kit",
-    "response-cache-kit",
-    "Vext 响应缓存和 app.cache 控制面的底层框架无关工具包。",
-    [
-      "RouteOptions.cache 和 config.cache.cacheHub 使用 response-cache-kit/cache-hub 语义。",
-      "业务代码通常通过 app.cache 和路由 cache 配置使用，不直接操作底层 Store。",
-      "Redis/MultiLevel 场景只清理当前 Vext cache namespace，不清空外部 Redis 全库。",
-    ],
-    [
-      "website/docs/zh/guide/cache.md",
-      "website/docs/zh/api/app.md",
-      "src/lib/middlewares/route-cache.ts",
-      "node_modules/response-cache-kit/README.md",
-    ],
-  ),
-  dependencyKnowledge(
-    "K03",
-    "flex-rate-limit",
-    "flex-rate-limit",
-    "Vext 内置全局与路由级限流的默认实现。",
-    [
-      "config.rateLimit 和 RouteOptions.rateLimit 会进入 Vext 的中间件适配层。",
-      "默认内存限流适合单进程或开发验证；多进程/集群可直接配置 rateLimit.store redis，也可用 app.setRateLimiter() 接等价共享 Store。",
-      "插件可以替换 limiter 实现，但 keyBy、enabled、message 等 Vext 配置语义仍需保持。",
-    ],
-    [
-      "website/docs/zh/api/config.md",
-      "website/docs/zh/api/app.md",
-      "src/lib/middlewares/rate-limit.ts",
-      "node_modules/flex-rate-limit/README.md",
-    ],
-  ),
-  dependencyKnowledge(
-    "K04",
-    "esbuild",
-    "esbuild",
-    "Vext 后端、前端、测试、preload 与服务热重载编译管线使用的构建器。",
-    [
-      "vext build、dev service 编译、testing services:true 和 preload TS 编译均依赖 esbuild。",
-      "后端构建保留模块边界并 external 化包依赖，避免打包改变热重载和运行时身份。",
-      "MCP 给出的构建/测试建议应优先走 vext build、vext dev、createTestApp 等框架入口。",
-    ],
-    [
-      "website/docs/zh/guide/build.md",
-      "website/docs/zh/guide/testing.md",
-      "website/docs/zh/guide/preload.md",
-      "node_modules/esbuild/README.md",
-    ],
-  ),
-  dependencyKnowledge(
-    "K05",
-    "monsqlize",
-    "monsqlize",
-    "Vext 内置数据库插件、多数据库连接池、Model 自动加载与共享模型能力的运行时依赖。",
-    [
-      "config.database 启用内置 monsqlize 插件；连接、模型加载和关闭生命周期由 Vext 接管。",
-      "本地 models 与 workspace shared model package 都要走 Vext model loader，保持 ownership、rollback 和冲突诊断。",
-      "MongoDB 是当前稳定适配器；MySQL/PostgreSQL 不能作为已完成能力承诺。",
-    ],
-    [
-      "website/docs/zh/guide/database.md",
-      "website/docs/zh/api/config.md",
-      "src/lib/plugins/monsqlize/model-loader.ts",
-      "node_modules/monsqlize/README.md",
-    ],
-  ),
-  dependencyKnowledge(
-    "K06",
-    "cache-hub",
-    "cache-hub",
-    "Vext cache.cacheHub、session store 示例和 response-cache-kit 适配层使用的缓存 Hub。",
-    [
-      "cache.cacheHub 负责响应缓存底层 store，不等同于 rateLimit 或 Job 的 Redis store。",
-      "session 可通过 createCacheSessionStore 复用 cache-hub adapter，但需要独立前缀和生命周期说明。",
-      "MCP 生成配置时要按模块隔离 Redis key，不默认把所有 Redis 消费者合并成一个统一 store。",
-    ],
-    [
-      "website/docs/zh/guide/cache.md",
-      "website/docs/zh/guide/cookies-session.md",
-      "src/lib/session/cache-session-store.ts",
-      "node_modules/cache-hub/README.md",
-    ],
-  ),
-  dependencyKnowledge(
-    "K07",
-    "croner",
-    "croner",
-    "Vext Job scheduler 的 cron 解析和 tick 调度依赖。",
-    [
-      "config.jobs.scheduler 和 defineJob({ schedule }) 的 cron/timezone 语义由 Job runtime 适配。",
-      "HTTP 服务启动不自动执行 scheduler；宿主或部署平台需要显式启动 scheduler/worker 进程。",
-      "多进程/集群部署必须配合共享 Job store 和 scheduler lease，避免重复入队。",
-    ],
-    [
-      "website/docs/zh/guide/jobs.md",
-      "src/lib/jobs/scheduler.ts",
-      "src/cli/job.ts",
-      "node_modules/croner/README.md",
-    ],
-  ),
-  dependencyKnowledge(
-    "K08",
-    "ioredis",
-    "ioredis",
-    "Vext Redis-backed Job store、rateLimit store 和可选缓存/session adapter 的 Redis 客户端依赖。",
-    [
-      "Job、rateLimit、cache 和 session 各自拥有配置入口与 key prefix，避免不同生命周期互相污染。",
-      "配置 Redis 后应验证 URL、前缀、连接关闭和多进程共享语义，而不是仅检查包是否存在。",
-      "MCP 不主动连接 Redis；需要宿主运行 Redis 集成测试或本地验证命令。",
-    ],
-    [
-      "website/docs/zh/guide/configuration.md",
-      "website/docs/zh/guide/jobs.md",
-      "src/lib/redis/config.ts",
-      "node_modules/ioredis/README.md",
-    ],
-  ),
-  dependencyKnowledge(
-    "K09",
-    "@modelcontextprotocol/server",
-    "@modelcontextprotocol/server",
-    "Vext 内置 MCP stdio server 的协议运行时依赖。",
-    [
-      "MCP server 固定单个项目根，Tools 不接受任意 cwd/root/shell 参数。",
-      "宿主负责应用文件修改、启动、重启、测试、构建和部署；MCP 只提供事实、候选和流程。",
-      "协议公开面保持 7 Tools、11 Resources、4 Prompts；host sync 是 vext mcp sync CLI，不是 stdio Tool。",
-    ],
-    [
-      "website/docs/zh/guide/cli.md",
-      "src/mcp/server.ts",
-      "src/assistant/contracts.ts",
-      "node_modules/@modelcontextprotocol/server/README.md",
-    ],
-  ),
-];
+export const VEXT_MCP_KNOWLEDGE: VextMcpCatalogItem[] =
+  DEPENDENCY_KNOWLEDGE.map(dependencyKnowledge);
 
-export const VEXT_MCP_RECIPES: VextMcpCatalogItem[] = [
-  recipe("RCP-01", "api-route", "生成单个 API 路由及请求/响应契约。"),
-  recipe("RCP-02", "api-module", "生成一组 API 路由及对应 service/schema。"),
-  recipe("RCP-03", "page-route", "生成 SSR/CSR/静态页面路由。"),
-  recipe("RCP-04", "page-and-api", "生成页面、API 与客户端调用闭环。"),
-  recipe("RCP-05", "service", "生成 service 类、方法与调用边界。"),
-  recipe("RCP-06", "model", "生成 MonSQLize model 注册与多库定位。"),
-  recipe("RCP-07", "middleware", "生成 handler/factory 中间件。"),
-  recipe("RCP-08", "plugin", "生成插件 setup、生命周期和扩展挂载。"),
-  recipe("RCP-09", "locale", "生成前后端隔离的多语言消息。"),
-  recipe("RCP-10", "test", "生成单元、集成、API 或浏览器测试候选。"),
-  recipe("RCP-11", "type-contract", "生成服务端、前端或共享类型契约。"),
-  recipe("RCP-12", "utility", "生成工具函数或校验函数。"),
-  recipe("RCP-13", "frontend-component", "生成前端组件及样式接入。"),
-  recipe("RCP-14", "frontend-layout", "生成页面 layout 并绑定消费者。"),
-  recipe("RCP-15", "reusable-schema", "生成可复用 schema 并绑定消费者。"),
-  recipe("RCP-16", "mock-scenario", "生成前后端 mock 场景与测试替身。"),
-  recipe("RCP-17", "job-handler", "生成 Job 定义、手动/队列/定时执行候选。"),
-];
+export const VEXT_MCP_RECIPES: VextMcpCatalogItem[] =
+  VEXT_RECIPE_DEFINITIONS.map((definition) => ({
+    id: definition.id,
+    domains: catalogDomains(definition.id),
+    kind: "recipe",
+    title: definition.name,
+    summary: definition.summary,
+    body: `${definition.summary}\nOptions schema: ${JSON.stringify(definition.optionsSchema)}\nProduces create-only candidates. Scaffold and prerequisites are explicit; missing business inputs return incomplete. The host applies and runs validation.`,
+    status: "available",
+    sourceRefs: ["vext://catalog/recipes"],
+  }));
 
 export const VEXT_MCP_WORKFLOWS: VextMcpCatalogItem[] = [
   workflow(
@@ -392,12 +249,12 @@ export const VEXT_MCP_CAPABILITIES: VextMcpCatalogItem[] = [
   capability(
     "C33",
     "依赖知识",
-    "登记 schema-dsl、response-cache-kit、cache-hub、flex-rate-limit、esbuild、monsqlize、croner、ioredis、MCP SDK 的版本与 Vext 使用边界，可通过 knowledge 搜索。",
+    "登记 schema-dsl、response-cache-kit、cache-hub、flex-rate-limit、esbuild、monsqlize、croner、ioredis、MCP SDK、React/ReactDOM 和 Oxc 的知识审查版本、实际安装适用性与 Vext 使用边界，可通过 knowledge 搜索。",
   ),
   capability(
     "C34",
     "Job",
-    "静态识别 Job 定义、scheduler、worker、memory/file/redis/auto store、run lease、CLI 和文档入口。",
+    "静态识别 Job 定义、scheduler、worker、memory/file/redis/auto store、run lease、调度 payload 边界、owner 终态完成规则、CLI 和文档入口。",
   ),
 ];
 
@@ -441,21 +298,27 @@ export function buildMcpCatalog() {
     ...VEXT_MCP_KNOWLEDGE,
     ...VEXT_MCP_RECIPES,
     ...VEXT_MCP_WORKFLOWS,
-  ];
+  ].map((item) => ({ ...item, domains: catalogDomains(item.id) }));
   const digest = createHash("sha256")
     .update(JSON.stringify(items))
     .digest("hex");
   return { schemaVersion: VEXT_MCP_SCHEMA_VERSION, digest, items };
 }
 
-export function searchMcpCatalog(input: {
-  query?: string;
-  ids?: string[];
-  kinds?: string[];
-  domain?: string;
-  limit?: number;
-}) {
+export function searchMcpCatalog(
+  input: {
+    query?: string;
+    ids?: string[];
+    kinds?: string[];
+    domain?: string;
+    locale?: "en" | "zh";
+    limit?: number;
+  },
+  dependencies?: readonly ProjectDependencyFact[],
+) {
   const catalog = buildMcpCatalog();
+  const domain = normalizeAnalysisDomain(input.domain);
+  if (!domain) throw new Error(`Unknown knowledge domain: ${input.domain}`);
   const limit = Math.min(Math.max(input.limit ?? 5, 1), 10);
   const kinds = new Set(input.kinds ?? []);
   const unknownIds: string[] = [];
@@ -472,15 +335,42 @@ export function searchMcpCatalog(input: {
   } else {
     const query = (input.query ?? "").trim().toLowerCase();
     matches = catalog.items
-      .filter((item) => (kinds.size ? kinds.has(item.kind) : true))
-      .filter((item) => (input.domain ? item.id === input.domain : true))
       .map((item) => ({ ...item, score: scoreCatalogItem(item, query) }))
       .filter((item) => item.score > 0)
       .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
   }
+  matches = matches.filter(
+    (item) =>
+      (!kinds.size || kinds.has(item.kind)) &&
+      (domain === "all" || catalogDomains(item.id).includes(domain)),
+  );
+  const locale = input.locale ?? "zh";
   return {
     catalogDigest: catalog.digest,
-    matches: matches.slice(0, limit),
+    domain,
+    localization: {
+      requested: locale,
+      status: "partial",
+      contentLanguage: "mixed",
+      notice:
+        locale === "zh"
+          ? "检索正文保留随包的原始中英文与 API 示例；未提供逐条完整翻译，宿主可按用户语言解释，不能改写契约。"
+          : "Entries preserve packaged Chinese/English prose and API examples. Full per-entry translation is unavailable; the host may explain them in the requested language without changing contracts.",
+    },
+    matches: matches.slice(0, limit).map((item) =>
+      item.dependency
+        ? {
+            ...item,
+            dependency: {
+              ...item.dependency,
+              applicability: knowledgeApplicability(
+                item.dependency,
+                dependencies,
+              ),
+            },
+          }
+        : item,
+    ),
     unknownIds,
   };
 }
@@ -505,72 +395,57 @@ function capability(
 ): VextMcpCatalogItem {
   return {
     id,
+    domains: catalogDomains(id),
     kind: "capability",
     title,
     summary,
     body: `${title}：${summary}`,
     status,
-    sourceRefs: [
-      "requirements/02-完整技术方案.md",
-      "requirements/06-协议配置与配方合同.md",
-    ],
+    sourceRefs: ["vext://catalog/capabilities"],
   };
 }
 
 function rule(id: string, title: string, summary: string): VextMcpCatalogItem {
   return {
     id,
+    domains: catalogDomains(id),
     kind: "rule",
     title,
     summary,
     body: `${title}：${summary}`,
     status: "available",
-    sourceRefs: ["requirements/06-协议配置与配方合同.md"],
+    sourceRefs: ["vext://catalog/rules"],
   };
 }
 
 function dependencyKnowledge(
-  id: string,
-  title: string,
-  packageName: string,
-  summary: string,
-  guidance: string[],
-  sourceRefs: string[],
+  entry: DependencyKnowledgeEntry,
 ): VextMcpCatalogItem {
-  const version = dependencyVersion(packageName);
+  const knowledge = entry.dependency;
+  const declaredRange =
+    readPackageDependencyVersions()[knowledge.packageName] ?? null;
   return {
-    id,
+    id: entry.id,
+    domains: catalogDomains(entry.id),
     kind: "knowledge",
-    title,
-    summary: `${summary} 当前依赖版本：${version}。`,
-    body: `${title}（${version}）：${summary}\n${guidance
-      .map((item) => `- ${item}`)
-      .join("\n")}`,
+    title: knowledge.packageName,
+    summary: `${entry.summary} 知识审查版本：${knowledge.reviewedVersions.join(", ")}；框架声明范围：${declaredRange ?? "unknown"}。`,
+    body: [
+      entry.summary,
+      ...knowledge.guidance,
+      ...knowledge.examples.map(
+        (example) => `${example.purpose}\n${example.code}`,
+      ),
+    ].join("\n"),
     status: "available",
-    sourceRefs,
+    sourceRefs: knowledge.evidence.officialUrls,
+    limitations: knowledge.limitations,
+    dependency: {
+      ...knowledge,
+      declaredRange,
+      applicability: knowledgeApplicability(knowledge),
+    },
   };
-}
-
-function recipe(
-  id: string,
-  title: string,
-  summary: string,
-  status: VextMcpCatalogItem["status"] = "available",
-): VextMcpCatalogItem {
-  return {
-    id,
-    kind: "recipe",
-    title,
-    summary,
-    body: `${title} Recipe：${summary}`,
-    status,
-    sourceRefs: ["requirements/02-完整技术方案.md#Recipe 矩阵"],
-  };
-}
-
-function dependencyVersion(packageName: string): string {
-  const versions = readPackageDependencyVersions();
-  return versions[packageName] ?? "unknown";
 }
 
 function readPackageDependencyVersions(): Record<string, string> {
@@ -593,13 +468,12 @@ function workflow(
 ): VextMcpCatalogItem {
   return {
     id,
+    domains: catalogDomains(id),
     kind: "workflow",
     title,
     summary,
     body: `${title} 工作流：${summary}`,
     status: "available",
-    sourceRefs: [
-      "requirements/02-完整技术方案.md#Resources、Prompts 和缺能力宿主",
-    ],
+    sourceRefs: ["vext://catalog/workflows"],
   };
 }

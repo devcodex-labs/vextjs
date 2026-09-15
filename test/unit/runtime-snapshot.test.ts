@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  createRuntimeSnapshotIdentity,
   patchRuntimeSnapshot,
   writeRuntimeSnapshot,
 } from "../../src/lib/runtime-snapshot.js";
@@ -13,15 +14,19 @@ describe("runtime snapshot writer", () => {
   it("writes and patches the managed runtime snapshot for MCP inspection", async () => {
     const rootDir = await mkdtemp(join(tmpdir(), "vext-runtime-snapshot-"));
     try {
+      const runtimeIdentity = createRuntimeSnapshotIdentity(
+        rootDir,
+        "development",
+      );
       await writeRuntimeSnapshot({
         rootDir,
-        runtimeIdentity: { mode: "development", pid: 1234 },
+        runtimeIdentity,
         summary: { state: "ready", port: 3000 },
         events: [{ type: "ready" }],
       });
       await patchRuntimeSnapshot({
         rootDir,
-        runtimeIdentity: { mode: "development", pid: 1234 },
+        runtimeIdentity,
         summary: { lastOperation: "reload" },
         reload: { status: "success", files: ["src/routes/hello.ts"] },
         event: { type: "soft-reload", files: ["src/routes/hello.ts"] },
@@ -59,7 +64,8 @@ function fakeProject(rootDir: string): VextMcpProjectInspection {
     schemaVersion: 1,
     status: "ok",
     identity: {
-      projectId: "0".repeat(64),
+      projectId: createRuntimeSnapshotIdentity(rootDir, "development")
+        .projectId,
       contextRevision: null,
       rootDir,
       packageName: "fixture",

@@ -121,6 +121,7 @@ export async function loadServices(
   // serviceFileMap 用于循环依赖检测：记录 serviceKey → 源文件路径
   //
   const serviceFileMap = new Map<string, string>();
+  const serviceConstructors = new Map<string, unknown>();
 
   for (const filePath of serviceFiles) {
     // 4.1 计算 service key（文件路径 → 嵌套 key 数组）
@@ -163,6 +164,7 @@ export async function loadServices(
 
     // 4.5 记录文件映射（供循环依赖检测使用）
     serviceFileMap.set(flatKey, filePath);
+    serviceConstructors.set(flatKey, ServiceClass);
 
     if (lifecycleLevel === "verbose") {
       app.logger.info(`[service-loader] loaded: ${flatKey}`);
@@ -171,7 +173,11 @@ export async function loadServices(
 
   // ── 5. 循环依赖检测 ───────────────────────────────────────
   if (checkCircularDeps && serviceFileMap.size > 0) {
-    await checkServiceCircularDeps(serviceFileMap, app.logger);
+    await checkServiceCircularDeps(
+      serviceFileMap,
+      serviceConstructors,
+      app.logger,
+    );
   }
 
   app.logger.info(`[vextjs] ${serviceFileMap.size} service(s) loaded`);
@@ -358,6 +364,7 @@ async function loadServiceFile(
  */
 async function checkServiceCircularDeps(
   serviceFiles: Map<string, string>,
+  constructors: ReadonlyMap<string, unknown>,
   logger: VextLogger,
 ): Promise<void> {
   const graph = new Map<string, Set<string>>();
@@ -366,12 +373,25 @@ async function checkServiceCircularDeps(
   for (const [key, filePath] of serviceFiles) {
     try {
       const source = await readFile(filePath, "utf-8");
-      const result = collectServiceDependencies(
-        source,
-        filePath,
-        key,
-        knownKeys,
-      );
+      let result = collectServiceDependencies(source, filePath, key, knownKeys);
+      if (result.incomplete && constructors.has(key)) {
+        try {
+          // 导入已由正常 Loader 完成；使用内建 toString 查看真实构造器，绝不调用用户 toString。
+          // 原生/动态/继承等仍无法证明的构造器继续保留 incomplete。
+          const definition = Function.prototype.toString.call(
+            constructors.get(key),
+          );
+          const projected = collectServiceDependencies(
+            `export default ${definition}`,
+            filePath,
+            key,
+            knownKeys,
+          );
+          if (!projected.incomplete) result = projected;
+        } catch {
+          /* 保留原源码的不完整结论。 */
+        }
+      }
       graph.set(key, result.dependencies);
       if (result.incomplete) {
         incomplete = true;

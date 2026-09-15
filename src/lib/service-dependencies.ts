@@ -1,4 +1,4 @@
-import type { Node } from "oxc-parser";
+import type { Node, Program } from "oxc-parser";
 import { createSourceBindings, type SourceBinding } from "./source-bindings.js";
 import { parseSourceSyntax, walkSourceSyntax } from "./source-syntax.js";
 
@@ -36,8 +36,9 @@ export function collectServiceDependencies(
   filePath: string,
   serviceKey: string,
   knownKeys: ReadonlySet<string>,
+  resolved?: { program: Program; definition: Node },
 ): { dependencies: Set<string>; incomplete: boolean } {
-  const program = parseSourceSyntax(filePath, source);
+  const program = resolved?.program ?? parseSourceSyntax(filePath, source);
   const bindings = createSourceBindings(program);
   const dependencies = new Set<string>();
   let incomplete = false;
@@ -97,7 +98,8 @@ export function collectServiceDependencies(
       }
     });
   }
-  const definition = exported && dereference(exported);
+  const definition =
+    resolved?.definition ?? (exported && dereference(exported));
   if (!definition) return { dependencies, incomplete: true };
   const isClass =
     definition.type === "ClassDeclaration" ||

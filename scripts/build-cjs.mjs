@@ -120,7 +120,7 @@ function listCjsOutputs(directory) {
   return outputs.sort();
 }
 
-async function buildCjs() {
+export async function buildCjs() {
   const startTime = Date.now();
   let built = 0;
 
@@ -211,7 +211,13 @@ async function buildCjs() {
   );
 }
 
-buildCjs().catch((err) => {
-  console.error("❌ [build-cjs] Failed:", err.message);
-  process.exit(1);
-});
+// Standalone invocation uses the same manifest and build ownership checks as npm scripts.
+if (process.argv[1] && resolve(process.argv[1]) === __filename) {
+  const { spawnSync } = await import("node:child_process");
+  const result = spawnSync(
+    process.execPath,
+    [resolve(__dirname, "build-framework.mjs"), "--cjs"],
+    { stdio: "inherit", windowsHide: true },
+  );
+  process.exitCode = result.status ?? 1;
+}

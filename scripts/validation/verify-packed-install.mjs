@@ -296,7 +296,7 @@ async function runPackedMcpSkillSmoke(consumerRoot) {
   );
   if (
     check.status !== "ok" ||
-    check.skill?.name !== "vextjs-official-mcp" ||
+    check.skill?.name !== "vextjs" ||
     !/^[a-f0-9]{64}$/.test(check.skill?.digest ?? "") ||
     check.hostNativeInstall !== "not-managed-by-this-command"
   ) {

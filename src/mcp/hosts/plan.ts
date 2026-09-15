@@ -71,10 +71,10 @@ export interface VextMcpHostSyncTarget {
   notes: string[];
 }
 
-export function createVextMcpHostSyncPlan(
+export async function createVextMcpHostSyncPlan(
   options: VextMcpHostSyncPlanOptions,
-): VextMcpHostSyncPlan {
-  const project = inspectVextProject({
+): Promise<VextMcpHostSyncPlan> {
+  const project = await inspectVextProject({
     rootDir: options.rootDir,
     frameworkVersion: options.frameworkVersion,
   });

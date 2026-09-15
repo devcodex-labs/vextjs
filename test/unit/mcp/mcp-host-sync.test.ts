@@ -2,23 +2,76 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   rm,
   stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { mcpCommand } from "../../../src/cli/mcp.js";
+import { applyVextMcpHostSyncPlan } from "../../../src/mcp/hosts/sync.js";
+import { inspectHostAdoption } from "../../../src/mcp/hosts/readback.js";
 import { createVextMcpHostSyncPlan } from "../../../src/mcp/hosts/plan.js";
 
+const fixtureRoots: string[] = [];
+afterEach(async () => {
+  for (const root of fixtureRoots.splice(0)) {
+    expect(path.dirname(await realpath(root))).toBe(
+      await realpath(os.tmpdir()),
+    );
+    expect(path.basename(root)).toMatch(/^vext-mcp-host-sync-/u);
+    await rm(root, { recursive: true, force: true });
+  }
+});
 describe("Vext MCP host sync planning", () => {
+  it("does not write launcher/state when no host target is enabled", async () => {
+    const root = await createProject();
+    await writeFile(
+      path.join(root, "src/config/default.ts"),
+      "export default { dev: { mcp: { enabled: false, hosts: [] } } };",
+    );
+    const plan = await createVextMcpHostSyncPlan({
+      rootDir: root,
+      frameworkVersion: "2.0.0",
+      mode: "write",
+    });
+    const result = await applyVextMcpHostSyncPlan(plan);
+    expect(result.launcher.status).toBe("skipped");
+    await expectPathMissing(path.join(root, ".vext"));
+  });
+
+  it("rejects project Skill output that links outside the service", async () => {
+    const root = await createProject();
+    const external = await createProject();
+    await mkdir(path.join(root, ".github"), { recursive: true });
+    await symlink(
+      external,
+      path.join(root, ".github/skills"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    const plan = await createVextMcpHostSyncPlan({
+      rootDir: root,
+      frameworkVersion: "2.0.0",
+      host: "vscode",
+      mode: "write",
+      includeSkill: true,
+    });
+    expect((await inspectHostAdoption(plan))[0]!.skill.state).toBe(
+      "unverified",
+    );
+    await expect(applyVextMcpHostSyncPlan(plan)).rejects.toThrow("inside");
+    await expectPathMissing(path.join(external, "vextjs"));
+  });
+
   it("builds a dry-run plan from declared dev.mcp hosts", async () => {
     const root = await createProject();
     await withCodexHome(async (codexHome) => {
-      const plan = createVextMcpHostSyncPlan({
+      const plan = await createVextMcpHostSyncPlan({
         rootDir: root,
         frameworkVersion: "2.0.0",
         mode: "dry-run",
@@ -80,6 +133,13 @@ describe("Vext MCP host sync planning", () => {
             ],
           },
         });
+        expect(result.adoption[0]).toMatchObject({
+          configuration: { state: "missing" },
+          launcher: { state: "missing" },
+          skill: { state: "missing", discovery: "unverified" },
+          connection: { state: "unverified" },
+          taskUsage: { state: "unverified" },
+        });
         expect(result.plan.targets[0].reason).toContain("TOML host config");
         await expectPathMissing(path.join(codexHome, "config.toml"));
       } finally {
@@ -93,7 +153,7 @@ describe("Vext MCP host sync planning", () => {
     const previous = process.env.CODEX_HOME;
     process.env.CODEX_HOME = path.join("relative", "codex-home");
     try {
-      const plan = createVextMcpHostSyncPlan({
+      const plan = await createVextMcpHostSyncPlan({
         rootDir: root,
         frameworkVersion: "2.0.0",
         host: "codex",
@@ -225,6 +285,13 @@ describe("Vext MCP host sync planning", () => {
           },
         });
         expect(result.applied.nextSteps[0].summary).toContain("Codex");
+        expect(result.applied.adoption[0]).toMatchObject({
+          configuration: { state: "matched" },
+          launcher: { state: "matched" },
+          skill: { state: "missing", discovery: "unverified" },
+          connection: { state: "unverified" },
+          taskUsage: { state: "unverified" },
+        });
         expect(result.applied.nextSteps[0].validation).toContain(
           "Run codex mcp list and confirm the vextjs MCP server appears for this project.",
         );
@@ -232,6 +299,11 @@ describe("Vext MCP host sync planning", () => {
           path.join(codexHome, "config.toml"),
           "utf8",
         );
+        expect(result.applied.adoption[0].configuration).toMatchObject({
+          state: "matched",
+          evidence: "toml-managed-block-only",
+          hostParse: "unverified",
+        });
         expect(toml).toContain("# BEGIN VEXT MCP MANAGED");
         expect(toml).toContain("[mcp_servers.");
         expect(toml).toContain('command = "node"');
@@ -287,6 +359,11 @@ describe("Vext MCP host sync planning", () => {
         "utf8",
       );
       expect(skill).toContain("VextJS Official MCP Skill");
+      expect(result.applied.adoption[0].skill).toMatchObject({
+        state: "matched",
+        metadata: { name: "vextjs", version: "2" },
+        discovery: "unverified",
+      });
 
       logs.length = 0;
       await mcpCommand([
@@ -353,7 +430,7 @@ describe("Vext MCP host sync planning", () => {
   it("blocks unmanaged TOML tables with the same service key", async () => {
     const root = await createProject();
     await withCodexHome(async (codexHome) => {
-      const plan = createVextMcpHostSyncPlan({
+      const plan = await createVextMcpHostSyncPlan({
         rootDir: root,
         frameworkVersion: "2.0.0",
         host: "codex",
@@ -415,6 +492,7 @@ async function expectPathMissing(filePath: string): Promise<void> {
 
 async function createProject(): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), "vext-mcp-host-sync-"));
+  fixtureRoots.push(root);
   await mkdir(path.join(root, "src", "config"), { recursive: true });
   await writeFile(
     path.join(root, "package.json"),

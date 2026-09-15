@@ -1,21 +1,45 @@
+import { createHash } from "node:crypto";
+import { findRecipe, validateRecipeOptions } from "./recipe-registry.js";
+import { RecipeContext, RecipeInputError } from "./recipe-context.js";
+import { renderBackendRecipe } from "./recipes-backend.js";
+import { renderFrontendRecipe } from "./recipes-frontend.js";
+import { renderSupportRecipe } from "./recipes-support.js";
+import { isBuiltin } from "node:module";
+import { collectProjectStaticDiagnostics } from "../tooling/diagnostics/project.js";
+import { inspectSourceQuality } from "../tooling/diagnostics/code-quality.js";
+import { isPathInside } from "../lib/path-boundary.js";
 import { existsSync } from "node:fs";
+import { canonicalPath, resolvePathInside } from "../lib/path-boundary.js";
+import { parseSourceSyntax } from "../lib/source-syntax.js";
+import { normalizeSourcePath } from "../tooling/source-view/policy.js";
+import { overlaySourceView } from "../tooling/source-view/view.js";
+import type { SourceChange } from "../tooling/source-view/types.js";
+import { ASSISTANT_SOURCE_ROOT } from "../tooling/project-index/analysis-source.js";
+import { inspectRouteFacts } from "../tooling/project-index/route-facts.js";
+import { analyzeCandidateOverlay } from "./candidate-analysis.js";
 import path from "node:path";
 import type {
   VextGenerateChangesInput,
   VextValidateChangesInput,
 } from "./contracts.js";
-import type { VextMcpProjectInspection } from "./project-inspector.js";
+import {
+  getInspectionSources,
+  getInspectionRoles,
+  type VextMcpProjectInspection,
+} from "./project-inspector.js";
+import { ASSISTANT_ROLES } from "../tooling/project-index/roles.js";
 
 export interface VextMcpChangeSetFile {
   path: string;
   action: "create";
   encoding: "utf8";
   content: string;
+  sha256?: string;
   reason: string;
 }
 
 export interface VextMcpChangeSet {
-  schemaVersion: 1;
+  schemaVersion: 2;
   kind: "change-set";
   recipeId: string;
   recipeTitle: string;
@@ -26,11 +50,13 @@ export interface VextMcpChangeSet {
   };
   files: VextMcpChangeSetFile[];
   warnings: string[];
+  scaffold: boolean;
+  prerequisites: string[];
   requiredHostSteps: string[];
 }
 
 export interface VextMcpChangeSetResult {
-  status: "ready" | "unsupported" | "invalid";
+  status: "ready" | "unsupported" | "invalid" | "incomplete";
   changeSet?: VextMcpChangeSet;
   diagnostics: string[];
   missingEvidence: string[];
@@ -58,6 +84,9 @@ export interface VextMcpCandidateDirectory {
 
 export interface VextMcpValidationResult {
   verdict: "valid" | "invalid" | "incomplete";
+  staticVerdict: "valid" | "invalid" | "incomplete";
+  applyReady: boolean;
+  missingEvidence: string[];
   diagnostics: string[];
   fileCount: number;
   files: VextMcpValidationFileResult[];
@@ -65,424 +94,151 @@ export interface VextMcpValidationResult {
   requiredHostSteps: string[];
 }
 
-const SUPPORTED_RECIPES = new Map([
-  ["RCP-01", "api-route"],
-  ["api-route", "api-route"],
-  ["RCP-02", "api-module"],
-  ["api-module", "api-module"],
-  ["RCP-03", "page-route"],
-  ["page-route", "page-route"],
-  ["RCP-04", "page-and-api"],
-  ["page-and-api", "page-and-api"],
-  ["RCP-05", "service"],
-  ["service", "service"],
-  ["RCP-06", "model"],
-  ["model", "model"],
-  ["RCP-07", "middleware"],
-  ["middleware", "middleware"],
-  ["RCP-08", "plugin"],
-  ["plugin", "plugin"],
-  ["RCP-09", "locale"],
-  ["locale", "locale"],
-  ["RCP-10", "test"],
-  ["test", "test"],
-  ["RCP-11", "type-contract"],
-  ["type-contract", "type-contract"],
-  ["RCP-12", "utility"],
-  ["utility", "utility"],
-  ["RCP-13", "frontend-component"],
-  ["frontend-component", "frontend-component"],
-  ["RCP-14", "frontend-layout"],
-  ["frontend-layout", "frontend-layout"],
-  ["RCP-15", "reusable-schema"],
-  ["reusable-schema", "reusable-schema"],
-  ["RCP-16", "mock-scenario"],
-  ["mock-scenario", "mock-scenario"],
-  ["RCP-17", "job-handler"],
-  ["job-handler", "job-handler"],
-]);
-
-const SAFE_SEGMENT_PATTERN = /^[a-z][a-z0-9-]{0,119}$/;
-const DEFAULT_CANDIDATE_SECTION_ROLES = [
-  "routes",
-  "services",
-  "models",
-  "schemas",
-  "middlewares",
-  "plugins",
-  "locales",
-  "shared-types",
-  "server-types",
-  "frontend-types",
-  "utils",
-  "mocks",
-  "jobs",
-  "frontend-pages",
-  "frontend-components",
-  "frontend-locales",
-  "frontend-styles",
-  "frontend-assets",
-  "tests",
-] as const;
-
-const DEFAULT_SERVICE_CANDIDATE_PATHS = [
-  "src/routes",
-  "src/services",
-  "src/models",
-  "src/schemas",
-  "src/middlewares",
-  "src/plugins",
-  "src/locales",
-  "src/types/shared",
-  "src/types/server",
-  "src/types/frontend",
-  "src/utils",
-  "src/mocks",
-  "src/jobs",
-  "src/frontend/pages",
-  "src/frontend/components",
-  "src/frontend/locales",
-  "src/frontend/styles",
-  "src/frontend/assets",
-  "test/unit",
-] as const;
+const CANDIDATE_ROLES = ASSISTANT_ROLES.filter((role) => role.candidate);
+const DEFAULT_CANDIDATE_SECTION_ROLES = CANDIDATE_ROLES.map((role) => role.id);
+const DEFAULT_SERVICE_CANDIDATE_PATHS = CANDIDATE_ROLES.map(
+  (role) => role.defaultPath,
+);
 
 export function generateMcpChangeSet(
   input: VextGenerateChangesInput,
   project: VextMcpProjectInspection,
 ): VextMcpChangeSetResult {
-  const recipe = SUPPORTED_RECIPES.get(input.recipeId);
-  if (!recipe) {
+  const recipe = findRecipe(input.recipeId);
+  if (!recipe)
     return {
       status: "unsupported",
-      diagnostics: [
-        `Recipe ${input.recipeId} is registered but its generator is not implemented in this batch.`,
-      ],
-      missingEvidence: [
-        "A generator implementation for this recipe is not available yet.",
-      ],
+      diagnostics: [`Unknown recipe: ${input.recipeId}.`],
+      missingEvidence: [],
     };
-  }
-  const normalizedName = toKebabName(input.name);
-  if (!normalizedName) {
+  const issues = validateRecipeOptions(recipe, input.options);
+  if (issues.length)
+    return { status: "invalid", diagnostics: issues, missingEvidence: [] };
+  if (
+    input.expectedIdentity &&
+    (input.expectedIdentity.projectId !== project.identity.projectId ||
+      input.expectedIdentity.contextRevision !==
+        project.identity.contextRevision)
+  )
     return {
       status: "invalid",
       diagnostics: [
-        "name must be a kebab-case identifier after normalization.",
+        "expectedIdentity does not match the current project context.",
       ],
       missingEvidence: [],
     };
-  }
-  const files = filesForRecipe(recipe, normalizedName, input, project);
-  const changeSet: VextMcpChangeSet = {
-    schemaVersion: 1,
-    kind: "change-set",
-    recipeId: input.recipeId,
-    recipeTitle: recipe,
-    name: normalizedName,
-    baseIdentity: {
-      projectId: project.identity.projectId,
-      contextRevision: project.identity.contextRevision,
-    },
-    files,
-    warnings: project.identity.contextRevision
-      ? []
-      : [
-          "Project contextRevision is unavailable; inspect a complete project before applying.",
-        ],
-    requiredHostSteps: [
-      "Review every file in the ChangeSet before applying it.",
-      "Apply the candidate files in the host workspace only after checking for existing files.",
-      "Run typecheck, focused tests, and any affected docs checks after applying.",
-    ],
-  };
-  const validation = validateMcpChangeSet(changeSet);
-  if (!validation.ok) {
+  try {
+    const context = new RecipeContext(input, project);
+    const render =
+      recipe.group === "backend"
+        ? renderBackendRecipe
+        : recipe.group === "frontend"
+          ? renderFrontendRecipe
+          : renderSupportRecipe;
+    const files = render(recipe.name, context).map((file) => ({
+      ...file,
+      sha256: createHash("sha256").update(file.content, "utf8").digest("hex"),
+    }));
+    const changeSet: VextMcpChangeSet = {
+      schemaVersion: 2,
+      kind: "change-set",
+      recipeId: recipe.id,
+      recipeTitle: recipe.name,
+      name: context.name,
+      baseIdentity: {
+        projectId: project.identity.projectId,
+        contextRevision: project.identity.contextRevision,
+      },
+      files,
+      scaffold: context.scaffold,
+      prerequisites: context.prerequisites,
+      warnings: context.warnings,
+      requiredHostSteps: context.hostSteps(),
+    };
+    const validation = validateMcpChangeSet(changeSet, project);
+    const missingEvidence = [
+      ...validation.missingEvidence,
+      ...(!project.identity.contextRevision
+        ? ["Project source identity is incomplete."]
+        : []),
+    ];
+    if (!validation.ok || missingEvidence.length)
+      return {
+        status: validation.ok ? "incomplete" : "invalid",
+        diagnostics: validation.diagnostics,
+        missingEvidence,
+      };
+    return { status: "ready", changeSet, diagnostics: [], missingEvidence: [] };
+  } catch (error) {
+    if (!(error instanceof RecipeInputError)) throw error;
     return {
-      status: "invalid",
-      diagnostics: validation.diagnostics,
-      missingEvidence: [],
+      status: error.status,
+      diagnostics: [error.message],
+      missingEvidence: error.status === "incomplete" ? [error.message] : [],
     };
   }
-  return { status: "ready", changeSet, diagnostics: [], missingEvidence: [] };
 }
 
 export function validateMcpChangeSetInput(
   input: VextValidateChangesInput,
   project?: VextMcpProjectInspection,
 ): VextMcpValidationResult {
-  if (input.changeSet) {
-    const validation = validateMcpChangeSet(input.changeSet, project);
-    return {
-      verdict: validation.ok ? "valid" : "invalid",
-      diagnostics: validation.diagnostics,
-      fileCount: validation.fileCount,
-      files: validation.files,
-      allowedDirectories: validation.allowedDirectories,
-      requiredHostSteps: validation.requiredHostSteps,
-    };
+  const validation = input.changeSet
+    ? validateMcpChangeSet(input.changeSet, project, input.profile)
+    : input.files
+      ? validateCandidateFiles(input.files, project, input.profile)
+      : invalidCandidate("changeSet or files is required.");
+  const complete =
+    input.profile === "syntax" || project?.identity.sourceState === "complete";
+  const identity =
+    input.expectedIdentity ??
+    (isRecord(input.changeSet?.baseIdentity)
+      ? input.changeSet.baseIdentity
+      : undefined);
+  const identityBound =
+    !!project &&
+    identity?.projectId === project.identity.projectId &&
+    typeof identity?.contextRevision === "string" &&
+    identity.contextRevision === project.identity.contextRevision;
+  if (input.expectedIdentity && !identityBound) {
+    validation.ok = false;
+    validation.diagnostics.push(
+      "expectedIdentity does not match the current project context.",
+    );
   }
-  if (input.files) {
-    const validation = validateCandidateFiles(input.files, project);
-    return {
-      verdict: validation.ok ? "valid" : "invalid",
-      diagnostics: validation.diagnostics,
-      fileCount: validation.fileCount,
-      files: validation.files,
-      allowedDirectories: validation.allowedDirectories,
-      requiredHostSteps: validation.requiredHostSteps,
-    };
-  }
+  const staticVerdict = validation.ok
+    ? complete && validation.missingEvidence.length === 0
+      ? "valid"
+      : "incomplete"
+    : "invalid";
   return {
-    verdict: "incomplete",
-    diagnostics: ["changeSet or files is required."],
-    fileCount: 0,
-    files: [],
-    allowedDirectories: candidateDirectoryPolicy(project),
-    requiredHostSteps: ["Provide candidate files before planning validation."],
-  };
-}
-
-function filesForRecipe(
-  recipe: string,
-  name: string,
-  input: VextGenerateChangesInput,
-  project: VextMcpProjectInspection,
-): VextMcpChangeSetFile[] {
-  if (recipe === "type-contract") return [typeContractFile(name, input)];
-  if (recipe === "api-route") return [apiRouteFile(name)];
-  if (recipe === "api-module")
-    return [apiRouteFile(name), ...serviceFiles(name)];
-  if (recipe === "page-route") return pageRouteFiles(name);
-  if (recipe === "page-and-api")
-    return [...pageRouteFiles(name), apiRouteFile(`${name}-api`)];
-  if (recipe === "service") return serviceFiles(name);
-  if (recipe === "model") return [modelFile(name)];
-  if (recipe === "middleware") return [middlewareFile(name)];
-  if (recipe === "plugin") return [pluginFile(name)];
-  if (recipe === "locale") return localeFiles(name, input);
-  if (recipe === "test") return [testFile(name)];
-  if (recipe === "frontend-component") return [frontendComponentFile(name)];
-  if (recipe === "frontend-layout") return [frontendLayoutFile(name)];
-  if (recipe === "reusable-schema") return [reusableSchemaFile(name)];
-  if (recipe === "mock-scenario") return [mockScenarioFile(name)];
-  if (recipe === "utility") return [utilityFile(name)];
-  return [jobHandlerFile(name, input, project)];
-}
-
-function apiRouteFile(name: string): VextMcpChangeSetFile {
-  const routePath = `/${name}`;
-  return {
-    path: `src/routes/${name}.ts`,
-    action: "create",
-    encoding: "utf8",
-    reason: "Create a conventional Vext API route file.",
-    content: `import { defineRoutes } from "vextjs";\n\nexport default defineRoutes((app) => {\n  app.get(\n    "/",\n    {\n      responses: {\n        200: { schema: { ok: "boolean!", resource: "string!" } },\n      },\n      docs: { summary: "Read ${escapeString(routePath)}" },\n    },\n    (_req, res) => {\n      res.json({ ok: true, resource: "${escapeString(name)}" });\n    },\n  );\n});\n`,
-  };
-}
-
-function serviceFiles(name: string): VextMcpChangeSetFile[] {
-  const className = `${toPascalName(name)}Service`;
-  const healthType = `${className}Health`;
-  return [
-    {
-      path: `src/types/server/services/${name}.ts`,
-      action: "create",
-      encoding: "utf8",
-      reason: "Create a type-only service contract owned by the application.",
-      content: `export interface ${healthType} {\n  ok: boolean;\n  checkedAt: string;\n}\n`,
-    },
-    {
-      path: `src/services/${name}.ts`,
-      action: "create",
-      encoding: "utf8",
-      reason:
-        "Create a concise service owned by the application service loader.",
-      content: `import type { ${healthType} } from "../types/server/services/${name}.js";\n\nexport default class ${className} {\n  async health(): Promise<${healthType}> {\n    return { ok: true, checkedAt: new Date().toISOString() };\n  }\n}\n`,
-    },
-  ];
-}
-
-function pageRouteFiles(name: string): VextMcpChangeSetFile[] {
-  const pageName = name;
-  return [
-    {
-      path: `src/routes/${name}.ts`,
-      action: "create",
-      encoding: "utf8",
-      reason: "Create a route that renders a Vext frontend page.",
-      content: `import { defineRoutes } from "vextjs";\n\nexport default defineRoutes((app) => {\n  app.get(\n    "/",\n    {\n      docs: { summary: "Render ${escapeString(pageName)} page" },\n    },\n    (_req, res) => {\n      res.render("${escapeString(pageName)}", { title: "${escapeString(toPascalName(name))}" });\n    },\n  );\n});\n`,
-    },
-    {
-      path: `src/frontend/pages/${name}.tsx`,
-      action: "create",
-      encoding: "utf8",
-      reason: "Create the frontend page consumed by res.render().",
-      content: `export default function ${toPascalName(name)}Page(props: { title?: string }) {\n  return <main>{props.title ?? "${escapeString(toPascalName(name))}"}</main>;\n}\n`,
-    },
-  ];
-}
-
-function modelFile(name: string): VextMcpChangeSetFile {
-  const documentName = `${toPascalName(name)}Document`;
-  const modelName = `${toPascalName(name)}Model`;
-  return {
-    path: `src/models/${name}.ts`,
-    action: "create",
-    encoding: "utf8",
-    reason:
-      "Create a side-effect-free model definition skeleton for explicit review.",
-    content: `import type { VextModelDefinition } from "vextjs";\n\nexport interface ${documentName} {\n  id: string;\n  createdAt: string;\n  updatedAt?: string;\n}\n\nconst ${modelName} = {\n  collection: "${escapeString(name)}",\n  schema: {\n    id: "string:1-!",\n    createdAt: "datetime!",\n    updatedAt: "datetime?",\n  },\n} satisfies VextModelDefinition<${documentName}>;\n\nexport default ${modelName};\n`,
-  };
-}
-
-function middlewareFile(name: string): VextMcpChangeSetFile {
-  return {
-    path: `src/middlewares/${name}.ts`,
-    action: "create",
-    encoding: "utf8",
-    reason: "Create a tagged Vext middleware skeleton.",
-    content: `import { defineMiddleware } from "vextjs";\n\nexport default defineMiddleware(async (_req, _res, next) => {\n  await next();\n});\n`,
-  };
-}
-
-function pluginFile(name: string): VextMcpChangeSetFile {
-  return {
-    path: `src/plugins/${name}.ts`,
-    action: "create",
-    encoding: "utf8",
-    reason: "Create a Vext plugin lifecycle skeleton.",
-    content: `import { definePlugin } from "vextjs";\n\nexport default definePlugin({\n  name: "${escapeString(name)}",\n  setup(app) {\n    app.logger.debug("${escapeString(name)} plugin initialized");\n  },\n});\n`,
-  };
-}
-
-function localeFiles(
-  name: string,
-  input: VextGenerateChangesInput,
-): VextMcpChangeSetFile[] {
-  const locale = readStringOption(input.options, "locale") ?? "en-US";
-  const target = readStringOption(input.options, "target") ?? "frontend";
-  const feature =
-    toSafeModulePath(readStringOption(input.options, "module") ?? name) ?? name;
-  const messageKey = `${name}.example`;
-  const isBackend = target === "backend" || target === "server";
-  return [
-    {
-      path: isBackend
-        ? `src/locales/${feature}/${locale}.json`
-        : `src/frontend/locales/${feature}/${locale}.json`,
-      action: "create",
-      encoding: "utf8",
-      reason: isBackend
-        ? "Create a backend feature-scoped locale JSON file."
-        : "Create a frontend feature-scoped locale JSON file.",
-      content: `${JSON.stringify({ [messageKey]: { code: 40000, message: "Example message" } }, null, 2)}\n`,
-    },
-  ];
-}
-
-function testFile(name: string): VextMcpChangeSetFile {
-  const contractName = toCamelName(name);
-  return {
-    path: `test/unit/${name}.test.ts`,
-    action: "create",
-    encoding: "utf8",
-    reason: "Create a focused Vitest unit test skeleton.",
-    content: `import { describe, expect, it } from "vitest";\n\nconst ${contractName}Contract = {\n  feature: "${escapeString(name)}",\n  successStatus: 200,\n} as const;\n\ndescribe("${escapeString(name)}", () => {\n  it("defines the public behavior contract", () => {\n    expect(${contractName}Contract).toMatchObject({\n      feature: "${escapeString(name)}",\n      successStatus: 200,\n    });\n  });\n});\n`,
-  };
-}
-
-function frontendComponentFile(name: string): VextMcpChangeSetFile {
-  return {
-    path: `src/frontend/components/${toPascalName(name)}.tsx`,
-    action: "create",
-    encoding: "utf8",
-    reason: "Create a browser-safe frontend component skeleton.",
-    content: `export interface ${toPascalName(name)}Props {\n  title?: string;\n}\n\nexport function ${toPascalName(name)}(props: ${toPascalName(name)}Props) {\n  return <section>{props.title ?? "${escapeString(toPascalName(name))}"}</section>;\n}\n`,
-  };
-}
-
-function frontendLayoutFile(name: string): VextMcpChangeSetFile {
-  const componentName = `${toPascalName(name)}Layout`;
-  return {
-    path: `src/frontend/pages/${name}/layout.tsx`,
-    action: "create",
-    encoding: "utf8",
-    reason: "Create a page-local frontend layout skeleton.",
-    content: `export default function ${componentName}() {\n  return <div data-layout="${escapeString(name)}" />;\n}\n`,
-  };
-}
-
-function reusableSchemaFile(name: string): VextMcpChangeSetFile {
-  return {
-    path: `src/schemas/${name}.ts`,
-    action: "create",
-    encoding: "utf8",
-    reason: "Create a reusable schema-dsl contract for explicit imports.",
-    content: `import { schemaAdapter } from "vextjs";\n\nexport const ${toCamelName(name)}Schema = {\n  id: schemaAdapter.compileField("string:1-120!").description("Stable identifier"),\n};\n`,
-  };
-}
-
-function mockScenarioFile(name: string): VextMcpChangeSetFile {
-  return {
-    path: `src/mocks/${name}.ts`,
-    action: "create",
-    encoding: "utf8",
-    reason: "Create an application-owned mock scenario module.",
-    content: `export const ${toCamelName(name)}Mock = {\n  id: "${escapeString(name)}",\n  status: "ready",\n};\n`,
-  };
-}
-
-function typeContractFile(
-  name: string,
-  input: VextGenerateChangesInput,
-): VextMcpChangeSetFile {
-  const interfaceName = `${toPascalName(name)}Contract`;
-  const description =
-    readStringOption(input.options, "description") ??
-    "Shared serializable contract.";
-  return {
-    path: `src/types/shared/${name}.d.ts`,
-    action: "create",
-    encoding: "utf8",
-    reason: "Create an application-owned shared type contract.",
-    content: `/** ${escapeComment(description)} */\nexport interface ${interfaceName} {\n  /** Stable identifier supplied by the application. */\n  id: string;\n}\n`,
-  };
-}
-
-function utilityFile(name: string): VextMcpChangeSetFile {
-  const functionName = toCamelName(name);
-  return {
-    path: `src/utils/${name}.ts`,
-    action: "create",
-    encoding: "utf8",
-    reason: "Create a small owner-near utility module.",
-    content: `export function ${functionName}<T>(value: T): T {\n  return value;\n}\n`,
-  };
-}
-
-function jobHandlerFile(
-  name: string,
-  input: VextGenerateChangesInput,
-  project: VextMcpProjectInspection,
-): VextMcpChangeSetFile {
-  const jobName = readStringOption(input.options, "jobName") ?? name;
-  const queue = readStringOption(input.options, "queue") ?? "default";
-  const jobsRoot = project.snapshot.sections.jobs?.actualPath ?? "src/jobs";
-  return {
-    path: `${jobsRoot}/${name}.ts`,
-    action: "create",
-    encoding: "utf8",
-    reason: "Create a Vext Job handler skeleton for host-side review.",
-    content: `import { defineJob } from "vextjs";\n\nexport default defineJob({\n  name: "${escapeString(jobName)}",\n  queue: "${escapeString(queue)}",\n  async handler(ctx) {\n    ctx.logger?.info({ job: "${escapeString(jobName)}" }, "job started");\n  },\n});\n`,
+    verdict: staticVerdict,
+    staticVerdict,
+    applyReady:
+      staticVerdict === "valid" && input.profile !== "syntax" && identityBound,
+    missingEvidence: validation.missingEvidence,
+    diagnostics: validation.diagnostics,
+    fileCount: validation.fileCount,
+    files: validation.files,
+    allowedDirectories: validation.allowedDirectories,
+    requiredHostSteps: [
+      ...(!identityBound
+        ? [
+            "Bind expectedIdentity or ChangeSet.baseIdentity to the inspected source context before applying.",
+          ]
+        : []),
+      ...validation.requiredHostSteps,
+    ],
   };
 }
 
 function validateMcpChangeSet(
   value: unknown,
   project?: VextMcpProjectInspection,
+  profile: VextValidateChangesInput["profile"] = "standard",
 ): {
   ok: boolean;
+  missingEvidence: string[];
   diagnostics: string[];
   fileCount: number;
   files: VextMcpValidationFileResult[];
@@ -490,13 +246,13 @@ function validateMcpChangeSet(
   requiredHostSteps: string[];
 } {
   if (!isRecord(value)) return invalidCandidate("changeSet must be an object.");
-  if (value.schemaVersion !== 1)
-    return invalidCandidate("changeSet.schemaVersion must be 1.");
+  if (value.schemaVersion !== 2)
+    return invalidCandidate("changeSet.schemaVersion must be 2.");
   if (value.kind !== "change-set")
     return invalidCandidate("changeSet.kind must be change-set.");
   if (!Array.isArray(value.files))
     return invalidCandidate("changeSet.files must be an array.");
-  const validation = validateCandidateFiles(value.files, project);
+  const validation = validateCandidateFiles(value.files, project, profile);
   const diagnostics = [...validation.diagnostics];
   if (project && isRecord(value.baseIdentity)) {
     if (value.baseIdentity.projectId !== project.identity.projectId) {
@@ -514,6 +270,7 @@ function validateMcpChangeSet(
   }
   return {
     ok: validation.ok && diagnostics.length === 0,
+    missingEvidence: validation.missingEvidence,
     diagnostics,
     fileCount: validation.fileCount,
     files: validation.files,
@@ -525,8 +282,10 @@ function validateMcpChangeSet(
 function validateCandidateFiles(
   files: unknown[],
   project?: VextMcpProjectInspection,
+  profile: VextValidateChangesInput["profile"] = "standard",
 ): {
   ok: boolean;
+  missingEvidence: string[];
   diagnostics: string[];
   fileCount: number;
   files: VextMcpValidationFileResult[];
@@ -542,7 +301,13 @@ function validateCandidateFiles(
     );
   }
   const seen = new Set<string>();
+  const overlayChanges: SourceChange[] = [];
+  let totalBytes = 0;
   const diagnostics: string[] = [];
+  const missingEvidence: string[] =
+    project?.diagnostics
+      .filter((item) => item.code === "VEXT_MCP_POLICY_RULE_UNRESOLVED")
+      .map((item) => item.message) ?? [];
   const fileResults: VextMcpValidationFileResult[] = [];
   for (const file of files) {
     const fileIssues: string[] = [];
@@ -571,18 +336,86 @@ function validateCandidateFiles(
         `${file.path} is outside supported Vext candidate directories.`,
       );
     }
+    const protectedRole = (
+      getInspectionRoles(project!) ??
+      ASSISTANT_ROLES.map((role) => ({ ...role, path: role.defaultPath }))
+    ).find(
+      (role) =>
+        (role.mode === "generated" || role.mode === "runtime") &&
+        typeof file.path === "string" &&
+        file.path.startsWith(role.path + "/"),
+    );
+    if (protectedRole)
+      fileIssues.push(
+        `${file.path} belongs to the protected ${protectedRole.id} role.`,
+      );
+    let identityPath = normalizeSourcePath(file.path);
+    if (project) {
+      try {
+        identityPath = canonicalPath(
+          resolvePathInside(project.identity.rootDir, file.path, "candidate", {
+            realpath: true,
+          }),
+        );
+      } catch (error) {
+        fileIssues.push(error instanceof Error ? error.message : String(error));
+      }
+    }
     if (project && existsSync(path.join(project.identity.rootDir, file.path))) {
       fileIssues.push(
         `${file.path} already exists; create-only candidates must not overwrite files.`,
       );
     }
-    if (seen.has(file.path))
+    if (seen.has(identityPath))
       fileIssues.push(`Duplicate file path ${file.path}.`);
-    seen.add(file.path);
+    seen.add(identityPath);
     if (typeof file.content !== "string")
       fileIssues.push(`${file.path} content must be a string.`);
     if (typeof file.content === "string") {
-      fileIssues.push(...contentQualityIssues(file.path, file.content));
+      const bytes = Buffer.from(file.content, "utf8");
+      if (
+        file.sha256 !== undefined &&
+        file.sha256 !== createHash("sha256").update(bytes).digest("hex")
+      )
+        fileIssues.push(
+          `${file.path} content does not match its declared sha256.`,
+        );
+      totalBytes += bytes.length;
+      if (bytes.toString("utf8") !== file.content)
+        fileIssues.push(`${file.path} contains invalid Unicode text.`);
+      if (bytes.length > 512 * 1024)
+        fileIssues.push(
+          `${file.path} exceeds the 512 KiB candidate file limit.`,
+        );
+      if (totalBytes > 2 * 1024 * 1024)
+        fileIssues.push("Candidate files exceed the 2 MiB total limit.");
+      if (bytes.length <= 512 * 1024 && totalBytes <= 2 * 1024 * 1024) {
+        fileIssues.push(...candidateSyntaxIssues(file.path, file.content));
+        if (profile !== "syntax")
+          fileIssues.push(
+            ...contentQualityIssues(
+              file.path,
+              file.content,
+              directory?.role,
+              project,
+            ),
+          );
+      }
+      if (
+        profile === "strict" &&
+        bytes.length <= 512 * 1024 &&
+        totalBytes <= 2 * 1024 * 1024
+      )
+        fileIssues.push(
+          ...strictBoundaryIssues(file.path, file.content, directory?.role),
+        );
+      if (fileIssues.length === 0)
+        overlayChanges.push({
+          kind: "create",
+          ...candidateSourceRef(project, file.path),
+          role: directory?.role ?? "source",
+          bytes,
+        });
     }
     if (file.encoding !== undefined && file.encoding !== "utf8")
       fileIssues.push(`${file.path} encoding must be utf8.`);
@@ -594,14 +427,92 @@ function validateCandidateFiles(
       issues: fileIssues,
     });
   }
+  if (diagnostics.length === 0 && project) {
+    const base = getInspectionSources(project);
+    if (base) {
+      try {
+        const overlay = overlaySourceView(base, overlayChanges);
+        if (profile !== "syntax") {
+          const roles = getInspectionRoles(project);
+          if (roles) {
+            const changedFiles = new Set(
+              overlayChanges
+                .filter((change) => change.rootId === ASSISTANT_SOURCE_ROOT)
+                .map((change) => change.path),
+            );
+            const serviceDirectory =
+              project.snapshot.sections.services?.resolvedPath ??
+              "src/services";
+            const serviceChanged = [...changedFiles].some((file) =>
+              file.startsWith(serviceDirectory + "/"),
+            );
+            const configChanged = [...changedFiles].some((file) =>
+              file.startsWith("src/config/"),
+            );
+            for (const item of collectProjectStaticDiagnostics(
+              overlay,
+              roles,
+            )) {
+              if (
+                !changedFiles.has(item.sourceFile ?? "") &&
+                !(serviceChanged && item.domain === "services") &&
+                !(configChanged && item.domain === "configuration")
+              )
+                continue;
+              if (item.severity === "error") diagnostics.push(item.message);
+              if (item.incomplete) missingEvidence.push(item.message);
+            }
+          }
+          const result = analyzeCandidateOverlay(
+            overlay,
+            project.identity.rootDir,
+            new Set(
+              overlayChanges.map((change) => `${change.rootId}:${change.path}`),
+            ),
+            project.snapshot.sections.routes?.resolvedPath ?? "src/routes",
+          );
+          diagnostics.push(...result.errors);
+          missingEvidence.push(...result.missingEvidence);
+        }
+      } catch (error) {
+        diagnostics.push(
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
+  }
   return {
     ok: diagnostics.length === 0,
+    missingEvidence,
     diagnostics,
     fileCount: files.length,
     files: fileResults,
     allowedDirectories,
     requiredHostSteps: planHostValidationSteps(fileResults),
   };
+}
+
+function candidateSourceRef(
+  project: VextMcpProjectInspection | undefined,
+  file: string,
+) {
+  if (project) {
+    const absolute = path.resolve(project.identity.rootDir, file);
+    const target = getInspectionSources(project)
+      ?.roots()
+      .filter(
+        (root) => root.packageName && isPathInside(root.realPath, absolute),
+      )
+      .sort((a, b) => b.realPath.length - a.realPath.length)[0];
+    if (target)
+      return {
+        rootId: target.id,
+        path: normalizeSourcePath(
+          path.relative(target.realPath, absolute).replaceAll("\\", "/"),
+        ),
+      };
+  }
+  return { rootId: ASSISTANT_SOURCE_ROOT, path: normalizeSourcePath(file) };
 }
 
 function invalidCandidate(
@@ -611,6 +522,7 @@ function invalidCandidate(
 ) {
   return {
     ok: false,
+    missingEvidence: [],
     diagnostics: [message],
     fileCount,
     files: [],
@@ -672,7 +584,12 @@ function planHostValidationSteps(
     ) {
       steps.add("Run affected locale/i18n tests after applying locale files.");
     }
-    if (role === "jobs" || normalized.includes("/src/jobs/")) {
+    if (
+      role === "jobs" ||
+      role === "job-types" ||
+      normalized.includes("/src/jobs/") ||
+      normalized.includes("/src/types/server/jobs/")
+    ) {
       steps.add(
         "Run focused job unit tests and scheduler/worker integration checks for affected jobs.",
       );
@@ -689,99 +606,126 @@ function planHostValidationSteps(
   return [...steps];
 }
 
-function contentQualityIssues(filePath: string, content: string): string[] {
+function candidateSyntaxIssues(filePath: string, content: string): string[] {
+  try {
+    if (/\.[cm]?[jt]sx?$/u.test(filePath)) parseSourceSyntax(filePath, content);
+    else if (filePath.endsWith(".json"))
+      JSON.parse(content.replace(/^\uFEFF/u, ""));
+    return [];
+  } catch (error) {
+    return [error instanceof Error ? error.message : String(error)];
+  }
+}
+
+function contentQualityIssues(
+  filePath: string,
+  content: string,
+  role?: string,
+  project?: VextMcpProjectInspection,
+): string[] {
   const normalized = filePath.replaceAll("\\", "/");
   const issues: string[] = [];
-  if (content.length > 240 && content.split(/\r?\n/u).length < 4) {
-    issues.push(
-      `${filePath} should be formatted across multiple lines before applying.`,
-    );
-  }
-  if (normalized.startsWith("src/routes/")) {
-    if (/\bdocs\s*:\s*\{[\s\S]{0,3000}?\btags\s*:/u.test(content)) {
-      issues.push(
-        `${filePath} uses deprecated docs.tags; tags are inferred automatically.`,
-      );
-    }
-    if (
-      /\b(?:res|reply)\.json\s*\(/u.test(content) &&
-      /\bapp\.(?:get|post|put|patch|delete|head|options)\s*\(/u.test(content) &&
-      !/\bresponses\s*:/u.test(content)
-    ) {
-      issues.push(
-        `${filePath} returns JSON without top-level RouteOptions.responses.`,
-      );
+  const blocks = (id: string) =>
+    (project?.policy.patch.rules?.find((rule) => rule.id === id)?.level ??
+      "error") === "error";
+  if (role === "routes" || (!role && normalized.startsWith("src/routes/"))) {
+    const facts = inspectRouteFacts(filePath, content);
+    for (const route of facts.routes) {
+      if (route.deprecatedDocsTags && blocks("VEXT_MCP_DEPRECATED_DOCS_TAGS"))
+        issues.push(
+          `${filePath} uses deprecated docs.tags; tags are inferred automatically.`,
+        );
+      if (route.responses === "invalid")
+        issues.push(
+          `${filePath} has an invalid RouteOptions.responses declaration.`,
+        );
+      if (
+        route.returnsJson &&
+        route.responses === "absent" &&
+        blocks("VEXT_MCP_ROUTE_RESPONSE_SCHEMA_MISSING")
+      )
+        issues.push(
+          `${filePath} returns JSON without top-level RouteOptions.responses at offset ${route.start}.`,
+        );
     }
   }
   if (
-    normalized.startsWith("src/services/") &&
-    (/\b(?:type|interface)\s+(?:Cursor|Collection|Db)\b/u.test(content) ||
-      /\bapp\.db\b[\s\S]{0,160}\bas\s+(?:unknown\s+as\s+)?\w/u.test(content))
-  ) {
-    issues.push(
-      `${filePath} should not define driver-like database helper types or cast app.db inside the service.`,
-    );
-  }
-  if (
-    normalized.startsWith("test/") &&
-    /\bexpect\s*\(\s*(?:true|1)\s*\)\s*\.toBe\s*\(\s*(?:true|1)\s*\)/u.test(
-      content,
-    )
-  ) {
+    (role === "tests" || normalized.startsWith("test/")) &&
+    blocks("VEXT_MCP_TEST_PLACEHOLDER_ASSERTION") &&
+    hasPlaceholderAssertion(content, filePath)
+  )
     issues.push(`${filePath} contains a placeholder assertion.`);
+  return issues;
+}
+
+function hasPlaceholderAssertion(content: string, file: string) {
+  try {
+    return inspectSourceQuality(file, content).placeholderAssertion;
+  } catch {
+    return false;
+  }
+}
+
+/** strict 追加消费者边界检查；类型导入与运行时依赖不能混为一谈。 */
+function strictBoundaryIssues(
+  file: string,
+  source: string,
+  role?: string,
+): string[] {
+  if (
+    !role ||
+    !(role.startsWith("frontend-") || role === "shared-types") ||
+    !/\.[cm]?[jt]sx?$/u.test(file)
+  )
+    return [];
+  const issues: string[] = [];
+  try {
+    for (const node of parseSourceSyntax(file, source).body) {
+      if (
+        node.type !== "ImportDeclaration" &&
+        node.type !== "ExportNamedDeclaration" &&
+        node.type !== "ExportAllDeclaration"
+      )
+        continue;
+      const specifier = node.source?.value;
+      if (typeof specifier !== "string") continue;
+      const typeOnly =
+        node.type === "ImportDeclaration"
+          ? node.importKind === "type" ||
+            (node.specifiers.length > 0 &&
+              node.specifiers.every(
+                (item) =>
+                  item.type === "ImportSpecifier" && item.importKind === "type",
+              ))
+          : node.exportKind === "type";
+      if (
+        !typeOnly &&
+        (isBuiltin(specifier) ||
+          ["vextjs", "vextjs/testing", "monsqlize", "mongodb", "ioredis"].some(
+            (name) =>
+              specifier === name ||
+              (name !== "vextjs" && specifier.startsWith(name + "/")),
+          ))
+      )
+        issues.push(
+          `${file}: ${specifier} is a server runtime dependency in a browser/shared source role.`,
+        );
+    }
+  } catch {
+    /* 语法错误由统一候选语法检查报告。 */
   }
   return issues;
 }
 
-function toKebabName(value: string): string | null {
-  const normalized = value
-    .trim()
-    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
-    .replace(/[ _]+/g, "-")
-    .toLowerCase();
-  return SAFE_SEGMENT_PATTERN.test(normalized) ? normalized : null;
-}
-
-function toSafeModulePath(value: string): string | null {
-  const parts = value
-    .trim()
-    .split(/[\\/]+/u)
-    .map((part) => toKebabName(part));
-  if (parts.length < 1 || parts.length > 4 || parts.some((part) => !part)) {
-    return null;
-  }
-  return parts.join("/");
-}
-
-function toPascalName(value: string): string {
-  return value
-    .split("-")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join("");
-}
-
-function toCamelName(value: string): string {
-  const pascal = toPascalName(value);
-  return pascal.charAt(0).toLowerCase() + pascal.slice(1);
-}
-
-function readStringOption(
-  options: Record<string, unknown> | undefined,
-  key: string,
-): string | undefined {
-  const value = options?.[key];
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
 function isSafeRelativePath(value: string): boolean {
-  const normalized = value.replaceAll("\\", "/");
-  return (
-    normalized.length > 0 &&
-    normalized.length <= 260 &&
-    !/^(?:[A-Za-z]:|\/)/.test(normalized) &&
-    !/(^|\/)\.\.(?:\/|$)/.test(normalized) &&
-    !normalized.includes("\0")
-  );
+  try {
+    const normalized = normalizeSourcePath(value);
+    return !normalized
+      .split("/")
+      .some((segment) => [".git", ".vext", "node_modules"].includes(segment));
+  } catch {
+    return false;
+  }
 }
 
 function candidateDirectoryPolicy(
@@ -795,40 +739,46 @@ function candidateDirectoryPolicy(
   }
   const directories = new Map<string, VextMcpCandidateDirectory>();
   for (const role of DEFAULT_CANDIDATE_SECTION_ROLES) {
+    if (
+      project &&
+      project.structureDecisions.some(
+        (entry) => entry.role === role && !entry.editable,
+      )
+    )
+      continue;
     const section = project.snapshot.sections[role];
     if (!section) continue;
     addCandidateDirectory(
       directories,
-      section.actualPath ?? section.defaultPath,
+      section.resolvedPath ?? section.actualPath ?? section.defaultPath,
       {
         source: "project-section",
         role,
       },
     );
   }
-  for (const service of project.assistant.workspace?.config.services ?? []) {
-    for (const candidatePath of DEFAULT_SERVICE_CANDIDATE_PATHS) {
-      addCandidateDirectory(
-        directories,
-        path.posix.join(service.root, candidatePath),
-        {
-          source: "workspace-service",
-          serviceId: service.id,
-        },
-      );
-    }
+  for (const id of ["routes", "services", "middlewares", "plugins"]) {
+    if (project.snapshot.sections[id]?.resolvedPath !== `src/${id}`)
+      addCandidateDirectory(directories, `src/${id}`, {
+        source: "project-section",
+        role: id,
+      });
   }
   for (const sharedPackage of project.assistant.workspace?.config
     .sharedPackages ?? []) {
-    addCandidateDirectory(directories, sharedPackage.root, {
-      source: "workspace-shared-package",
-      packageId: sharedPackage.id,
-      packageKind: sharedPackage.kind,
-    });
+    const sharedRoot = getInspectionSources(project)
+      ?.roots()
+      .find((root) => root.id === "workspace-package-" + sharedPackage.id);
+    if (!sharedRoot) continue;
+    const relativeRoot = path
+      .relative(project.identity.rootDir, sharedRoot.realPath)
+      .replaceAll("\\", "/");
+    if (!isSafeRelativePath(relativeRoot)) continue;
     for (const exportedPath of Object.values(sharedPackage.sourceExports)) {
+      if (path.posix.dirname(exportedPath) === ".") continue;
       addCandidateDirectory(
         directories,
-        path.posix.join(sharedPackage.root, path.posix.dirname(exportedPath)),
+        path.posix.join(relativeRoot, path.posix.dirname(exportedPath)),
         {
           source: "workspace-shared-package",
           packageId: sharedPackage.id,
@@ -872,12 +822,4 @@ function findCandidateDirectory(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function escapeString(value: string): string {
-  return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
-}
-
-function escapeComment(value: string): string {
-  return value.replaceAll("*/", "*\\/");
 }

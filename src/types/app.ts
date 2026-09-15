@@ -3,7 +3,7 @@ import type { VextMiddleware, VextHandler } from "./middleware.js";
 import type { VextHooks } from "./hooks.js";
 import type { VextFetch, VextFetchConfig } from "../lib/fetch.js";
 import type { VextJobsConfig } from "../lib/jobs/types.js";
-import type { DslBuilder } from "../lib/schema-adapter.js";
+import type { DslBuilder, JSONSchema } from "../lib/schema-adapter.js";
 import type {
   VextDocsConfig,
   VextRouteDocsAccessConfig,
@@ -1697,15 +1697,23 @@ export type VextMiddlewareRef = string | { name: string; options?: unknown };
 /**
  * VextSchemaField — 路由校验和 OpenAPI 响应 schema 的字段定义。
  *
- * 支持 schema-dsl 字符串、字段级 DslBuilder、嵌套对象和对象数组。
+ * 支持 schema-dsl 字符串、字段级 JSON Schema/DslBuilder、嵌套对象和对象数组。
  * DslBuilder 主要用于字段级业务描述：
  * `schemaAdapter.compileField("string:1-50!").description("用户名")`。
  */
 export type VextSchemaField =
   | string
   | DslBuilder
+  | ReadonlySchema<JSONSchema>
   | readonly VextSchemaField[]
   | { [key: string]: VextSchemaField };
+
+/** Accept const field schemas without copying upstream keyword definitions or widening scalar DSL values. */
+type ReadonlySchema<T> = T extends readonly unknown[]
+  ? { readonly [K in keyof T]: ReadonlySchema<T[K]> }
+  : T extends Record<string, unknown>
+    ? { readonly [K in keyof T]: ReadonlySchema<T[K]> }
+    : T;
 
 /**
  * Runtime response data schema compiled once during route registration.

@@ -136,8 +136,13 @@ export function createMemoryJobStore(
     },
     async completeRun(runId, patch, options) {
       const previous = runs.get(runId);
-      if (!previous) return false;
-      if (previous.leaseOwner && previous.leaseOwner !== options?.ownerId)
+      // Completion clears the lease; a late/repeated commit must not reopen that record.
+      if (
+        !previous ||
+        previous.status !== "running" ||
+        !previous.leaseOwner ||
+        previous.leaseOwner !== options?.ownerId
+      )
         return false;
       runs.set(runId, {
         ...previous,

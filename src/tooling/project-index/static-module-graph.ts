@@ -1,4 +1,6 @@
 import type { Node, Program } from "oxc-parser";
+import path from "node:path";
+import { createSourceView } from "../source-view/view.js";
 import {
   parseSourceSyntax,
   walkSourceSyntax,
@@ -51,6 +53,28 @@ export class StaticProjectionError extends Error {
     );
     this.name = "StaticProjectionError";
   }
+}
+
+/** 对单文件文本复用绑定/别名/可变性分析；虚拟根只用于纯内存视图，不执行 I/O。 */
+export function createStaticModuleFromText(
+  filename: string,
+  source: string,
+): StaticModule {
+  const rootId = "static-text";
+  const view = createSourceView({
+    roots: [
+      {
+        id: rootId,
+        kind: "service",
+        realPath: path.parse(path.resolve(".")).root,
+      },
+    ],
+    rolePolicyVersion: "static-text-v1",
+    files: [
+      { rootId, path: filename, role: "source", bytes: Buffer.from(source) },
+    ],
+  });
+  return new StaticModuleGraph(view).module(rootId, filename);
 }
 
 const nameOf = (node: Node): string | undefined =>
@@ -525,6 +549,21 @@ export class StaticModuleGraph {
       symbols,
     );
     return "type" in exported ? next : this.imported(next, exported);
+  }
+
+  /** 解析真实导出归属，供 Loader 门面、路由事实和服务依赖共用。 */
+  exported(rootId: string, file: string, name = "default"): StaticExpression {
+    const module = this.module(rootId, file);
+    const value = module.exports.get(name);
+    const origin = this.expression(module, module.program, [
+      `${rootId}:${file}::export(${name})`,
+    ]);
+    if (!value) return this.fail(origin, `Export ${name} is missing.`);
+    return this.resolve(
+      "type" in value
+        ? this.expression(module, value, origin.symbols)
+        : this.imported(origin, value),
+    );
   }
 
   resolve(input: StaticExpression): StaticExpression {

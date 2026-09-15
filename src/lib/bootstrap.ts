@@ -93,6 +93,7 @@ import {
 import { quietStartupLogger } from "./startup-logger.js";
 import { createStartupProfilerFromEnv } from "./startup-profiler.js";
 import {
+  createRuntimeSnapshotIdentity,
   patchRuntimeSnapshot,
   runtimeModeFromEnvironment,
   writeRuntimeSnapshot,
@@ -826,10 +827,10 @@ export async function bootstrap(
     }
 
     if (!config._testMode) {
-      const runtimeIdentity = {
-        mode: runtimeModeFromEnvironment(process.env),
-        pid: process.pid,
-      };
+      const runtimeIdentity = createRuntimeSnapshotIdentity(
+        rootDir,
+        runtimeModeFromEnvironment(process.env),
+      );
       await writeRuntimeSnapshotSafe(rootDir, {
         runtimeIdentity,
         summary: {
@@ -1251,7 +1252,15 @@ async function startClusterMaster(rootDir: string): Promise<void> {
   // 这些已经在 process.env 中（由 cli/start.ts 设置）
 
   // 创建并启动 Master
+  const runtimeIdentity = createRuntimeSnapshotIdentity(rootDir, "cluster");
   const master = new ClusterMaster({
+    onStopped: () =>
+      patchRuntimeSnapshotSafe(rootDir, {
+        runtimeIdentity,
+        summary: { state: "stopped" },
+        event: { type: "shutdown" },
+        workers: [],
+      }),
     workers,
     autoRestart: (clusterConfig.autoRestart as boolean | undefined) ?? true,
     maxRestarts: (clusterConfig.maxRestarts as number | undefined) ?? 5,
@@ -1268,10 +1277,10 @@ async function startClusterMaster(rootDir: string): Promise<void> {
     sticky: (clusterConfig.sticky as "none" | "ip") ?? "none",
   });
 
-  const runtimeIdentity = {
-    mode: "cluster" as const,
-    pid: process.pid,
-  };
+  await writeRuntimeSnapshotSafe(rootDir, {
+    runtimeIdentity,
+    summary: { state: "starting", cluster: true },
+  });
   const snapshotWorkers = () =>
     [...master.getWorkerMetas().values()].map((worker) => ({
       id: worker.id,
@@ -1328,7 +1337,7 @@ async function startClusterMaster(rootDir: string): Promise<void> {
   });
 
   const readyWorkers = master.getReadyWorkerCount();
-  await writeRuntimeSnapshotSafe(rootDir, {
+  await patchRuntimeSnapshotSafe(rootDir, {
     runtimeIdentity,
     summary: {
       state: "ready",
@@ -1340,15 +1349,13 @@ async function startClusterMaster(rootDir: string): Promise<void> {
       built: isBuilt,
     },
     workers: snapshotWorkers(),
-    events: [
-      {
-        type: "ready",
-        host: config.host ?? "0.0.0.0",
-        port: config.port,
-        workers: readyWorkers,
-        totalWorkers: master.getTargetWorkerCount(),
-      },
-    ],
+    event: {
+      type: "ready",
+      host: config.host ?? "0.0.0.0",
+      port: config.port,
+      workers: readyWorkers,
+      totalWorkers: master.getTargetWorkerCount(),
+    },
   });
   const parentReadyLog = isEnvFlagEnabled(
     process.env.VEXT_START_PARENT_READY_LOG,

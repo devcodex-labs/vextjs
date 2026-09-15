@@ -1,8 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { setImmediate as yieldToEventLoop } from "node:timers/promises";
-import micromatch from "micromatch";
+import {
+  discoverSourceFiles,
+  projectSourceLimits,
+} from "../source-view/discover.js";
 import { parseSourceSyntax } from "../../lib/source-syntax.js";
 import { sourceModuleReferences } from "./module-path.js";
 import {
@@ -12,13 +14,13 @@ import {
 import {
   ROUTE_IGNORE_PATTERNS,
   ROUTE_SOURCE_PATTERNS,
+  shouldIncludeRouteFilePath,
 } from "../../lib/route-file-policy.js";
 import { isExcludedConventionFileName } from "../../lib/project/source-roles.js";
 import { collectSourceView } from "../source-view/collect.js";
 import {
   assertSourceBudget,
   normalizeSourcePath,
-  resolveSourceLimits,
   DEFAULT_SOURCE_LIMITS,
 } from "../source-view/policy.js";
 import {
@@ -66,32 +68,51 @@ export function projectSourceDirectory(
   return normalizeSourcePath(options.directories?.[role] ?? DIRECTORIES[role]);
 }
 
-/** CLI、构建和类型生成共用宿主显式预算；纯SourceView本身不读取环境。 */
-function projectSourceLimits(
-  input: Partial<SourceLimits> = {},
-): Readonly<SourceLimits> {
-  const environment: Partial<SourceLimits> = {};
-  const names = {
-    maxFiles: "VEXT_SOURCE_MAX_FILES",
-    maxFileBytes: "VEXT_SOURCE_MAX_FILE_BYTES",
-    maxTotalBytes: "VEXT_SOURCE_MAX_TOTAL_BYTES",
-    maxScanEntries: "VEXT_SOURCE_MAX_SCAN_ENTRIES",
-  } as const;
-  for (const [key, name] of Object.entries(names)) {
-    const value = process.env[name];
-    if (value === undefined || input[key as keyof SourceLimits] !== undefined)
-      continue;
-    if (!/^(?:0|[1-9]\d*)$/u.test(value))
-      throw new SourceViewError(
-        "VEXT_SOURCE_LIMIT",
-        `Invalid source budget ${name}: expected a non-negative integer.`,
-      );
-    Object.assign(environment, { [key]: Number(value) });
-  }
-  return resolveSourceLimits({ ...environment, ...input });
+/** 在已封存的广义源码上投影真实 Loader 角色；不重新发现或读取文件。 */
+export function projectConventionSourceView(
+  view: SourceView,
+  rootDir: string,
+  options: ProjectSourceOptions = {},
+): SourceView {
+  const rootId = options.rootId ?? PROJECT_SOURCE_ROOT_ID;
+  const records = view.list().map((record) => {
+    if (record.rootId !== rootId) return record;
+    for (const role of ["route", "service", "plugin"] as const) {
+      const directory = projectSourceDirectory(role, options);
+      if (!record.path.startsWith(directory + "/")) continue;
+      const local = record.path.slice(directory.length + 1);
+      const included =
+        role === "route"
+          ? shouldIncludeRouteFilePath(
+              path.join(rootDir, record.path),
+              path.join(rootDir, directory),
+            )
+          : /\.(?:ts|mts|cts|js|mjs|cjs)$/u.test(local) &&
+            !local.split("/").some(isExcludedConventionFileName);
+      if (included) return Object.freeze({ ...record, role });
+    }
+    return Object.freeze({ ...record, role: "source" });
+  });
+  const byKey = new Map(
+    records.map((record) => [record.rootId + ":" + record.path, record]),
+  );
+  return Object.freeze({
+    revision: view.revision,
+    roots: () => view.roots(),
+    list: (filter?: Parameters<SourceView["list"]>[0]) =>
+      Object.freeze(
+        records.filter(
+          (record) =>
+            (!filter?.rootId || record.rootId === filter.rootId) &&
+            (!filter?.roles || filter.roles.includes(record.role)),
+        ),
+      ),
+    record: (id: string, file: string) => byKey.get(id + ":" + file),
+    read: (id: string, file: string) => view.read(id, file),
+  });
 }
 
-function declaredExport(exports: unknown, subpath: string): boolean {
+export function declaredExport(exports: unknown, subpath: string): boolean {
   const targetExists = (target: unknown): boolean => {
     if (typeof target === "string")
       return (
@@ -123,79 +144,6 @@ function declaredExport(exports: unknown, subpath: string): boolean {
       ([a], [b]) => b.indexOf("*") - a.indexOf("*") || b.length - a.length,
     )[0];
   return pattern !== undefined && targetExists(pattern[1]);
-}
-
-async function* discoverSourceFiles(
-  root: string,
-  directory: string,
-  patterns: string[],
-  ignore: string[],
-  budget: { entries: number; limit: number },
-  cancelled: () => void,
-): AsyncGenerator<string> {
-  const pending = [{ relative: "", ancestors: new Set<string>() }];
-  while (pending.length) {
-    cancelled();
-    const current = pending.pop()!;
-    const absolute = path.join(root, directory, current.relative);
-    const real = assertRealPathInside(root, absolute, "source directory");
-    const identity = process.platform === "win32" ? real.toLowerCase() : real;
-    if (current.ancestors.has(identity))
-      throw new SourceViewError(
-        "VEXT_SOURCE_UNVERIFIED",
-        `Source directory cycle: ${absolute}. Analysis is incomplete.`,
-      );
-    const ancestors = new Set([...current.ancestors, identity]);
-    const before = fs.statSync(absolute, { bigint: true });
-    // opendir逐条消费；超限/取消/失败时for-await负责关闭当前目录句柄。
-    const handle = await fs.promises.opendir(absolute);
-    for await (const entry of handle) {
-      cancelled();
-      if (++budget.entries > budget.limit)
-        throw new SourceViewError(
-          "VEXT_SOURCE_LIMIT",
-          `Source discovery is incomplete at ${absolute}: exceeds ${budget.limit} entries. Adjust VEXT_SOURCE_MAX_SCAN_ENTRIES.`,
-        );
-      if (budget.entries % 16 === 0) {
-        await yieldToEventLoop();
-        cancelled();
-      }
-      const relative = path.posix.join(current.relative, entry.name);
-      if (
-        micromatch.isMatch(relative, ignore, { dot: true }) ||
-        micromatch.isMatch(`${relative}/`, ignore, { dot: true })
-      )
-        continue;
-      const target = path.join(absolute, entry.name);
-      let isDirectory = entry.isDirectory();
-      if (entry.isSymbolicLink()) {
-        assertRealPathInside(root, target, "linked source");
-        isDirectory = fs.statSync(target).isDirectory();
-        if (!isDirectory)
-          throw new SourceViewError(
-            "VEXT_SOURCE_UNVERIFIED",
-            `Linked source file is unsupported: ${target}. Analysis is incomplete.`,
-          );
-      }
-      if (isDirectory) pending.push({ relative, ancestors });
-      else if (
-        entry.isFile() &&
-        !isExcludedConventionFileName(entry.name) &&
-        micromatch.isMatch(relative, patterns)
-      )
-        yield relative;
-    }
-    const after = fs.statSync(absolute, { bigint: true });
-    if (
-      after.dev !== before.dev ||
-      after.ino !== before.ino ||
-      fs.realpathSync.native(absolute) !== real
-    )
-      throw new SourceViewError(
-        "VEXT_SOURCE_CHANGED",
-        `Source directory changed: ${absolute}.`,
-      );
-  }
 }
 
 /** 有界发现普通目录与根内链接，逻辑路径和封存字节供全部静态消费者复用。 */
@@ -280,6 +228,7 @@ export async function collectProjectSources(
       definition.ignore,
       discoveryBudget,
       cancelled,
+      (name) => !isExcludedConventionFileName(name),
     )) {
       assertSourceBudget(files.length + 1, 0, limits);
       files.push({

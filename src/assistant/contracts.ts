@@ -1,5 +1,13 @@
 import { createHash } from "node:crypto";
+import { VEXT_RECIPE_DEFINITIONS } from "./recipe-registry.js";
 import type { VextMcpToolName } from "./catalog.js";
+import { normalizeAnalysisDomain } from "../tooling/diagnostics/contracts.js";
+import {
+  ASSISTANT_ROLES,
+  canonicalAssistantRole,
+} from "../tooling/project-index/roles.js";
+import { normalizeSourcePath } from "../tooling/source-view/policy.js";
+import type { WorkspaceSourceDeclarations } from "../tooling/project-index/workspace-sources.js";
 
 export const VEXT_ASSISTANT_CONTRACT_VERSION = 1 as const;
 export const VEXT_MCP_HOST_IDS = [
@@ -70,16 +78,9 @@ export interface NormalizedVextAssistantPolicy {
   digest: string;
 }
 
-export interface VextAssistantWorkspaceConfig {
+export interface VextAssistantWorkspaceConfig extends WorkspaceSourceDeclarations {
   schemaVersion: 1;
   hosts?: VextMcpHostId[];
-  services?: Array<{ id: string; root: string; sharedPackages?: string[] }>;
-  sharedPackages?: Array<{
-    id: string;
-    root: string;
-    kind: "contracts" | "models" | "ui" | "config" | "utility" | "test-support";
-    sourceExports: Record<string, string>;
-  }>;
   policyDefaults?: VextAssistantPolicyPatch;
 }
 
@@ -87,7 +88,11 @@ export interface VextExpectedIdentity {
   projectId: string;
   contextRevision: string;
 }
-export interface VextProjectInspectInput {
+export interface VextProjectInputPolicy {
+  policyPatch?: VextAssistantPolicyPatch;
+  expectedIdentity?: VextExpectedIdentity;
+}
+export interface VextProjectInspectInput extends VextProjectInputPolicy {
   section?: string;
   sourceMode?: "auto" | "baseline";
   refresh?: boolean;
@@ -103,29 +108,30 @@ export interface VextKnowledgeSearchInput {
   locale?: VextAssistantLanguage;
   limit?: number;
 }
-export interface VextCapabilityCheckInput {
+export interface VextCapabilityCheckInput extends VextProjectInputPolicy {
   capability: string;
 }
-export interface VextGenerateChangesInput {
+export interface VextGenerateChangesInput extends VextProjectInputPolicy {
   recipeId: string;
   name: string;
   options?: Record<string, unknown>;
   expectedIdentity?: VextExpectedIdentity;
 }
-export interface VextValidateChangesInput {
+export interface VextValidateChangesInput extends VextProjectInputPolicy {
   profile?: "syntax" | "standard" | "strict";
   changeSet?: Record<string, unknown>;
   files?: Record<string, unknown>[];
   expectedIdentity?: VextExpectedIdentity;
 }
-export interface VextProjectCheckInput {
+export interface VextProjectCheckInput extends VextProjectInputPolicy {
   profile?: "quick" | "standard" | "strict";
   domain?: string;
   refresh?: boolean;
   diagnosticLimit?: number;
   expectedIdentity?: VextExpectedIdentity;
 }
-export interface VextRuntimeInspectInput {
+export interface VextRuntimeInspectInput extends VextProjectInputPolicy {
+  instanceId?: string;
   section?: "summary" | "workers" | "reloads" | "events";
   limit?: number;
   cursor?: string;
@@ -181,8 +187,9 @@ export const VEXT_MCP_TOOL_INPUT_SCHEMAS: Record<
       sourceMode: { type: "string", enum: ["auto", "baseline"] },
       refresh: { type: "boolean" },
       limit: { type: "integer", minimum: 1, maximum: 200 },
-      cursor: { type: "string" },
+      cursor: { type: "string", maxLength: 2048 },
       expectedIdentity: expectedIdentitySchema,
+      policyPatch: { type: "object", additionalProperties: true },
     },
   },
   vext_knowledge_search: {
@@ -212,10 +219,21 @@ export const VEXT_MCP_TOOL_INPUT_SCHEMAS: Record<
     type: "object",
     additionalProperties: false,
     required: ["capability"],
-    properties: { capability: { type: "string", minLength: 1 } },
+    properties: {
+      expectedIdentity: expectedIdentitySchema,
+      capability: { type: "string", minLength: 1 },
+      policyPatch: { type: "object", additionalProperties: true },
+    },
   },
   vext_generate_changes: {
     type: "object",
+    allOf: VEXT_RECIPE_DEFINITIONS.map((recipe) => ({
+      if: {
+        properties: { recipeId: { enum: [recipe.id, recipe.name] } },
+        required: ["recipeId"],
+      },
+      then: { properties: { options: recipe.optionsSchema } },
+    })),
     additionalProperties: false,
     required: ["recipeId", "name"],
     properties: {
@@ -223,6 +241,7 @@ export const VEXT_MCP_TOOL_INPUT_SCHEMAS: Record<
       name: { type: "string", minLength: 1, maxLength: 120 },
       options: { type: "object", additionalProperties: true },
       expectedIdentity: expectedIdentitySchema,
+      policyPatch: { type: "object", additionalProperties: true },
     },
   },
   vext_validate_changes: {
@@ -238,6 +257,7 @@ export const VEXT_MCP_TOOL_INPUT_SCHEMAS: Record<
         items: { type: "object" },
       },
       expectedIdentity: expectedIdentitySchema,
+      policyPatch: { type: "object", additionalProperties: true },
     },
   },
   vext_project_check: {
@@ -249,19 +269,26 @@ export const VEXT_MCP_TOOL_INPUT_SCHEMAS: Record<
       refresh: { type: "boolean" },
       diagnosticLimit: { type: "integer", minimum: 1, maximum: 500 },
       expectedIdentity: expectedIdentitySchema,
+      policyPatch: { type: "object", additionalProperties: true },
     },
   },
   vext_runtime_inspect: {
     type: "object",
     additionalProperties: false,
     properties: {
+      instanceId: {
+        type: "string",
+        pattern:
+          "^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$",
+      },
       section: {
         type: "string",
         enum: ["summary", "workers", "reloads", "events"],
       },
       limit: { type: "integer", minimum: 1, maximum: 100 },
-      cursor: { type: "string" },
+      cursor: { type: "string", maxLength: 2048 },
       expectedIdentity: expectedIdentitySchema,
+      policyPatch: { type: "object", additionalProperties: true },
     },
   },
 };
@@ -312,6 +339,8 @@ export function normalizeDevMcpConfig(
   ]);
   if (unknownKey)
     return invalid(`dev.mcp contains unknown field ${unknownKey}.`);
+  if (value.enabled !== undefined && typeof value.enabled !== "boolean")
+    return invalid("dev.mcp.enabled must be a boolean.");
   const sync =
     value.sync === undefined
       ? "auto"
@@ -381,9 +410,31 @@ export function normalizePolicyPatch(
     patch.commentDetail = commentDetail;
   }
   if (value.roles !== undefined) {
-    const roles = normalizeStringRecord(value.roles, "roles", isRelativePath);
+    if (!isRecord(value.roles)) return invalid("roles must be an object.");
+    for (const key of Object.keys(value.roles)) {
+      if (
+        !ASSISTANT_ROLES.some((role) => role.id === canonicalAssistantRole(key))
+      )
+        return invalid(`Unknown role: ${key}.`);
+    }
+    const roles = normalizeStringRecord(value.roles, "roles", (value) => {
+      try {
+        normalizeSourcePath(value);
+        return true;
+      } catch {
+        return false;
+      }
+    });
     if (!roles.ok) return roles;
-    patch.roles = roles.value;
+    const canonicalRoles: Record<string, string> = {};
+    for (const [key, directory] of Object.entries(roles.value)) {
+      const id = canonicalAssistantRole(key);
+      const normalized = normalizeSourcePath(directory);
+      if (canonicalRoles[id] !== undefined && canonicalRoles[id] !== normalized)
+        return invalid(`Conflicting paths for role ${id}.`);
+      canonicalRoles[id] = normalized;
+    }
+    patch.roles = canonicalRoles;
   }
   if (value.scripts !== undefined) {
     const scripts = normalizeStringRecord(
@@ -469,6 +520,17 @@ export function parseMcpToolInput<Name extends VextMcpToolName>(
 ): VextAssistantValidationResult<VextMcpToolInputMap[Name]> {
   const value = args === undefined ? {} : args;
   if (!isRecord(value)) return invalid(`${name} input must be an object.`);
+  if (name !== "vext_knowledge_search" && Object.hasOwn(value, "policyPatch")) {
+    const { policyPatch, ...rest } = value;
+    const policy = normalizePolicyPatch(policyPatch);
+    if (!policy.ok) return policy;
+    const parsed = parseMcpToolInput(name, rest);
+    if (!parsed.ok) return parsed;
+    return {
+      ...parsed,
+      value: { ...parsed.value, policyPatch: policy.value.patch },
+    };
+  }
   switch (name) {
     case "vext_project_inspect":
       return parseProjectInspect(value) as VextAssistantValidationResult<
@@ -533,6 +595,8 @@ function parseProjectInspect(value: Record<string, unknown>) {
   if (!refresh.ok) return refresh;
   const cursor = optionalString(value.cursor, "cursor");
   if (!cursor.ok) return cursor;
+  if (cursor.value && cursor.value.length > 2048)
+    return invalid("cursor must not exceed 2048 characters.");
   return ok({
     section: section.value,
     sourceMode: sourceMode.value,
@@ -577,18 +641,21 @@ function parseKnowledgeSearch(value: Record<string, unknown>) {
   if (!limit.ok) return limit;
   const domain = optionalString(value.domain, "domain");
   if (!domain.ok) return domain;
+  const normalizedDomain = normalizeAnalysisDomain(domain.value);
+  if (!normalizedDomain)
+    return invalid(`Unknown knowledge domain: ${domain.value}.`);
   return ok({
     query: query.value,
     ids: ids.value,
     kinds: kinds.value,
-    domain: domain.value,
+    domain: normalizedDomain,
     locale: locale.value,
     limit: limit.value,
   });
 }
 
 function parseCapabilityCheck(value: Record<string, unknown>) {
-  const unknownKey = firstUnknownKey(value, ["capability"]);
+  const unknownKey = firstUnknownKey(value, ["capability", "expectedIdentity"]);
   if (unknownKey)
     return invalid(
       `vext_capability_check contains unknown field ${unknownKey}.`,
@@ -601,7 +668,12 @@ function parseCapabilityCheck(value: Record<string, unknown>) {
   );
   if (!capability.ok || !capability.value)
     return invalid("capability is required.");
-  return ok({ capability: capability.value });
+  const expectedIdentity = optionalExpectedIdentity(value.expectedIdentity);
+  if (!expectedIdentity.ok) return expectedIdentity;
+  return ok({
+    capability: capability.value,
+    expectedIdentity: expectedIdentity.value,
+  });
 }
 
 function parseGenerateChanges(value: Record<string, unknown>) {
@@ -696,11 +768,14 @@ function parseProjectCheck(value: Record<string, unknown>) {
   if (!expectedIdentity.ok) return expectedIdentity;
   const domain = optionalString(value.domain, "domain");
   if (!domain.ok) return domain;
+  const normalizedDomain = normalizeAnalysisDomain(domain.value);
+  if (normalizedDomain === undefined)
+    return invalid(`Unknown project check domain: ${domain.value}.`);
   const refresh = optionalBoolean(value.refresh, "refresh");
   if (!refresh.ok) return refresh;
   return ok({
     profile: profile.value,
-    domain: domain.value,
+    domain: normalizedDomain,
     refresh: refresh.value,
     diagnosticLimit: diagnosticLimit.value,
     expectedIdentity: expectedIdentity.value,
@@ -710,6 +785,7 @@ function parseProjectCheck(value: Record<string, unknown>) {
 function parseRuntimeInspect(value: Record<string, unknown>) {
   const unknownKey = firstUnknownKey(value, [
     "section",
+    "instanceId",
     "limit",
     "cursor",
     "expectedIdentity",
@@ -731,7 +807,19 @@ function parseRuntimeInspect(value: Record<string, unknown>) {
   if (!expectedIdentity.ok) return expectedIdentity;
   const cursor = optionalString(value.cursor, "cursor");
   if (!cursor.ok) return cursor;
+  if (cursor.value && cursor.value.length > 2048)
+    return invalid("cursor must not exceed 2048 characters.");
+  const instanceId = optionalString(value.instanceId, "instanceId");
+  if (!instanceId.ok) return instanceId;
+  if (
+    instanceId.value !== undefined &&
+    !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(
+      instanceId.value,
+    )
+  )
+    return invalid("instanceId must be a runtime UUID.");
   return ok({
+    instanceId: instanceId.value,
     section: section.value,
     limit: limit.value,
     cursor: cursor.value,
@@ -746,6 +834,8 @@ function normalizeHttp(
   const unknownKey = firstUnknownKey(value, ["enabled", "port"]);
   if (unknownKey)
     return invalid(`dev.mcp.http contains unknown field ${unknownKey}.`);
+  if (value.enabled !== undefined && typeof value.enabled !== "boolean")
+    return invalid("dev.mcp.http.enabled must be a boolean.");
   const enabled = typeof value.enabled === "boolean" ? value.enabled : false;
   const portValue = value.port === undefined ? 3980 : value.port;
   if (

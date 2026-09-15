@@ -1,3 +1,14 @@
+import { collectProjectAnalysisContext } from "../project-index/analysis-source.js";
+import {
+  resolveAssistantRoles,
+  type ResolvedAssistantRole,
+} from "../project-index/roles.js";
+import { projectConventionSourceView } from "../project-index/source-input.js";
+import {
+  collectProjectStaticDiagnostics,
+  domainSourceFiles,
+} from "../diagnostics/project.js";
+import type { AnalysisDomain } from "../diagnostics/contracts.js";
 import {
   buildRouteIndexFromSourceView,
   projectRouteSourceSnapshot,
@@ -37,7 +48,13 @@ export type DoctorGroup =
   | "docs"
   | "tooling"
   | "services"
-  | "plugins";
+  | "plugins"
+  | "configuration"
+  | "models"
+  | "frontend"
+  | "i18n"
+  | "jobs"
+  | "middlewares";
 
 export interface DoctorDiagnostic {
   level: DoctorLevel;
@@ -55,7 +72,8 @@ export interface DoctorDiagnostic {
     | "snapshot-incomplete"
     | "service-dependencies"
     | "plugin-extensions"
-    | "analysis-incomplete";
+    | "analysis-incomplete"
+    | `VEXT_MCP_${string}`;
   message: string;
   filePath?: string;
   fileRelativePath?: string;
@@ -76,14 +94,7 @@ export interface RunDoctorOptions {
 }
 
 export interface DoctorDomainResult {
-  domain:
-    | "routes"
-    | "services"
-    | "plugins"
-    | "configuration"
-    | "models"
-    | "frontend"
-    | "runtime";
+  domain: AnalysisDomain;
   status: "checked" | "not-present" | "unsupported" | "incomplete";
   required: boolean;
   evidence: string[];
@@ -157,11 +168,41 @@ async function runDoctorOwned(
       "[vextjs] doctor --manifest-only cannot be combined with --write-manifest because a stale snapshot must not be re-attested as current.",
     );
   }
-  const sourceView = await collectProjectSources(
-    options.rootDir,
-    target === "all" ? ["route", "service", "plugin"] : ["route"],
-    options.sourceOptions,
-  );
+  const fullContext =
+    target === "all" &&
+    !options.sourceOptions?.sharedRoots?.length &&
+    (!options.sourceOptions?.rootId ||
+      options.sourceOptions.rootId === "project")
+      ? await collectProjectAnalysisContext(options.rootDir, {
+          limits: options.sourceOptions?.limits,
+          signal: options.sourceOptions?.signal,
+          roles: resolveAssistantRoles({
+            roles: Object.fromEntries(
+              Object.entries(options.sourceOptions?.directories ?? {}).map(
+                ([key, value]) => [
+                  key === "route"
+                    ? "routes"
+                    : key === "service"
+                      ? "services"
+                      : "plugins",
+                  value,
+                ],
+              ),
+            ),
+          }),
+        })
+      : undefined;
+  const sourceView = fullContext
+    ? projectConventionSourceView(
+        fullContext.view,
+        options.rootDir,
+        options.sourceOptions,
+      )
+    : await collectProjectSources(
+        options.rootDir,
+        target === "all" ? ["route", "service", "plugin"] : ["route"],
+        options.sourceOptions,
+      );
   const currentSnapshot = projectRouteSourceSnapshot(
     sourceView,
     options.sourceOptions,
@@ -226,6 +267,7 @@ async function runDoctorOwned(
     sourceFreshness,
     snapshotDiagnostics,
     options.sourceOptions,
+    fullContext?.roles,
   );
   return emitDoctorFiles(options, result);
 }
@@ -257,6 +299,7 @@ function projectDoctorResult(
   sourceFreshness: DoctorResult["sourceFreshness"],
   snapshotDiagnostics: DoctorDiagnostic[],
   sourceOptions: ProjectSourceOptions = {},
+  fullRoles?: readonly ResolvedAssistantRole[],
 ): DoctorResult {
   const diagnostics = [...analyzeRoutes(routeEntries), ...snapshotDiagnostics];
   const routes = routeEntries.map(toDoctorRouteRecord);
@@ -326,20 +369,89 @@ function projectDoctorResult(
             : "Declared app extension keys and finite lifecycle inference. Unknown types, computed keys or conditional registration remain incomplete; lifecycle side effects are outside this profile.",
       });
     }
-    for (const domain of [
-      "configuration",
-      "models",
-      "frontend",
-      "runtime",
-    ] as const)
-      domains.push({
-        domain,
-        status: "unsupported",
-        required: false,
-        evidence: [],
-        reason:
-          "Outside the static-project profile. Requires resolved runtime configuration or the corresponding build/runtime validation; directory absence is not proof that this capability is disabled.",
+    if (fullRoles) {
+      const shared = collectProjectStaticDiagnostics(view, fullRoles, {
+        includeDependencies: false,
       });
+      if (shared.some((item) => item.domain === "routes" && item.incomplete))
+        domains[0]!.status = "incomplete";
+      // all 复用共享检查，避免同一路由标签同时产生旧、新两条诊断。
+      for (let index = diagnostics.length - 1; index >= 0; index--)
+        if (diagnostics[index]!.code === "deprecated-docs-tags")
+          diagnostics.splice(index, 1);
+      diagnostics.push(
+        ...shared.map(
+          (item): DoctorDiagnostic => ({
+            code: item.code as `VEXT_MCP_${string}`,
+            level: item.severity === "warning" ? "warn" : item.severity,
+            group:
+              item.domain === "routes"
+                ? "routing"
+                : item.domain === "configuration" ||
+                    item.domain === "models" ||
+                    item.domain === "frontend" ||
+                    item.domain === "i18n" ||
+                    item.domain === "jobs" ||
+                    item.domain === "middlewares"
+                  ? item.domain
+                  : "tooling",
+            blocking: item.severity === "error",
+            message: item.message,
+            fileRelativePath: item.sourceFile,
+          }),
+        ),
+      );
+      for (const [role, domain] of [
+        ["config", "configuration"],
+        ["models", "models"],
+        ["frontend", "frontend"],
+        ["locales", "i18n"],
+        ["jobs", "jobs"],
+        ["middlewares", "middlewares"],
+      ] as const) {
+        const files = domainSourceFiles(view, fullRoles, role);
+        const unknown =
+          fullRoles.some(
+            (item) =>
+              (role === "frontend"
+                ? item.id.startsWith("frontend")
+                : item.id === role) && item.unresolved,
+          ) || shared.some((item) => item.domain === domain && item.incomplete);
+        domains.push({
+          domain,
+          status: unknown
+            ? "incomplete"
+            : files.length
+              ? "checked"
+              : "not-present",
+          required: true,
+          evidence: files.map(
+            (file) => `${file.rootId}:${file.path}#${file.sha256}`,
+          ),
+          reason:
+            domain === "configuration"
+              ? "Selected static config layers, field certainty and Redis target requirements; providers and runtime environment are not executed."
+              : "Declared source scope and syntax; runtime behavior, external services and business completeness still require host validation.",
+        });
+      }
+    } else
+      for (const domain of ["configuration", "models", "frontend"] as const)
+        domains.push({
+          domain,
+          status: "unsupported",
+          required: false,
+          evidence: [],
+          reason:
+            "The supplied source view does not include a complete project configuration/directory inventory.",
+        });
+    domains.push({
+      domain: "runtime",
+      status: "unsupported",
+      required: false,
+      evidence: [],
+      reason:
+        "Requires host-side runtime evidence; static analysis never starts the application.",
+    });
   }
   const complete = domains.every(
     (item) =>

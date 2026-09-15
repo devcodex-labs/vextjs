@@ -276,6 +276,56 @@ function compile(
 }
 
 /**
+ * 静态工具使用独立的严格解析上下文，避免未知类型静默回退或改变应用全局注册表。
+ * 只供包内源码工具使用；不启动应用、不加载自定义插件，调用结束释放解析缓存。
+ */
+export function compileStaticSchema(definition: DslDefinition): JSONSchema {
+  assertStaticDslArrayForm(definition);
+  const runtime = createRuntime({ strict: true });
+  try {
+    return runtime.compile(definition);
+  } finally {
+    runtime.dispose();
+  }
+}
+
+/** The installed DSL parser does not implement Vext's historical tuple shorthand. Keep MCP candidates explicit. */
+function assertStaticDslArrayForm(definition: unknown): void {
+  const pending: unknown[] = [definition];
+  const seen = new Set<object>();
+  while (pending.length) {
+    const value = pending.pop();
+    if (!value || typeof value !== "object") continue;
+    if (Array.isArray(value))
+      throw new Error(
+        "Array shorthand is not supported by the installed schema compiler. Use an explicit { type: 'array', items: ... } field schema or array<...> DSL.",
+      );
+    if (seen.has(value)) continue;
+    seen.add(value);
+    const fields = value as Record<string, unknown>;
+    if (
+      (typeof fields.type === "string" &&
+        [
+          "string",
+          "number",
+          "integer",
+          "boolean",
+          "array",
+          "object",
+          "null",
+        ].includes(fields.type)) ||
+      Array.isArray(fields.type) ||
+      Array.isArray(fields.enum) ||
+      Array.isArray(fields.anyOf) ||
+      Array.isArray(fields.oneOf) ||
+      Array.isArray(fields.allOf)
+    )
+      continue;
+    pending.push(...Object.values(fields));
+  }
+}
+
+/**
  * 编译单个字段定义为 DslBuilder
  *
  * @param definition 字段 DSL 字符串（如 'string:3-32!'、'email!'）

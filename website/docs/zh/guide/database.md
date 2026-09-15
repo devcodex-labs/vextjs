@@ -212,7 +212,7 @@ export default {
       memory: {
         enabled: true,
         maxSize: 1000, // 最大缓存条数
-        ttl: 300, // 默认 TTL（秒）
+        ttl: 300_000, // 默认 TTL（毫秒，5 分钟）
       },
 
       // L2 Redis 缓存（可选）
@@ -220,7 +220,7 @@ export default {
         enabled: true,
         uri: "redis://localhost:6379",
         prefix: "myapp:cache:",
-        ttl: 600,
+        ttl: 600_000, // 毫秒，10 分钟
       },
     },
   },
@@ -378,8 +378,23 @@ const total = await usersCol.countDocuments({ role: "admin" });
 const User = app.db.model("users");
 
 // Model 提供更高级的 API（分页、缓存、校验等）
-const result = await User.findPage({ role: "admin" }, { page: 1, limit: 20 });
+const result = await User.findPage({
+  query: { role: "admin" },
+  page: 1,
+  limit: 20,
+  sort: { createdAt: -1, _id: -1 },
+  totals: { mode: "sync" },
+});
+const { items, pageInfo, totals } = result;
 ```
+
+`findPage(options)` 接收单个 options 对象，条件放在 `query`。返回 `items`、`pageInfo` 和可选 `totals/meta`；不要使用双参数写法或读取 `result.data`。游标翻页使用 `after` / `before`，并保持相同过滤条件与稳定排序。
+
+`findAndCount(query, options)` 返回 `{ data, total }`，`find(query, options)` 也是合法原生 API。需要分页时优先原生分页，不先读取固定数量的文档再在 service 中筛选、计数或 `slice`。页码、limit、游标及超出上限的行为要经过请求校验和数据库测试。
+
+TypeScript 使用 `app.db.model<PostDocument>(registeredKey)` 获得原生查询结果类型。领域文档可放 `src/types/server/models/`，service 输入/输出契约放 `src/types/server/services/`；目录遵从项目自有规范，不复制一套 Collection 或 Repository 接口。部分写入参数允许 `unknown`，仍需输入类型、请求 schema 和模型 schema。
+
+数据库缓存的查询 `cache`、`cache.memory.ttl`、`cache.redis.ttl` 均为毫秒；session store 的 `ttlSeconds` 则是秒，由适配器转换，不能混用。配置值直接交给底层，本次说明不改变运行值。
 
 ### use(dbName)
 
@@ -1211,3 +1226,11 @@ app.db.use("cn", "billing");
 // ✅ v0.3.0 — 先切换连接池，再切换数据库
 app.db.pool("cn").use("billing");
 ```
+
+## MCP 消费者验证中的分页与校验边界
+
+在 monSQLize 3.3.0 中，`findPage({ totals: { mode: "sync" } })` 的总数仍可能来自独立缓存，默认 `totals.ttlMs` 为 600000 毫秒。`cache: 0` 不代表强制重新统计；也不能把统计失败返回的 `null/error` 显示为 0。需要每次重新计数的编号分页可直接用 `findAndCount(query, { skip, limit, sort })`，消费 `data/total`。两次数据库读取不等于事务快照，并发修改仍可能产生读取时刻差异。
+
+模型数组字段使用 `{ type: "array", items: { type: "string" } }` 或 `array<string>` DSL。当前 schema-dsl 3.0.4 不正确编译 `["string"]` 简写，MCP 静态候选检查会要求改用显式结构。模型 schema 仍需真实写入验证；仅通过 TypeScript 不能证明运行时校验有效。
+
+monSQLize 可能将 MongoDB 的唯一键错误 11000 映射为 `code: "DUPLICATE_KEY"`。业务根据实际错误码和对应唯一约束转换为冲突响应，其余数据库错误继续传播；不要按错误文本包含某个单词就吞掉失败。

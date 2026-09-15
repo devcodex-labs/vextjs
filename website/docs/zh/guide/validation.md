@@ -817,3 +817,7 @@ app.post(
 - 查看 [OpenAPI 文档](/guide/openapi) 如何与校验规则联动
 - 学习 [路由](/guide/routing) 中三段式的完整用法
 - 探索 [插件](/guide/plugins) 如何替换校验引擎
+
+## 字段级 JSON Schema 与文档一致性
+
+请求位置使用 DSL 字段表，例如 `{ featured: { type: "boolean" }, status: { enum: ["draft", "published"] } }`。字段级裸 type/enum 按运行编译器解释，OpenAPI 与 typed client 使用同样的字段类型。根字段表可以有名为 type 的字段；嵌套对象若需要同名业务字段，应显式写成 `{ metadata: { type: { type: "string" }, label: "string!" } }`，避免 `metadata.type: "string"` 被运行编译器当作整个 metadata 的原生 schema 类型。

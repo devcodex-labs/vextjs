@@ -254,7 +254,7 @@ export interface MonSQLizeDatabaseConfig {
       enabled?: boolean;
       /** 最大缓存条数（默认 1000） */
       maxSize?: number;
-      /** 默认 TTL 秒数（默认 300） */
+      /** 默认 TTL 毫秒数；省略时沿用 monSQLize/cache-hub 默认值 */
       ttl?: number;
     };
     /** L2 Redis 缓存（可选） */
@@ -266,7 +266,7 @@ export interface MonSQLizeDatabaseConfig {
       url?: string;
       /** 缓存 key 前缀 */
       prefix?: string;
-      /** 默认 TTL 秒数 */
+      /** 默认 TTL 毫秒数 */
       ttl?: number;
     };
   };

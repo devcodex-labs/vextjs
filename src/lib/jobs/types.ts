@@ -231,6 +231,7 @@ export interface VextJobClaimRunOptions {
 }
 
 export interface VextJobCompleteOptions {
+  /** Built-in stores accept completion only for the matching nonempty running owner. */
   ownerId?: string;
 }
 
@@ -269,6 +270,12 @@ export interface VextJobStore {
     leaseTtl: number,
     now?: Date,
   ): Promise<boolean>;
+  /**
+   * Atomically completes a running record owned by options.ownerId and clears its lease.
+   * Built-in stores return false without modifying queued, terminal, missing, or
+   * differently owned records. Repeated completion is rejected, including by the former owner.
+   * This guards the stored result; handlers still need business-level idempotency.
+   */
   completeRun(
     runId: string,
     patch: Partial<

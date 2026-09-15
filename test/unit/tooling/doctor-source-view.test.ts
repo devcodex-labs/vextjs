@@ -43,6 +43,39 @@ afterEach(() => {
 });
 
 describe("Doctor source identity", () => {
+  it("does not claim full validation when a route handler is unknown", async () => {
+    const root = fixture();
+    fs.writeFileSync(
+      path.join(root, "src/routes/index.ts"),
+      "import { defineRoutes } from 'vextjs'; import handler from '../utils/handler.js'; export default defineRoutes(app => { app.get('/', {}, handler); });",
+    );
+    const result = await runDoctor({ rootDir: root, target: "all" });
+    expect(result.ok).toBe(true);
+    expect(result.valid).toBe(false);
+    expect(result.domains).toContainEqual(
+      expect.objectContaining({ domain: "routes", status: "incomplete" }),
+    );
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({ code: "VEXT_MCP_ROUTE_ANALYSIS_UNKNOWN" }),
+    );
+  });
+
+  it("uses the shared config checker for invalid middleware declarations", async () => {
+    const root = fixture();
+    fs.mkdirSync(path.join(root, "src/config"));
+    fs.writeFileSync(
+      path.join(root, "src/config/default.ts"),
+      "export default { middlewares: ['auth', 'auth'] };",
+    );
+    const result = await runDoctor({ rootDir: root, target: "all" });
+    expect(result.ok).toBe(false);
+    expect(
+      result.diagnostics.filter(
+        (item) => item.code === "VEXT_MCP_CONFIG_INVALID",
+      ),
+    ).toHaveLength(1);
+  });
+
   it("analyzes every supported static domain from one sealed input without disk access", async () => {
     const root = fixture();
     fs.writeFileSync(path.join(root, "src/routes/index.ts"), source("/probe"));

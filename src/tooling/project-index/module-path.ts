@@ -50,9 +50,9 @@ export function sourceModuleReferences(
     const matches = roots.filter((item) =>
       isPathInside(item.realPath, absolute),
     );
-    const target =
-      matches.find((item) => item.id === root.id) ??
-      (matches.length === 1 ? matches[0] : undefined);
+    const target = matches.sort(
+      (left, right) => right.realPath.length - left.realPath.length,
+    )[0];
     if (!target) return [];
     const relative = path
       .relative(target.realPath, absolute)

@@ -178,3 +178,6 @@ reports/
 # Local browser verification output (sources live in test/fixtures)
 .playwright-cli/
 output/playwright/
+
+# Framework build ownership (removed on normal completion)
+.vext-framework-build.lock
