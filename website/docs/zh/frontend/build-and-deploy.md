@@ -2,6 +2,12 @@
 
 `vext build` 会在一个命令中编译服务端产物和前端产物。本页给出生产交付路径；字段级说明见[前端配置](./configuration)，缓存和媒体行为见[静态资源与 CDN](./static-assets-and-cdn)。
 
+## 先验证同源交付
+
+从已启用前端的[全栈项目](./getting-started)开始，在应用根目录执行 `npm run build`，成功后运行 `npm start -- --port 3000`。访问已有 SSR 路由，确认原始 HTML 有正文、浏览器交互正常、实际引用的 JS/CSS 返回 200；结束后停止服务。应用脚本调用本地安装的 CLI，后文的 `vext` 命令也应在能解析该本地 CLI 的环境中执行。
+
+先完成这条路径，再按需要配置 CDN 与上传。示例域名不是可用 CDN，必须替换成实际可提供资源的地址。
+
 ## 输出
 
 生成源码和最终前端产物通过同一事务提交：浏览器与服务端编译、媒体、静态页面、SEO、部署清单及预算均先使用本次候选，全部成功后才替换旧代。失败保留旧文件，未登记文件保留且不自动公开；进程中断后由下一次持有项目写入权的构建恢复。每个文件分别原子替换，完整性判断以构建完成回执为准。上传发生在成功构建之后，上传失败不会回滚已提交的本地产物；详见[构建流程](../guide/build)。
@@ -59,13 +65,13 @@ vext start
 
 这是完整的同源生产路径。build 生成后端 JavaScript 与前端 closure；start 在接受流量前会校验该 closure。
 
-构建后上传静态资源：
+完成下方 upload 配置后，构建并上传静态资源：
 
 ```bash
 vext build --upload-assets
 ```
 
-或单独执行上传：
+或对已有成功构建单独执行上传（同样需要可解析的 upload 目标）：
 
 ```bash
 vext deploy assets --dry-run
@@ -92,7 +98,7 @@ vext deploy assets
 - 可用资源的 SRI
 - upload key 和 public URL
 
-HTML 默认不上传，因为 SSR 仍属于服务端 runtime。Source map 默认也不上传；除非单独制定发布策略，否则应保留在诊断路径。
+顶层 `index.html` 模板不进入上传集合，动态 SSR 仍由 Node runtime 生成。但已登记为公开产物的嵌套静态 HTML（例如 `posts/hello/index.html`）和对应数据文件可以进入上传计划，不能把这一规则理解为“所有 HTML 都不上传”。Source map 默认被 upload exclude 排除；最终集合应以本次 dry-run 为准。
 
 ## 安全发布顺序
 
@@ -117,26 +123,31 @@ HTML 默认不上传，因为 SSR 仍属于服务端 runtime。Source map 默认
 
 同一已知存储命名空间的不同 prefix 也串行，防止父子 prefix 相互覆盖；这是本机 writer 协调，不是跨机器分布式锁。状态文件读取上限为 64 MiB，超限/不可验证文件报错并保留原字节。`--json` 的参数错误和执行错误都通过单行 JSON 报告，退出码非零。
 
-`stateFile` 应放在 frontend outDir 外，因为 build 输出通常会清理。
+`stateFile` 应放在 frontend outDir 外，避免与构建产物的所有权和清理范围冲突；未登记文件保留不等于推荐把部署状态混入产物目录。
 
 ## 配置示例
 
 ```ts
-frontend: {
-  deploy: {
-    assetBaseUrl: "https://cdn.example.com/my-app/",
-    integrity: true,
-    upload: {
-      enabled: true,
-      adapter: "filesystem",
-      targetDir: ".vext/frontend-cdn",
-      publicBaseUrl: "https://cdn.example.com/my-app/",
-      prefix: "my-app",
-      stateFile: ".vext/deploy/frontend-assets-state.json",
-      exclude: ["**/*.map"],
+export default {
+  frontend: {
+    enabled: true,
+    deploy: {
+      assetBaseUrl: "https://cdn.example.com/my-app/",
+      integrity: true,
+      upload: {
+        enabled: true,
+        adapter: "filesystem",
+        targetDir: ".vext/frontend-cdn",
+        publicBaseUrl: "https://cdn.example.com/my-app/",
+        prefix: "my-app",
+        stateFile: ".vext/deploy/frontend-assets-state.json",
+        exclude: ["**/*.map"],
+      },
     },
   },
-}
+};
 ```
 
 `assetBaseUrl` 必须是绝对 URL。`publicBaseUrl` 是 upload plan 报告的公开地址，`targetDir` 只是内置 filesystem adapter 使用的本地目标目录。只有默认的整份 manifest 上传不适用时，才增加 `include`、`exclude` 与 `concurrency`。
+
+将配置合并进 `src/config/default.ts` 并保留应用其他设置。本例只把文件写到本地 staging tree；你需要自行把目标目录部署到真实 CDN 并保持 URL/key 对应。dry-run 通过只能证明当前本地产物和上传计划可用，不能证明远程资源已经存在。相关缓存头、媒体与跨源设置见[静态资源与 CDN](./static-assets-and-cdn)。

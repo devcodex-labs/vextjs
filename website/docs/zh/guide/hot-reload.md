@@ -1,256 +1,181 @@
 # 热重载
 
-VextJS 内置热重载机制，通过 `vext dev` 命令启动开发模式。框架会监听文件变更，并按变更边界选择从定向 handler 替换到完整进程重启的对应路径。
+VextJS 内置热重载机制，通过 `vext dev` 命令启动开发模式。框架监听文件变更，按职责执行后端 soft reload、前端重建或应用 worker 冷重启。
 
-前端监视目标来自本次已解析配置，支持自定义 `frontend.root`、页面/组件目录和 `publicDir`，包括 `src/` 之外的项目内目录。原生监视和 polling 都覆盖静态资源的任意文件扩展名（如 `robots.txt`、PDF），以及后端 `.mts/.cts` 文件的增删事件。配置重启后会更新监视目标；前后端文件在同一批变化时分别触发对应构建流程。开发父进程只接收目录信息，不为监视再次执行配置 provider。
-
-首次检查和启动前会建立监听基线，启动期间保存的变更会继续处理。文件保存、手动重启和故障恢复按顺序执行；连续保存按路径合并并保留最终的增删状态。读取目录失败时保留上次完整快照并诊断重试，原生监听降级为 polling 时保留积压变更。
-
-重载完成以实际 worker 处理结果为准。编译失败时保留上次合法后端产物；运行态已修改后失败或无法确认 worker 结果时，需要冷重启恢复。终端 `h` 触发后端源码全量重载，`r` 触发冷重启，`?` 显示帮助；冷重启会等待旧 worker 退出和新 worker 完成初始化。退出后不再启动排队任务。
-
-多个独立项目可以同时运行；同一真实项目根的 `dev`、`build` 和写入型 `typegen` 共享写入所有权，竞争命令会报告冲突。`typegen --check` 保持只读。每个服务仍需使用各自可用的端口；不要把一个服务的目录配置成另一个服务的输出目录。
-
-从 `0.3.7` 起，`vext dev` 在每次 initial start、文件变更、手动 reload / restart、以及子进程请求 cold restart 前，都会先执行一次 **dev preflight**：
-
-- 自动运行基础 `typegen`，同步 `.vext/types/*.generated.d.ts` 和 `src/types/generated/index.d.ts`
-- TypeScript 语义诊断默认在 ready / reload 后异步输出
-- 如果基础 typegen 发现 blocking issue，则跳过本轮 reload / restart；如需让 TypeScript 语义诊断也阻塞，可使用 `--strict-preflight`
-
-路由重载使用编译器的真实项目根、源码目录和输出目录；自定义更深的输出目录不会改变源码映射或清单位置。新处理器构建和缓存清理成功后才提交 `.vext/manifest/routes.json`，提交冲突会阻止替换并进入冷重启恢复。首次启动时，该清单先作为前端构建输入生成，因此判断服务就绪应使用启动完成回执，判断重载生效应使用实际重载结果。
+先用下方示例验证保存后响应变化，再了解重载范围、状态保留和失败恢复。热重载用于开发反馈；生产进程更新见 [Cluster](/zh/guide/cluster)。
 
 ## 快速开始
 
-```bash
-# 启动开发模式
-npm run dev
-# 或
-npx vext dev
-```
+### 1. 准备应用与路由
 
-启动后，终端会显示一个 Banner 框，包含当前运行模式、监听方式、防抖间隔以及三层 Tier 图标说明：
-
-```
-╔══════════════════════════════════════════════╗
-║           Vext Dev Server (Phase 2B)         ║
-╠══════════════════════════════════════════════╣
-║  Mode: Soft Reload + Cold Restart            ║
-║  Watch: fs.watch                             ║
-║  Debounce: 0ms                               ║
-╠══════════════════════════════════════════════╣
-║  🟢 T1 (code):   soft reload (transform)    ║
-║  🟡 T2 (struct): soft reload (rebuild)      ║
-║  🔴 T3 (cold):   cold restart               ║
-║  ⚪ ignored:     skip                        ║
-╠══════════════════════════════════════════════╣
-║  r=restart  h=reload  c=clear  ?=help  ^C=quit║
-╚══════════════════════════════════════════════╝
-```
-
-修改 `src/` 目录下的文件后，终端会输出变更详情和重载结果。下面的耗时只是日志示例，不是跨项目性能保证：
-
-```
-[vext dev] 1 file(s) changed:
-  🟢 src/routes/users.ts (modify)
-[vext dev] source change detected → soft reload [T1:code]...
-[hot-reload] [OK] 45ms [T1:code] #1
-```
-
-开启 `--verbose-lifecycle` 后会额外输出各阶段耗时与缓存驱逐数量：
-
-```
-[hot-reload] [OK] 45ms [T1:code] (compile:3ms cache:2ms i18n:0ms mw:5ms svc:8ms model:0ms route:25ms swap:2ms) [12 modules evicted] #1
-```
-
-如果变更涉及文件新增或删除（结构变更），会走 Tier 2：
-
-```
-[vext dev] 2 file(s) changed:
-  🟢 src/routes/orders.ts (add)
-  🟢 src/routes/users.ts (modify)
-[vext dev] source change detected → soft reload [T2:structural]...
-[hot-reload] [OK] 82ms [T2:structural] #2
-```
-
-如果变更涉及配置或插件，会走 Tier 3 冷重启：
-
-```
-[vext dev] 1 file(s) changed:
-  🔴 src/config/default.ts (modify)
-[vext dev] config/plugin change detected → cold restart (Tier 3)...
-[vext dev] cold restart complete
-```
-
-纯前端变更会走独立的重建路径：
-
-```
-[vext dev] 1 file(s) changed:
-  🟢 src/frontend/pages/index.tsx (modify)
-[vext dev] frontend client change detected -> rebuild...
-[vextjs] frontend built: .vext/client
-```
-
-该路径会重建 `.vext/client/`，并保持后端进程继续运行。React 页面、layout 和公共组件默认通过 React Fast Refresh 更新；纯 CSS 变更会更新样式链接；route/service 等影响 render 数据的后端 soft reload 成功后，浏览器动作由 `frontend.dev.renderRefresh` 控制。
-
-soft reload 会区分编译失败与运行态已经变更后的失败。如果编译在缓存失效前失败，框架会保持旧 handler 继续运行并提示修复：
-
-```
-[hot-reload] [FAIL] failed after 12ms: Cannot find module './missing.js'
-[hot-reload] keeping previous version active. Fix the error and save again.
-```
-
-如果缓存失效之后，或在重载 service、model、i18n、中间件、路由时失败，当前 Worker 可能已经持有混合运行态。VextJS 会请求冷重启，并在执行 preflight 前停止该 Worker。严格 preflight 阻止替换时，该 Worker 会保持停止；修复报告的问题后再次保存，即会启动干净的新进程。
-
-## 三层重载策略
-
-VextJS 的热重载采用三层策略，根据变更文件的类型选择对应方式：
-
-### Tier 1 — 路由热替换 ⚡
-
-| 触发条件 | `src/routes/` 下的文件变更         |
-| -------- | ---------------------------------- |
-| 行为     | 原子替换请求处理器，零中断         |
-| 耗时     | 随变更模块、依赖图和项目规模变化   |
-| 影响     | 仅变更的路由文件，其他路由不受影响 |
-| 连接中断 | ❌ 不中断，正在处理的请求不受影响  |
-
-```
-修改 src/routes/users.ts
-  ↓
-重新 import 路由文件
-  ↓
-替换路由处理器（原子操作）
-  ↓
-新请求使用新处理器
-```
-
-Tier 1 是最快的重载方式。当你修改路由 handler 的业务逻辑时（如修改响应数据、调整查询参数），变更几乎瞬间生效，无需等待。
+使用已有 TypeScript API 应用，或按 [CLI](/zh/guide/cli#从创建到生产启动) 创建项目并安装依赖。在项目根目录新增：
 
 ```typescript
-// 修改这个文件 → Tier 1 热替换
-// src/routes/users.ts
+// src/routes/reload-demo.ts
 import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
   app.get("/", async (_req, res) => {
-    // 修改这里的代码，保存后立即生效
-    res.json({ message: "Updated response!" });
+    res.json({ message: "v1", pid: process.pid });
   });
 });
 ```
 
-### Tier 2 — 服务重载 ⚡
+文件名自动提供 `/reload-demo` 前缀；定义中的 `"/"` 不要重复写前缀。`pid` 仅用于此开发示例观察进程变化。
 
-| 触发条件 | `src/services/`、`src/models/` 或 `src/locales/` 下的文件变更 |
-| -------- | ------------------------------------------------------------- |
-| 行为     | 重建受影响的服务实例                                          |
-| 耗时     | 随受影响的依赖图和项目规模变化                                |
-| 影响     | 变更的服务及其依赖链                                          |
-| 连接中断 | ❌ 不中断                                                     |
+### 2. 启动并取得基线
 
-```
-修改 src/services/user.ts
-  ↓
-重新 import 服务文件
-  ↓
-重新实例化 UserService(app)
-  ↓
-更新 app.services.user 引用
-  ↓
-后续请求使用新服务实例
+```bash
+npx vextjs dev --port 3000 --verbose-lifecycle
 ```
 
-Tier 2 适用于服务层的业务逻辑修改。由于服务通过 `app.services` 延迟访问，替换服务实例后新请求自然会使用新的实例。
+在另一个终端请求：
+
+```bash
+curl -i http://127.0.0.1:3000/reload-demo
+```
+
+应得到 HTTP 200，JSON 的 `data.message` 为 `"v1"`。记下 `data.pid`。已有 `"dev": "vext dev"` script 时，也可执行 `npm run dev -- --port 3000 --verbose-lifecycle`。
+
+### 3. 修改已有文件
+
+把上面路由中的 `"v1"` 改为 `"v2"` 并保存。等待终端出现成功重载结果，再重复请求。应仍为 HTTP 200、`data.message` 变为 `"v2"`；正常 soft reload 下 PID 保持不变。
+
+详细日志会显示变更文件及阶段耗时，例如：
+
+```text
+[hot-reload] [OK] 45ms [T1:code] #1
+```
+
+数值只是示意。日志 `T1:code` 表示本批修改已有后端文件；编辑器若以删除再新建方式保存，也可能被识别为结构变更。
+
+### 4. 验证新增与冷重启
+
+- 复制此示例为 `src/routes/reload-extra.ts`：新增后请求 `/reload-extra` 应成功，正常日志为 `T2:structural`；删除后该路径应回到 404。
+- 在 `src/config/default.ts` 的现有配置对象中添加或修改 `logger: { level: "debug" }` 并保存：等待重新 ready，再请求 `/reload-demo`，业务结果仍为 v2，但 PID 应改变。保留其他配置项。
+- 如未看到预期响应，先检查终端是否报错或正在恢复，不要只凭“检测到文件变化”判断完成。
+
+验证结束后用 Ctrl+C 停止开发服务。键盘 `h`、`r` 等交互需要前台终端支持；后台管道中不应依赖这些按键。
+
+### 日志与前端更新
+
+默认模式简洁输出地址、启动耗时与重载结果；`--verbose-lifecycle` 或 `--startup-profile` 才显示详细启动 Banner，前者还会输出变更列表和重载阶段耗时。
+
+启用前端后，页面、组件和静态资源有独立的 client rebuild 路径，开发输出默认为 `.vext/client/`。React Fast Refresh、CSS 更新和后端重载后的浏览器刷新分别受前端开发配置控制，见 [Fast Refresh](/zh/frontend/fast-refresh) 与[渲染刷新](/zh/frontend/render-refresh)。后端请求验证成功不等于浏览器状态一定保留。
+
+## 三层重载策略
+
+先按文件职责分类为 cold、soft、client 或 ignore；**soft 内部再按修改类型选择 T1/T2**。服务或 Model 文件同样可能走 T1，新增路由同样可能走 T2。
+
+### Tier 1 — 修改已有后端文件
+
+适用于 soft 类文件的 `modify` 事件，例如 routes、services、middlewares、models 和 locales 中支持的源码/资源。
+
+```text
+编译变更文件
+  → 计算模块与反向依赖的缓存失效范围
+  → 更新相关语言包、中间件定义、受影响的 Service/Model
+  → 创建新 adapter 并重新装配路由
+  → 替换 HTTP handler 引用
+```
+
+最终替换的是请求入口，不是只更换某一个路由对象。原有 server socket 继续监听，新请求读取新 handler；已经进入旧 handler 的请求仍执行旧闭包，但它访问的 Service 等共享状态可能已经变化，不能承诺所有进行中请求完全不受影响。
+
+耗时取决于依赖范围和重新装配工作。编译少量文件也可能引发广泛依赖失效；达到级联阈值时会升级为冷重启。
+
+### Tier 2 — 新增、删除或全量重载
+
+soft 文件出现 `add` / `delete`，或按 `h` 请求全量源码重载时，先重新扫描编译入口并重建，再执行与 T1 相同的运行态更新流程。
+
+| 示例                            | 预期路径                       |
+| ------------------------------- | ------------------------------ |
+| 修改已有 `src/services/user.ts` | T1                             |
+| 新增 `src/routes/orders.ts`     | T2                             |
+| 删除 `src/services/unused.ts`   | T2，并移除已加载的对应服务引用 |
+| 修改 `src/config/default.ts`    | cold，不进入 T1/T2             |
+
+文件重命名通常表现为删除和新增。编辑器保存方式和同批其他文件变化也会影响最终事件类别。
+
+### Tier 3 — 冷重启
+
+配置、插件、preload、根目录 package.json/lockfile/tsconfig.json 和 `.env*` 等变化需要重新初始化 worker。开发父进程等待旧 worker 退出，再等待新 worker ready，期间服务可能不可用，请求也可能中断。
+
+```text
+变更检测与 preflight
+  → 停止旧 worker
+  → 刷新 preload 并启动新 worker
+  → bootstrap 与监听完成
+  → ready 后再次验证请求
+```
+
+修改中间件定义通常走 soft；修改配置中的中间件装配列表则因配置变化走 cold。依赖文件变化触发重启**不会自动执行 npm install**，应先安装实际需要的依赖。
+
+### Service、Model 与共享状态
+
+受影响 Service 会重新实例化，未失效实例通常保留。框架会尝试调用旧实例的可选 `dispose()`；dispose 失败记录警告，业务负责资源清理。进程内计数、定时器、长期缓存等不应假定能跨重载保存。
 
 ```typescript
-// 修改这个文件 → Tier 2 服务重载
-// src/services/user.ts
+// src/services/user.ts（独立示例；修改已有文件通常为 T1）
+import type { VextApp } from "vextjs";
+
 export default class UserService {
   constructor(private app: VextApp) {}
 
   async findAll() {
-    // 修改业务逻辑，保存后新请求自动使用新逻辑
+    this.app.logger.debug("UserService.findAll");
     return { items: [], total: 0 };
   }
 }
 ```
 
-修改 `src/models/` 目录下的 Model 定义文件同样触发 Tier 2。框架会通过 `Model.redefine()` 原子替换 Model 定义，失败时自动回滚到旧定义，确保服务持续可用：
+按需从 `app.services` 读取当前实例；其他对象在构造时缓存的旧服务引用不会因属性替换自动更新。源码 import 依赖与运行时动态持有的对象引用也不能视为同一张依赖图。
+
+启用数据库和 Model 加载后，受影响 Model 会尝试替换注册定义；这不等于执行数据库迁移或改写已有记录。下面仅演示定义文件，完整数据库前置配置与验证见[数据库](/zh/guide/database)：
 
 ```typescript
-// 修改这个文件 → Tier 2 Model 重载
 // src/models/item.ts
+import type { VextModelDefinition } from "vextjs";
+
 export default {
-  name: "Item",
   collection: "items",
   schema: {
-    title: "string",
-    description: "string",
+    title: "string!",
     price: "number",
-    // 新增字段：保存后立即对后续写入操作的 schema 校验生效
-    tags: "string[]",
   },
-};
+} satisfies VextModelDefinition;
 ```
 
-### Tier 3 — 冷重启 🔄
-
-| 触发条件 | `src/config/`、`src/plugins/`、`src/middlewares/` 下的文件变更 |
-| -------- | -------------------------------------------------------------- |
-| 行为     | 完整重启进程                                                   |
-| 耗时     | 随应用启动工作与外部依赖变化                                   |
-| 影响     | 整个应用重新初始化                                             |
-| 连接中断 | ✅ 正在处理的请求可能被中断                                    |
-
-```
-修改 src/config/default.ts
-  ↓
-检测到配置/插件/中间件变更
-  ↓
-优雅关闭当前进程
-  ↓
-重新 bootstrap 整个应用
-  ↓
-重新监听端口
-```
-
-配置、插件和中间件的修改会影响整个应用的行为，因此需要完整重启。框架会尽可能快地完成重启过程。
-
-```typescript
-// 修改这个文件 → Tier 3 冷重启
-// src/config/default.ts
-export default {
-  port: 3000,
-  logger: { level: "debug" }, // 修改配置需要冷重启
-};
-```
+Service/Model 局部恢复旧引用或定义不能撤销已发生的外部副作用。运行态更新失败时，整体流程会冷重启恢复一致状态。
 
 ## 重载策略决策表
 
-| 变更文件             | 重载策略                | 速度      | 说明                                                                   |
-| -------------------- | ----------------------- | --------- | ---------------------------------------------------------------------- |
-| `src/routes/**`      | Tier 1                  | ⚡ 毫秒级 | 路由处理器原子替换                                                     |
-| `src/services/**`    | Tier 2                  | ⚡ 毫秒级 | 服务实例重建                                                           |
-| `src/models/**`      | Tier 2                  | ⚡ 毫秒级 | Model 定义重新注册，失败自动回滚                                       |
-| `src/locales/**`     | Tier 2                  | ⚡ 毫秒级 | 语言包重新加载                                                         |
-| `src/frontend/**`    | 前端重建 / Fast Refresh | ⚡ 快速   | 重建浏览器客户端；React 页面尽量 Fast Refresh，不触发后端 cold restart |
-| `public/**`          | 前端重建                | ⚡ 快速   | 复制静态资源并重建前端输出                                             |
-| `src/config/**`      | Tier 3                  | 🔄 秒级   | 配置影响全局，需重启                                                   |
-| `src/plugins/**`     | Tier 3                  | 🔄 秒级   | 插件影响全局，需重启                                                   |
-| `src/middlewares/**` | Tier 3                  | 🔄 秒级   | 中间件定义变更需重启                                                   |
-| `src/types/**`       | —                       | —         | 类型文件不触发重载                                                     |
-| `package.json`       | Tier 3                  | 🔄 秒级   | 依赖变更需重启                                                         |
+以下以默认布局为例，实际还受已解析目录、变更事件与失败恢复影响：
+
+| 变更文件                                                         | 常规动作               | 说明                             |
+| ---------------------------------------------------------------- | ---------------------- | -------------------------------- |
+| `src/routes/**`、`src/services/**`                               | soft：修改 T1，增删 T2 | 路由重新装配、受影响服务更新     |
+| `src/middlewares/**`                                             | soft：修改 T1，增删 T2 | 中间件定义重新加载               |
+| `src/models/**`                                                  | soft：修改 T1，增删 T2 | 数据库启用时替换受影响定义       |
+| `src/locales/**` 的 JSON/源码                                    | soft：修改 T1，增删 T2 | 字典重新加载                     |
+| 已启用前端的角色目录、public 资源                                | client rebuild         | React/CSS/页面更新取决于前端配置 |
+| `src/config/**`、`src/plugins/**`                                | cold                   | 重新初始化应用                   |
+| `src/preload/**`、兼容根目录 `preload/`                          | cold                   | 重新解析并执行 preload           |
+| 根目录 `package.json`、支持的 lockfile、`tsconfig.json`、`.env*` | cold                   | 依赖和启动环境变化               |
+| `src/types/generated/**`、生成产物目录                           | ignore                 | 避免生成工具触发循环             |
+
+源码目录外显式配置的语言包/Model 读取目录由布局单独登记，其变更走 cold；不要把它们概括为只能监听 src。
 
 ## 与 `vext build` 的关系
 
-`vext dev` 在开发模式下直接从 `src/` 加载 `.ts` 文件（通过 esbuild 即时编译），不需要预先执行 `vext build`。
+`vext dev` 将后端源码编译到 `.vext/dev/`，再由 worker 加载这些开发产物，不需要预先执行 `vext build`。
 
-| 命令         | 源码目录         | 编译方式                    | 热重载        |
-| ------------ | ---------------- | --------------------------- | ------------- |
-| `vext dev`   | `src/`           | esbuild 即时编译            | ✅ 三层热重载 |
-| `vext start` | `dist/`          | 预编译（需先 `vext build`） | ❌ 无         |
-| `vext build` | `src/` → `dist/` | esbuild 生产编译            | —             |
+| 命令         | 源码目录                                 | 编译方式                          | 热重载        |
+| ------------ | ---------------------------------------- | --------------------------------- | ------------- |
+| `vext dev`   | `src/`                                   | esbuild 即时编译                  | ✅ 三层热重载 |
+| `vext start` | 所选构建目录，或 JS source 模式的 `src/` | TS 需先 build；纯 JS 后端无需编译 | ❌ 无         |
+| `vext build` | `src/` → `dist/`                         | esbuild 生产编译                  | —             |
 
-开发流程：
+以下是具有对应 scripts 的 TypeScript 项目流程；纯 JavaScript 和自定义输出边界见[构建](/zh/guide/build)：
 
 ```bash
 # 开发时
@@ -269,10 +194,11 @@ vext dev [options]
 Options:
   --port <port>        指定监听端口（覆盖配置文件）
   --host <host>        指定监听地址
+  --config <name>      选择配置 profile（默认 development）
   --debounce <ms>      防抖间隔（毫秒，默认 0 不开启）
   --poll               强制轮询模式（Docker / NFS 环境）
   --poll-interval <ms> 轮询间隔（毫秒，默认 1000）
-  --no-hot             禁用 Soft Reload，所有变更走 Cold Restart
+  --no-hot             后端文件变更使用 Cold Restart；纯前端变更仍可独立重建
   --strict-preflight   让 TypeScript 语义诊断重新阻塞启动 / 重载
   --port-conflict <strategy>
                        端口冲突策略：error / prompt / kill / next
@@ -280,7 +206,7 @@ Options:
   --startup-profile    输出启动阶段摘要与详细耗时
   --startup-profile-json <path>
                        将启动阶段耗时写入 JSON 文件
-  --clear              每次重载后清空控制台
+  --clear              处理文件变更时清空控制台
   -h, --help           显示帮助信息
 ```
 
@@ -315,83 +241,81 @@ vext dev --startup-profile --startup-profile-json .vext/inspect/startup-profile.
 
 ### 监听范围
 
-`vext dev` 默认监听 `src/` 目录与项目根 `public/` 目录下的文件变更：
+默认覆盖 src 中支持的源码/资源、public 静态资源、项目 preload，以及根目录指定的配置和依赖文件。启用前端后，还覆盖配置解析得到的页面、组件和 publicDir 等角色目录，包括 src 之外的项目内目录。
 
-```
-src/
-├── config/       → Tier 3
-├── plugins/      → Tier 3
-├── middlewares/   → Tier 3
-├── routes/       → Tier 1
-├── services/     → Tier 2
-├── models/       → Tier 2
-├── locales/      → Tier 2
-├── client/       → 前端重建
-└── types/        → 忽略（仅类型）
-
-public/           → 前端重建
-```
+原生 fs.watch 与 polling 均使用快照发现增删；静态资源不局限于 JavaScript/CSS，例如 robots.txt 和 PDF 也可触发 client rebuild。语言包和 Model 自定义读取目录由后端布局单独登记。
 
 ### 忽略规则
 
-以下文件和目录的变更不会触发重载：
+一般生成区和依赖区（`node_modules/`、`dist/`、`build/`、`.vext/`、`.git/`）、`src/types/generated/`、框架临时模块及未识别的文件类型不会进入正常重载流程。根目录 `.env*` 有明确 cold 规则，不能笼统说所有点开头文件均忽略；前端静态目录也会覆盖普通文本资源。
 
-- `node_modules/`
-- `dist/`
-- `.git/`
-- 测试文件：`*.test.ts`、`*.spec.ts`
-- 以 `.` 开头的隐藏文件
-- `*.d.ts` 类型声明文件
+**监听分类与编译排除是两层规则。** 当前普通 `src/**/*.test.ts`、`src/**/*.d.ts` 等可能被监听器分类为 soft，但编译器排除这些输入；修改它们可能得到跳过/编译诊断，不能承诺触发有效的业务替换。测试宜放在项目 `test/` 或 `tests/`，类型是否正确仍由 TypeScript 检查。
+
+`coldPatterns` / `ignorePatterns` 是内部分类器扩展点，当前不能当作公开 `config.dev` 配置项使用。
 
 ### 防抖处理
 
-默认情况下防抖**未开启**（`debounce: 0`），文件变更后**立即触发**重载，响应最快。如需在快速连续保存时合并多次变更为一次重载，可通过 `--debounce <ms>` 开启防抖窗口。
+默认 `debounce: 0`，不额外等待防抖窗口；操作仍需经过扫描、preflight 和串行队列。如需在快速连续保存时合并多次变更为一次重载，可通过 `--debounce <ms>` 开启防抖窗口。
 
-例如：同时修改了 `routes/users.ts`（Tier 1）和 `config/default.ts`（Tier 3），框架会执行一次 Tier 3 冷重启（包含所有变更）。
+例如：同时修改了 `routes/users.ts`（soft）和 `config/default.ts`（Tier 3），框架会执行一次 Tier 3 冷重启（包含所有变更）。
+
+## 重载协调与失败恢复
+
+前端监视目标来自本次已解析配置，支持自定义 `frontend.root`、页面/组件目录和 `publicDir`，包括 `src/` 之外的项目内目录。原生监视和 polling 都覆盖静态资源的任意文件扩展名（如 `robots.txt`、PDF），以及后端 `.mts/.cts` 文件的增删事件。配置重启后会更新监视目标；前后端文件在同一批变化时分别触发对应构建流程。开发父进程只接收目录信息，不为监视再次执行配置 provider。
+
+首次检查和启动前会建立监听基线，启动期间保存的变更会继续处理。文件保存、手动重启和故障恢复按顺序执行；连续保存按路径合并并保留最终的增删状态。读取目录失败时保留上次完整快照并诊断重试，原生监听降级为 polling 时保留积压变更。
+
+重载完成以实际 worker 处理结果为准。编译失败时保留上次合法后端产物；运行态已修改后失败或无法确认 worker 结果时，需要冷重启恢复。终端 `h` 触发后端源码全量重载，`r` 触发冷重启，`?` 显示帮助；冷重启会等待旧 worker 退出和新 worker 完成初始化。退出后不再启动排队任务。
+
+多个独立项目可以同时运行；同一真实项目根的 `dev`、`build` 和写入型 `typegen` 共享写入所有权，竞争命令会报告冲突。`typegen --check` 保持只读。每个服务仍需使用各自可用的端口；不要把一个服务的目录配置成另一个服务的输出目录。
+
+`vext dev` 在启动和处理重载/重启前执行 **dev preflight**：
+
+- 自动运行基础 `typegen`，同步 `.vext/types/*.generated.d.ts`；TypeScript 项目还同步 `src/types/generated/index.d.ts`
+- TypeScript 诊断默认异步运行，不等待它完成就继续启动或重载
+- 如果基础 typegen 发现 blocking issue，则跳过本轮 reload / restart；如需让 TypeScript 语义诊断也阻塞，可使用 `--strict-preflight`
+
+路由重载使用编译器的真实项目根、源码目录和输出目录；自定义更深的输出目录不会改变源码映射或清单位置。新处理器构建和缓存清理成功后才提交 `.vext/manifest/routes.json`，提交冲突会阻止替换并进入冷重启恢复。首次启动时，该清单先作为前端构建输入生成，因此判断服务就绪应使用启动完成回执，判断重载生效应使用实际重载结果。
+
+soft reload 在编译与缓存失效前失败时，保留旧 handler 继续服务；缓存失效后，语言包、中间件、Service、Model 或路由装配失败，可能已经改变共享运行态，此时请求冷重启。恢复流程先停止可能混合运行态的 worker；若严格 preflight 阻止启动，服务会保持停止，修复后保存才重新启动。
+
+前端构建失败会保留上一代有效产物；前后端混合变更只完成一部分时，后续恢复也可能升级为完整启动。终端发送成功不代表 worker 已完成；应等结果并检查实际请求。
 
 ## TypeScript 支持
 
-`vext dev` 使用 esbuild 进行即时编译，并叠加一层开发期 preflight，特点如下：
+开发后端由 esbuild 转译，TypeScript 类型诊断使用项目本地编译器的 `tsc --noEmit`。默认先刷新基础 typegen，类型诊断异步运行；这意味着服务 ready 时，类型检查可能仍未结束或已经报告错误。
 
-- **极速编译** — esbuild 编译速度比 tsc 快 10-100 倍
-- **开发期诊断分层** — typegen 阻塞 reload / restart，TypeScript 语义诊断默认异步输出；strict 模式可恢复阻塞
-- **自动 generated 声明同步** — preflight 会先更新 `.vext/types/*.generated.d.ts` 与 `src/types/generated/index.d.ts`
-- **零配置** — 自动读取 `tsconfig.json` 中的编译选项
-
-:::warning 类型检查
-`vext dev` 不会执行完整的 `tsc --noEmit` 式全链路构建校验。默认模式下，TypeScript 语义诊断不会阻塞首次 ready 或 reload；如果希望诊断阻塞开发启动，可使用：
+- 基础 typegen 有阻断项：本轮启动/重载停止。
+- 普通类型错误：默认输出诊断，但不阻塞 ready 或 reload。
+- `--strict-preflight`：等待类型诊断，通过后才进入启动/重载。
+- 缺少 tsconfig 的项目会跳过该 TypeScript 检查；项目有配置时应安装可解析的本地 TypeScript。
 
 ```bash
-vext dev --strict-preflight
-# 或
-VEXT_DEV_STRICT_PREFLIGHT=1 vext dev
+npx vextjs dev --strict-preflight
 ```
 
-建议仍然保留：
+也可设置 `VEXT_DEV_STRICT_PREFLIGHT=1`，具体 shell 写法见[CLI](/zh/guide/cli)。类型检查不替代测试、Lint 和生产构建验证；有 typecheck script 时，在提交或 CI 中显式运行 `npm run typecheck`。
 
-- 开发时依赖 IDE（VS Code / WebStorm）的实时类型检查
-- 提交前运行 `npm run typecheck`（`tsc --noEmit`）进行完整类型检查
-- CI 中执行 `tsc --noEmit` 确保类型正确
-  :::
+esbuild 使用受支持的 tsconfig 编译选项，不能把它等同于实现所有 tsc 发射选项。开发/生产 Source Map 形态也不同，见[构建的 Source Map 说明](/zh/guide/build#source-map)。
 
 ## 常见问题
 
 ### 修改后没有触发重载？
 
-1. **检查文件是否在 `src/` 目录下** — 只有 `src/` 目录下的文件变更才会触发重载
-2. **检查是否是被忽略的文件** — `*.test.ts`、`src/types/generated/**`、以 `.` 开头的文件不会触发
+1. **检查实际监听角色与项目根** — 后端 src、已配置的前端/资源目录和指定根文件各有规则，任意根外文件不会自动监听
+2. **区分监听与编译排除** — generated、测试和声明文件的边界见上文；Docker/NFS 可尝试 `--poll`
 3. **检查终端输出** — 是否有错误信息（如语法错误导致编译失败）
 
 ### 热重载后行为不符合预期？
 
 1. **尝试手动重启** — 按 `Ctrl+C` 停止后重新运行 `vext dev`
-2. **清除模块缓存** — 极少数情况下 Node.js 的模块缓存可能导致旧代码残留
-3. **检查服务间依赖** — Tier 2 重载只重建变更的服务，如果其他服务在构造函数中缓存了旧引用，可能需要 Tier 3
+2. **检查是否完成替换或进入恢复** — 不要手动删除运行中的 `.vext/` 或修改已登记产物；需要干净进程时用 `r` 或重新启动命令
+3. **检查对象引用与副作用** — 受影响服务按模块失效范围更新，动态缓存的旧引用和外部副作用不自动回滚；必要时冷重启
 
 ### 冷重启太慢？
 
-1. **减少启动时的初始化操作** — 插件的 `setup()` 中避免耗时操作（如大量数据预热），改到 `onReady()` 中
-2. **开发环境跳过非必要插件** — 通过 `development.ts` 配置条件禁用某些插件
+1. **先定位启动阶段** — 用 `--startup-profile` 查明耗时。将工作移到 `onReady()` 不会自动消除 ready 前的等待；必需依赖仍应在接收请求前完成
+2. **减少非必要初始化** — 在开发配置中关闭可选功能；插件是否支持禁用取决于自己的实现
 3. **使用 `local.ts` 简化配置** — 本地开发时关闭不需要的功能（如限流、访问日志等）
 
 ### 端口占用怎么办？
@@ -403,7 +327,7 @@ VEXT_DEV_STRICT_PREFLIGHT=1 vext dev
 - `kill`：尝试终止占用进程
 - `next`：自动切换到下一个可用端口
 
-如果你希望开发期端口占用时自动平滑继续，推荐：
+如果接受改用其他端口，可显式选择：
 
 ```bash
 vext dev --port-conflict next
@@ -412,7 +336,7 @@ vext dev --port-conflict next
 如果需要手动排查占用进程：
 
 ```bash
-# 手动查找并终止占用端口的进程
+# 查看占用端口的进程
 # macOS/Linux
 lsof -i :3000
 
@@ -422,18 +346,20 @@ netstat -ano | findstr :3000
 
 ## 与 Cluster 模式的关系
 
-`vext dev` 不支持 Cluster 多进程模式。开发时始终以单进程运行，确保热重载行为可预测。
+`vext dev` 使用一个开发父进程管理一个应用 worker，不启动生产 Cluster 的多个请求 worker。不能把“单个应用 worker”理解为系统中只有一个 Node 进程。
 
 生产环境如需多进程，使用 `vext start` 配合 Cluster 配置：
 
 ```bash
-# 开发 — 单进程 + 热重载
+# 开发 — 一个应用 worker + 热重载
 vext dev
 
-# 生产 — 多进程 + 零停机重启
+# 生产 — 按配置启用多 worker
 vext start   # 配合 cluster.enabled: true
-vext reload  # 滚动重启 Worker
+vext reload  # 支持的平台上发送滚动重启信号
 ```
+
+Windows 上 `vext reload` 不支持该信号操作；发送成功也不等于滚动替换已完成。详见 [CLI reload](/zh/guide/cli)。
 
 ## 最佳实践
 
@@ -462,8 +388,9 @@ export default {
 
 路由和服务目录中以 `_` 开头的文件不会被自动加载为路由/服务。修改这些工具文件时：
 
-- 如果被路由文件引用 → 触发 Tier 1（因为路由模块的依赖发生了变化）
-- 如果被服务文件引用 → 触发 Tier 2
+- 修改已有源码通常进入 T1；新增/删除通常进入 T2。
+- 使用它的模块可沿反向依赖图进入失效集合；是否重建某个 Service 取决于该集合，不能仅凭工具文件位于 routes 或 services 判断。
+- `_` 前缀是加载器命名约定，不表示编译器或监听器忽略该模块。
 
 ```
 src/routes/
@@ -474,7 +401,7 @@ src/routes/
 
 ## 下一步
 
-- 了解 [CLI 命令](/guide/cli) 的完整用法
-- 学习 [Cluster 多进程](/guide/cluster) 的生产环境部署
-- 查看 [配置](/guide/configuration) 的环境覆盖机制
-- 探索 [测试](/guide/testing) 确保热重载后的代码正确性
+- 了解 [CLI 命令](/zh/guide/cli) 的完整用法
+- 学习 [Cluster 多进程](/zh/guide/cluster) 的生产环境部署
+- 查看 [配置](/zh/guide/configuration) 的环境覆盖机制
+- 探索 [测试](/zh/guide/testing) 确保热重载后的代码正确性

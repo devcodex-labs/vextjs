@@ -8,12 +8,31 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  resolveDocsRollout,
+  resolveDocsVerification,
+  validateRequiredInventory,
+} from "./docs-rollout.mjs";
+import {
+  loadDocumentationParser,
+  documentationRouteForSource,
+  documentationHtmlPath,
+  documentationRelations,
+  documentationRevision,
+  documentationSnapshotInputs,
+  parseDocumentationFrontmatter,
+  documentationMetadata,
+  documentationText,
+} from "./documentation-contract.mjs";
+import { parseSpecificationRules } from "./specification-rules.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const websiteRoot = path.resolve(scriptDir, "..");
 const repositoryRoot = path.resolve(websiteRoot, "..");
 const docsRoot = path.join(websiteRoot, "docs");
 const distRoot = path.join(websiteRoot, "dist");
+const rollout = resolveDocsRollout();
+const verification = resolveDocsVerification();
 const DEFAULT_DOCS_SITE_URL = "https://devcodex-labs.github.io/vextjs";
 const docsSiteUrl = (
   process.env.VEXT_DOCS_SITE_URL || DEFAULT_DOCS_SITE_URL
@@ -130,24 +149,11 @@ function normalizeRoute(route) {
 }
 
 function routeForSource(relativePath) {
-  const normalized = relativePath.replaceAll("\\", "/");
-  const [locale, ...pathParts] = normalized.split("/");
-  const withoutExtension = pathParts.join("/").replace(/\.(?:md|mdx)$/, "");
-  const localePrefix = locale === "zh" ? "/zh" : "";
-  if (withoutExtension === "index") {
-    return localePrefix ? `${localePrefix}/` : "/";
-  }
-  return normalizeRoute(`${localePrefix}/${withoutExtension}`);
+  return documentationRouteForSource(relativePath);
 }
 
 function htmlPathForRoute(route) {
-  if (route === "/") return path.join(distRoot, "index.html");
-  if (route.endsWith("/")) {
-    return path.join(distRoot, route.slice(1), "index.html");
-  }
-  const normalized = normalizeRoute(route);
-  const relative = normalized.slice(1);
-  return path.join(distRoot, `${relative}.html`);
+  return documentationHtmlPath(distRoot, route);
 }
 
 function canonicalUrlForRoute(route) {
@@ -158,24 +164,15 @@ function canonicalUrlForRoute(route) {
 }
 
 function parseFrontmatter(content) {
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
-  if (!match) return {};
-  const fields = {};
-  for (const line of match[1].split(/\r?\n/)) {
-    const field = line.match(/^([A-Za-z][\w-]*):\s*(.+)$/);
-    if (!field) continue;
-    fields[field[1]] = field[2].replace(/^['"]|['"]$/g, "").trim();
-  }
-  return fields;
+  return parseDocumentationFrontmatter(content);
+}
+
+export function metadataForSource(relativePath, source) {
+  return documentationMetadata(relativePath, source);
 }
 
 function stripMarkdown(value) {
-  return value
-    .replace(/!?(?:\[([^\]]*)\])\([^)]*\)/g, "$1")
-    .replace(/[`*_>#]/g, "")
-    .replace(/<[^>]+>/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  return documentationText(value);
 }
 
 function firstProse(content) {
@@ -235,6 +232,7 @@ function appliesToForRoute(route) {
     frontend: ["frontend"],
     guide: ["runtime"],
     resources: ["documentation"],
+    specification: ["framework-contract"],
   };
   return mappings[section] || ["framework"];
 }
@@ -247,11 +245,13 @@ function readDocumentationEntries() {
       const relativePath = path.relative(docsRoot, file).replaceAll("\\", "/");
       const route = routeForSource(relativePath);
       const source = readFileSync(file, "utf8");
+      const metadata = metadataForSource(relativePath, source);
       const title = titleForDocument(
         source,
         relativePath.replace(/\.(?:md|mdx)$/, ""),
       );
       entries.push({
+        ...metadata,
         locale,
         route,
         canonicalUrl: canonicalUrlForRoute(route),
@@ -272,27 +272,44 @@ function readDocumentationEntries() {
   return entries.sort((left, right) => left.route.localeCompare(right.route));
 }
 
-function linkedRouteKeysForEntry(entry, entriesByRoute) {
-  const linkedRoutes = new Set();
-  for (const match of entry.source.matchAll(/\[[^\]]+\]\((\/[^)\s]+)\)/g)) {
-    const [routePart] = match[1].split("#", 2);
-    const target = entriesByRoute.get(normalizeRoute(routePart));
-    if (!target || target.route === entry.route) continue;
-    linkedRoutes.add(normalizeRoute(target.route));
+function validateDocumentationEntries(entries) {
+  const keys = new Map();
+  for (const entry of entries) {
+    const key = `${entry.locale}:${entry.docId}`;
+    if (keys.has(key)) {
+      throw new Error(
+        `Duplicate docId ${entry.docId} for locale ${entry.locale}: ${keys.get(key)} and ${entry.sourcePath}`,
+      );
+    }
+    keys.set(key, entry.sourcePath);
   }
-  return linkedRoutes;
 }
 
-function relatedUrlsForEntry(entry, entriesByRoute, outboundByRoute) {
-  const entryRoute = normalizeRoute(entry.route);
-  const relatedRoutes = new Set(outboundByRoute.get(entryRoute) ?? []);
-  for (const [sourceRoute, targets] of outboundByRoute) {
-    if (targets.has(entryRoute)) relatedRoutes.add(sourceRoute);
+export function ruleRecordsForEntry(entry) {
+  if (entry.role !== "specification") return [];
+  return parseSpecificationRules(entry.source, entry.sourcePath).map(
+    (rule) => ({
+      ...rule,
+      docId: entry.docId,
+      locale: entry.locale,
+      title: stripMarkdown(rule.title),
+      canonicalUrl: entry.canonicalUrl,
+      ruleUrl: `${entry.canonicalUrl}#${rule.anchor}`,
+    }),
+  );
+}
+
+function validateRuleRecords(rules) {
+  const keys = new Map();
+  for (const rule of rules) {
+    const key = `${rule.id}:${rule.locale}`;
+    if (keys.has(key)) {
+      throw new Error(
+        `Duplicate Rule ID ${rule.id} for locale ${rule.locale}: ${keys.get(key)} and ${rule.canonicalUrl}`,
+      );
+    }
+    keys.set(key, rule.canonicalUrl);
   }
-  return [...relatedRoutes]
-    .map((route) => entriesByRoute.get(route)?.canonicalUrl)
-    .filter(Boolean)
-    .sort();
 }
 
 function escapeHtmlAttribute(value) {
@@ -453,7 +470,8 @@ function buildLlmsForLocale(locale, entriesByRoute, entries) {
   return { llms, llmsFull };
 }
 
-function main() {
+async function main() {
+  await loadDocumentationParser();
   if (!existsSync(distRoot)) {
     throw new Error(
       "website/dist does not exist; run rspress build before generating machine artifacts.",
@@ -466,23 +484,41 @@ function main() {
       `Documentation inventory unexpectedly small: ${entries.length}`,
     );
   }
+  validateDocumentationEntries(entries);
   const entriesByRoute = new Map(
     entries.map((entry) => [normalizeRoute(entry.route), entry]),
   );
-  const outboundByRoute = new Map(
-    entries.map((entry) => [
-      normalizeRoute(entry.route),
-      linkedRouteKeysForEntry(entry, entriesByRoute),
-    ]),
-  );
+  const relations = documentationRelations(entries);
   const manifestEntries = entries.map(({ source, ...entry }) => ({
     ...entry,
-    related: relatedUrlsForEntry(
-      { ...entry, source },
-      entriesByRoute,
-      outboundByRoute,
-    ),
+    relatedDocuments: relations.get(entry.sourcePath),
   }));
+  const rules = entries
+    .flatMap((entry) => ruleRecordsForEntry(entry))
+    .sort((left, right) =>
+      `${left.id}:${left.locale}`.localeCompare(`${right.id}:${right.locale}`),
+    );
+  validateRuleRecords(rules);
+  const requiredFailures = validateRequiredInventory(
+    rollout,
+    entries.map((entry) => ({
+      ...entry,
+      neutralPath: entry.sourcePath.replace(/^website\/docs\/(?:en|zh)\//, ""),
+    })),
+    rules,
+    undefined,
+    verification,
+  );
+  if (requiredFailures.length) throw new Error(requiredFailures.join("\n"));
+  const revision = documentationRevision(
+    entries,
+    documentationSnapshotInputs(
+      repositoryRoot,
+      docsSiteUrl,
+      rollout,
+      verification,
+    ),
+  );
 
   injectCanonicalMetadata(entries);
   for (const artifact of [
@@ -495,7 +531,10 @@ function main() {
   }
 
   const manifest = {
-    schemaVersion: "vext.docs-manifest/v1",
+    schemaVersion: "vext.docs-manifest/v2",
+    rollout,
+    verification,
+    documentationRevision: revision,
     frameworkVersion: packageMetadata.version,
     channel: docsVersions.channel,
     stableVersion: docsVersions.stable,
@@ -507,6 +546,21 @@ function main() {
   writeIfChanged(
     path.join(distRoot, "docs-manifest.json"),
     `${JSON.stringify(manifest, null, 2)}\n`,
+  );
+  writeIfChanged(
+    path.join(distRoot, "spec-rules.json"),
+    `${JSON.stringify(
+      {
+        schemaVersion: "vext.spec-rules/v1",
+        rollout,
+        verification,
+        documentationRevision: revision,
+        frameworkVersion: packageMetadata.version,
+        rules,
+      },
+      null,
+      2,
+    )}\n`,
   );
   for (const locale of ["en", "zh"]) {
     const { llms, llmsFull } = buildLlmsForLocale(
@@ -520,8 +574,12 @@ function main() {
   }
 
   console.log(
-    `Generated canonical metadata, docs-manifest.json, and locale-specific llms indexes for ${manifestEntries.length} documentation pages.`,
+    `Generated canonical metadata, docs-manifest.json, spec-rules.json, and locale-specific llms indexes for ${manifestEntries.length} documentation pages.`,
   );
 }
 
-main();
+if (
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
+)
+  await main();

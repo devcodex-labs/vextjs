@@ -139,13 +139,16 @@ jobs:
         working-directory: website
         run: npm ci
 
+      - name: Install package dependencies and build CLI for docs verification
+        run: npm ci && npm run build
+
       - name: Audit website production dependencies
         working-directory: website
         run: npm audit --omit=dev --audit-level=high
 
       - name: Build docs (rspress build)
         working-directory: website
-        run: npm run build
+        run: npm run build:publish -- --rollout=final
         env:
           NODE_ENV: production
 

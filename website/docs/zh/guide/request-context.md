@@ -1,6 +1,91 @@
 # 请求上下文 (Request Context)
 
-VextJS 基于 Node.js `AsyncLocalStorage` 实现了请求级上下文存储 `requestContext`，为每个请求维护独立的上下文数据。无需手动传参，在路由、中间件、服务、插件的任意深层代码中都能访问当前请求的上下文信息。
+`requestContext` 用于在同一请求的调用链中共享少量数据，例如 requestId、语言、认证快照。VextJS 的 Adapter 默认为每个入站请求建立独立的 `AsyncLocalStorage` 作用域；在这个作用域中调用的中间件、handler 和 Service 可以直接读取数据。
+
+它按异步调用链关联数据，不按类或模块关联。Service 构造函数、插件 setup 等启动代码通常没有请求上下文；业务鉴权、数据库过滤和跨进程传输仍需由对应功能完成。
+
+## 先运行一个并发示例
+
+前置：完成[快速开始](/zh/guide/quick-start)中「方式二：手动创建」的 TypeScript API-only 项目，保留其 package.json、tsconfig.json 和启动脚本。下面合并配置，并新增三个文件；没有数据库、外部服务或认证插件依赖。
+
+```typescript
+// src/config/default.ts
+export default {
+  port: 3000,
+  host: "127.0.0.1",
+  frontend: { enabled: false },
+  logger: { level: "info", pretty: false },
+  requestContext: { enabled: true },
+  locale: { default: "en-US", supported: ["en-US", "zh-CN"] },
+  fetch: { propagateHeaders: ["x-demo-tag"] },
+};
+```
+
+```typescript
+// src/types/request-context.d.ts
+import "vextjs";
+
+declare module "vextjs" {
+  interface RequestContextStore {
+    demoLabel?: string;
+  }
+}
+```
+
+```typescript
+// src/services/context.ts
+import { setImmediate } from "node:timers/promises";
+import { requestContext, type VextApp } from "vextjs";
+
+export default class ContextService {
+  constructor(private readonly app: VextApp) {}
+
+  async inspect() {
+    const before = requestContext.getStore()?.requestId;
+    await setImmediate();
+    const store = requestContext.getStore();
+    if (!store) this.app.throw(500, "Request context is unavailable");
+    this.app.logger.info({ demoLabel: store.demoLabel }, "context inspected");
+    return {
+      before,
+      after: store.requestId,
+      locale: store.locale,
+      demoLabel: store.demoLabel,
+      forwardedTag: store.propagatedHeaders?.["x-demo-tag"],
+      authenticated: store.auth?.isAuthenticated ?? false,
+    };
+  }
+}
+```
+
+```typescript
+// src/routes/context.ts
+import { defineRoutes, requestContext } from "vextjs";
+
+export default defineRoutes((app) => {
+  app.get("/", async (req, res) => {
+    const store = requestContext.getStore();
+    if (!store) return app.throw(500, "Request context is unavailable");
+    const label = req.headers["x-demo-label"];
+    store.demoLabel = (Array.isArray(label) ? label[0] : label) ?? "unlabeled";
+    res.json(await app.services.context.inspect());
+  });
+});
+```
+
+`demoLabel` 是用于观察隔离的普通输入，不参与身份或权限判断。运行 `npm run dev`；开发启动会生成 Service 类型映射。另开终端，在项目根目录用 Node 执行以下完整命令：
+
+```bash
+node --input-type=module -e 'const rows = await Promise.all(["a", "b"].map(async label => { const response = await fetch("http://127.0.0.1:3000/context", { headers: { "x-request-id": "req-" + label, "x-demo-label": label, "x-demo-tag": "tag-" + label, "accept-language": label === "a" ? "zh-CN" : "en-US" } }); return { status: response.status, requestId: response.headers.get("x-request-id"), body: await response.json() }; })); console.log(JSON.stringify(rows, null, 2));'
+```
+
+两项都应为 200。第一项 `body.data` 的 before/after 均为 `req-a`，locale 为 `zh-CN`、demoLabel 为 `a`、forwardedTag 为 `tag-a`、authenticated 为 false；第二项对应 `req-b`、`en-US`、`b`、`tag-b`、false。响应头 requestId 与各自数据一致，服务端 JSON 日志的 `requestId` 也应分别对应两个请求。
+
+去掉 `x-request-id` 后会生成 ID；去掉语言头后使用配置默认语言。停止开发服务，再执行 `npm run build`、`npm start`，重复请求应得到相同的隔离结果。结束后用 Ctrl+C 停止服务。
+
+:::tip 观察日志
+本例使用 `pretty: false` 便于查看完整 JSON。默认 pretty 输出会忽略 `requestId` 的显示，终端没显示该字段不一定代表上下文丢失。
+:::
 
 ## 核心概念
 
@@ -21,579 +106,385 @@ Node.js 是单线程事件循环，但同时处理多个并发请求。传统的
 
 ### 生命周期
 
+```text
+Adapter 收到请求（requestContext.enabled 不为 false）
+  → run(新 store, callback)：初始化 requestId、locale、auth 快照
+  → 请求元数据中间件：写入 locale 和选定的入站头
+  → requestId 中间件（启用时）：生成或读取 ID
+  → 认证上下文同步、其他中间件和 handler
+  → 在链内创建的普通 Promise/计时器仍可访问该 store
 ```
-Adapter 收到请求
-  → requestContext.run(store, callback)   ← 创建请求作用域
-  → requestId 中间件写入 store.requestId
-  → 中间件链执行
-  → handler 执行
-  → 请求结束，store 自动 GC（无需手动清理）
-```
+
+请求结束不代表 store 立即清空；其可回收时间与关联异步资源和引用的生命周期有关。不要为每个请求调用全局 `requestContext.disable()`，否则会影响其他请求。详见 [Node.js AsyncLocalStorage 文档](https://nodejs.org/download/release/v20.19.0/docs/api/async_context.html#class-asynclocalstorage)。
+
+`requestContext.enabled: false` 会跳过框架自动建立 HTTP 作用域；`requestId.enabled: false` 只关闭 ID 生成/响应头，正常启用的上下文仍有 locale 和配置的入站头快照。手动 `run()` 不受前一个开关禁止，且在手动外层作用域中调用代码仍可能读到该外层 store。
 
 ## 基本用法
 
 ### 读取 requestId
 
-最常见的用法是在任意位置获取当前请求的 `requestId`：
+在请求链中需要显式关联业务记录时，读取当前 store。不要在模块初始化时保存一次 store，再供所有请求使用。
 
 ```typescript
 import { requestContext } from "vextjs";
 
-export class OrderService {
-  constructor(private app: any) {}
-
-  async createOrder(data: any) {
-    const store = requestContext.getStore();
-    const requestId = store?.requestId;
-
-    this.app.logger.info({ requestId, orderId: data.id }, "开始创建订单");
-
-    // ... 业务逻辑
-  }
+export function currentRequestId(): string | undefined {
+  return requestContext.getStore()?.requestId;
 }
 ```
 
-:::tip
-大多数情况下你不需要手动读取 `requestId`——`app.logger` 和 `app.fetch` 已经自动从 `requestContext` 读取并注入。只有在需要将 `requestId` 传递给外部系统时才需要手动读取。
-:::
+通常默认 `app.logger` 和 `app.fetch` 已自动读取 ID；显式返回给业务系统时才需要上述访问。请求 ID 是关联标识，来自入站头时不保证全局唯一，也不能用作用户身份。
 
 ### 读取 locale
 
-`requestContext` 也存储了当前请求的语言环境，由 i18n 中间件写入：
+独立的请求元数据中间件根据 `Accept-Language`、`locale.supported` 和 `locale.default` 写入 locale，不依赖是否启用 requestId。没有匹配时使用配置默认语言；框架默认是 `en-US`。
 
 ```typescript
 import { requestContext } from "vextjs";
 
-function getCurrentLocale(): string {
-  const store = requestContext.getStore();
-  return store?.locale ?? "zh-CN";
+export function currentLocale(): string | undefined {
+  return requestContext.getStore()?.locale;
 }
 ```
 
-`app.throw()` 内部的 `I18nError.create()` 就是通过 `requestContext` 获取 locale，确保每个请求独立翻译。
+`app.throw()` 的默认错误实现使用当前 app 的语言目录和适用的请求 locale。若 store 属于另一个 app，不会借用其请求语言；手动创建的 store 没有自动执行 HTTP 元数据和认证中间件。语言目录和错误翻译见[国际化](/zh/guide/i18n)与[错误处理](/zh/guide/error-handling)。
 
 ## RequestContextStore 类型
 
+以下是公开字段概览；使用时从 `vextjs` 导入 `RequestContextStore`。字段均可选，因为用户可手动创建只含部分信息的 store。
+
 ```typescript
+import type { VextAuthContextSnapshot } from "vextjs";
+
 interface RequestContextStore {
-  /** 当前请求的唯一标识（由 requestId 中间件生成/透传） */
   requestId?: string;
-
-  /**
-   * 当前请求的语言环境
-   * 由中间件从 Accept-Language 请求头或自定义逻辑中解析写入
-   */
   locale?: string;
-
-  /**
-   * 需要透传到下游服务的入站请求头快照
-   *
-   * 由 requestId 中间件根据 config.fetch.propagateHeaders 列表，
-   * 从当前入站请求中提取对应头的值后写入。
-   * app.fetch 在构建出站请求时从此字段自动读取并注入。
-   *
-   * 键名统一为小写（如 `x-trace-id`、`x-tenant-id`）。
-   */
   propagatedHeaders?: Record<string, string>;
-
-  /**
-   * OpenTelemetry 链路追踪 ID（遵循 OTEL 语义约定字段名 `trace_id`）
-   *
-   * 由用户的 tracing 中间件在请求开始时写入。
-   * logger 内置 mixin 在此字段存在时自动将 `trace_id` 注入到每条日志输出，
-   * 实现日志与链路追踪系统的关联。框架自身不负责写入此字段。
-   */
+  auth?: VextAuthContextSnapshot;
   traceId?: string;
-
-  /**
-   * OpenTelemetry Span ID（遵循 OTEL 语义约定字段名 `span_id`）
-   *
-   * 由用户的 tracing 中间件在请求开始时写入。
-   * logger 内置 mixin 在此字段存在时自动将 `span_id` 注入到每条日志输出。
-   * 框架自身不负责写入此字段。
-   */
   spanId?: string;
 }
 ```
 
-| 字段                | 写入时机   | 写入者              | 用途                                                                |
-| ------------------- | ---------- | ------------------- | ------------------------------------------------------------------- |
-| `requestId`         | 请求进入时 | requestId 中间件    | 日志追踪、出站请求传播                                              |
-| `locale`            | 请求进入时 | i18n 中间件         | 错误消息国际化                                                      |
-| `propagatedHeaders` | 请求进入时 | requestId 中间件    | 分布式追踪头、多租户头等自动透传到下游                              |
-| `traceId`           | 请求进入时 | 用户 tracing 中间件 | logger 内置 mixin 自动读取并注入 `trace_id` 到日志（OTEL 语义约定） |
-| `spanId`            | 请求进入时 | 用户 tracing 中间件 | logger 内置 mixin 自动读取并注入 `span_id` 到日志（OTEL 语义约定）  |
+| 字段                 | 写入者                           | 用途与边界                                                                                                      |
+| -------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `requestId`          | Adapter 初始化、requestId 中间件 | 日志及出站关联；禁用 ID 时通常为空字符串                                                                        |
+| `locale`             | 请求元数据中间件                 | 当前请求语言，可由业务在当前链内更新                                                                            |
+| `propagatedHeaders`  | 请求元数据中间件                 | 按 `config.fetch.propagateHeaders` 捕获，键小写；数组头取首值                                                   |
+| `auth`               | Adapter 初始化、认证上下文同步   | `req.auth` 的快照，提供 isAuthenticated、subject、userId、roles、scopes、scheme、provider；不包含 claims 或凭证 |
+| `traceId` / `spanId` | 用户的 tracing 集成              | 默认 logger 分别映射为 `trace_id` / `span_id`；框架不会自行创建 tracing span                                    |
+
+当前调用链返回同一个可变 store 对象；`getStore()` 不会复制或冻结它。修改 `store.auth` 不等同于认证成功，也不会替代路由鉴权。需要完整认证状态时使用 `req.auth`，参见[安全指南](/zh/guide/security)。
 
 ## 高级用法
 
 ### 在中间件中写入自定义数据
 
-你可以在自定义中间件中向 `requestContext` store 写入额外数据：
+前面的路由已经演示写入 `demoLabel`。若多条路由需要相同逻辑，可移入中间件。以下文件复用前面的类型扩展：
 
 ```typescript
-import { defineMiddleware } from "vextjs";
-import { requestContext } from "vextjs";
+// src/middlewares/context-label.ts
+import { defineMiddleware, requestContext } from "vextjs";
 
-export default defineMiddleware(async (req, res, next) => {
+export default defineMiddleware(async (req, _res, next) => {
   const store = requestContext.getStore();
-
+  const label = req.headers["x-demo-label"];
   if (store) {
-    // 从 JWT token 中提取用户信息写入上下文
-    const token = req.headers.authorization?.replace("Bearer ", "");
-    if (token) {
-      const decoded = verifyToken(token);
-      (store as any).userId = decoded.userId;
-      (store as any).tenantId = decoded.tenantId;
-    }
+    store.demoLabel = (Array.isArray(label) ? label[0] : label) ?? "unlabeled";
   }
-
   await next();
 });
 ```
 
-在后续的 handler 或 service 中读取：
-
-```typescript
-import { requestContext } from "vextjs";
-
-export class AuditService {
-  async log(action: string, resource: string) {
-    const store = requestContext.getStore() as any;
-
-    await this.app.db.collection("audit_logs").insertOne({
-      action,
-      resource,
-      userId: store?.userId,
-      tenantId: store?.tenantId,
-      requestId: store?.requestId,
-      timestamp: new Date(),
-    });
-  }
-}
-```
+文件存在不会自动执行。按[中间件指南](/zh/guide/middleware)先在 `config.middlewares` 声明 `context-label`，再由需要它的路由 `middlewares` 引用；需要全局执行时，在插件中导入该中间件并用 `app.use()` 挂载。启用后可删除前面路由里重复的写入语句。业务 Service 在每次方法调用中读取 store，而不是缓存到单例的实例属性。
 
 ### 扩展 Store 类型
 
-为自定义字段提供类型安全，创建类型声明文件：
+在前面的 `src/types/request-context.d.ts` 中增加字段。文件开头保留 `import "vextjs"`，使声明扩展已有模块；并确保 tsconfig 的 include 覆盖此文件。
 
 ```typescript
-// src/types/request-context.d.ts
+// 合并到 src/types/request-context.d.ts，不必另建第二份声明
+import "vextjs";
+
 declare module "vextjs" {
   interface RequestContextStore {
-    /** JWT 解码后的用户 ID */
-    userId?: string;
-
-    /** 多租户 ID */
+    demoLabel?: string;
     tenantId?: string;
-
-    /** 用户角色列表 */
-    roles?: string[];
-
-    /** 请求开始时间（性能追踪） */
     startTime?: number;
   }
 }
 ```
 
-扩展后，`requestContext.getStore()` 的返回值将包含自定义字段的类型提示：
-
-```typescript
-const store = requestContext.getStore();
-store?.userId; // string | undefined — IDE 有类型提示
-store?.tenantId; // string | undefined
-```
+之后 `requestContext.getStore()?.tenantId` 为 `string | undefined`，无需 `as any`。认证字段优先读取 `store.auth`，不要另建同名 userId/roles 真相源。
 
 ### 多租户数据隔离
 
-利用 `requestContext` 实现多租户自动数据隔离：
+上下文可携带**已经验证过归属关系**的 tenantId，但不会执行授权或自动改写数据库查询。直接把 `x-tenant-id` 放进 store，再用于数据库过滤，允许调用者选择任意租户，不构成隔离。
+
+业务流程应是：
+
+1. 通过认证中间件确定当前用户。
+2. 验证该用户是否有权访问所选租户，失败时拒绝请求。
+3. 将通过验证的 tenantId 写入当前 store。
+4. 每次读、更新、删除和插入都显式使用该租户；缺少 tenantId 时拒绝执行。
+
+下面是供已有授权流程调用的业务工具，放在 `src/utils`，避免被 Service 扫描器当作服务类加载。它只负责查询条件，**不完成第 1、2 步授权**：
 
 ```typescript
-// src/middlewares/tenant.ts
-import { defineMiddleware } from "vextjs";
+// src/utils/tenant-filter.ts
 import { requestContext } from "vextjs";
 
-export default defineMiddleware(async (req, res, next) => {
-  const tenantId = req.headers["x-tenant-id"] as string;
-  if (!tenantId) {
-    req.app.throw(400, "Missing X-Tenant-ID header");
-  }
-
-  const store = requestContext.getStore();
-  if (store) {
-    (store as any).tenantId = tenantId;
-  }
-
-  await next();
-});
-```
-
-```typescript
-// src/services/base.ts — 所有 Service 的基类
-import { requestContext } from "vextjs";
-
-export class TenantAwareService {
-  constructor(protected app: any) {}
-
-  /** 获取当前租户 ID（从 requestContext 自动读取） */
-  protected getTenantId(): string {
-    const store = requestContext.getStore() as any;
-    const tenantId = store?.tenantId;
-    if (!tenantId) {
-      throw new Error("Tenant ID not found in request context");
-    }
-    return tenantId;
-  }
-
-  /** 为查询自动注入租户过滤条件 */
-  protected tenantFilter(
-    filter: Record<string, unknown> = {},
-  ): Record<string, unknown> {
-    return { ...filter, tenantId: this.getTenantId() };
-  }
+export function tenantFilter(
+  filter: Record<string, unknown> = {},
+): Record<string, unknown> {
+  const tenantId = requestContext.getStore()?.tenantId;
+  if (!tenantId) throw new Error("Verified tenant context is required");
+  return { ...filter, tenantId };
 }
 ```
 
-```typescript
-// src/services/order.ts — 使用租户感知基类
-export class OrderService extends TenantAwareService {
-  async findAll(options: { page?: number; limit?: number } = {}) {
-    const { page = 1, limit = 20 } = options;
-
-    // 自动注入 tenantId 过滤 — 不同租户只能看到自己的数据
-    return this.app.db
-      .collection("orders")
-      .find(this.tenantFilter(), { skip: (page - 1) * limit, limit });
-  }
-
-  async create(data: any) {
-    return this.app.db.collection("orders").insertOne({
-      ...data,
-      tenantId: this.getTenantId(),
-      createdAt: new Date(),
-    });
-  }
-}
-```
+最后写入的 tenantId 覆盖调用方 filter 中的同名值。数据库接入和 CRUD 示例见[数据库指南](/zh/guide/database)；业务仍需覆盖所有查询路径，不能把本工具当作自动隔离插件。
 
 ### 性能追踪
 
-在 requestContext 中记录请求开始时间，用于性能监控：
+以下中间件依赖上一节的 `startTime` 类型声明，也需要显式挂载。计量对象是 `await next()` 的执行耗时，包含其下游中间件与 handler；不代表网络数据已全部发给客户端。
 
 ```typescript
 // src/middlewares/performance.ts
-import { defineMiddleware } from "vextjs";
-import { requestContext } from "vextjs";
+import { defineMiddleware, requestContext } from "vextjs";
 
-export default defineMiddleware(async (req, res, next) => {
+export default defineMiddleware(async (req, _res, next) => {
   const store = requestContext.getStore();
-  if (store) {
-    (store as any).startTime = performance.now();
-  }
+  if (store) store.startTime = performance.now();
 
-  await next();
-
-  // 请求完成后计算耗时
-  const startTime = (store as any)?.startTime;
-  if (startTime) {
-    const duration = Math.round(performance.now() - startTime);
-
-    // 慢请求告警
-    if (duration > 1000) {
-      req.app.logger.warn(
-        {
-          url: req.url,
-          method: req.method,
-          duration,
-        },
-        `慢请求: ${req.method} ${req.url} ${duration}ms`,
+  try {
+    await next();
+  } finally {
+    const startTime = store?.startTime;
+    if (startTime !== undefined) {
+      const duration = Math.round(performance.now() - startTime);
+      req.app.logger.info(
+        { url: req.url, method: req.method, duration },
+        "middleware chain finished",
       );
     }
   }
 });
 ```
 
+`finally` 使下游抛错时也能记录；`!== undefined` 不会漏掉值为 0 的起点。访问日志的配置参见[Access Log API](/zh/api/access-log)；流式响应生命周期参见[Hooks](/zh/guide/hooks)。
+
 ### 在异步任务中保持上下文
 
-`AsyncLocalStorage` 的 store 会自动传播到所有异步操作（`Promise`、`setTimeout`、`setImmediate` 等）。只要异步操作是在请求处理链中发起的，就能正确读取 store：
+请求链中创建的原生 Promise、`setTimeout`、`setImmediate` 通常会延续当前上下文；前面的 Service 已验证一次异步等待后的 ID。下面是独立的语言机制示例：
 
 ```typescript
-export class NotificationService {
-  constructor(private app: any) {}
+import { setTimeout as delay } from "node:timers/promises";
+import { requestContext } from "vextjs";
 
-  async sendWelcomeEmail(userId: string) {
-    const store = requestContext.getStore();
-
-    // ✅ setTimeout 中也能读取 requestContext
-    setTimeout(() => {
-      const currentStore = requestContext.getStore();
-      console.log(currentStore?.requestId); // 正确：仍然是原始请求的 requestId
-    }, 1000);
-
-    // ✅ Promise.all 中也能读取
-    await Promise.all([
-      this.sendEmail(userId),
-      this.createNotification(userId),
-    ]);
-  }
+export async function inspectAsyncContext() {
+  return requestContext.run({ requestId: "async-demo" }, async () => {
+    return Promise.all(
+      [1, 2].map(async () => {
+        await delay(1);
+        return requestContext.getStore()?.requestId;
+      }),
+    );
+  });
 }
+// await inspectAsyncContext() 得到 ["async-demo", "async-demo"]
 ```
 
-:::warning 注意
-如果你使用 `worker_threads` 或在请求处理链之外手动创建异步上下文（如定时任务），`requestContext.getStore()` 将返回 `undefined`。这是预期行为——这些操作不属于任何请求。
-:::
+跨 Worker、跨进程和队列消费者不会自动继承入站 HTTP store；需要显式传递选定的数据，再在执行端创建作用域。一个在请求内创建的计时器可能在响应后仍读到原 store，不能仅凭“它是定时任务”判断上下文一定不存在。
+
+自定义 thenable、回调库、在另一条链中触发的事件可能丢失或使用不同上下文。排查时在边界前后检查 `getStore()`；必要时按 [Node 官方上下文丢失说明](https://nodejs.org/download/release/v20.19.0/docs/api/async_context.html#troubleshooting-context-loss)使用原生 Promise 或 `AsyncResource`。
 
 ### 手动创建请求上下文
 
-在某些特殊场景中（如定时任务、消息队列消费者），你可能需要手动创建请求上下文：
+以下是可供现有任务入口调用的函数；不是新增一个会自动执行的任务。它依赖已初始化的 `app`，不依赖额外业务 Service：
 
 ```typescript
-import { requestContext } from "vextjs";
 import { randomUUID } from "node:crypto";
+import { setImmediate } from "node:timers/promises";
+import { requestContext, type VextApp } from "vextjs";
 
-// 定时任务中手动创建上下文
-async function scheduledTask(app: any) {
-  const store = {
-    requestId: `scheduled-${randomUUID()}`,
-    locale: "zh-CN",
-  };
-
-  await requestContext.run(store, async () => {
-    // 在这个回调内部，所有代码都能读取到 store
-    app.logger.info("定时任务开始执行");
-    // requestId 会自动注入到日志中
-
-    await app.services.report.generateDaily();
-
-    // app.fetch 也会自动传播 requestId
-    await app.fetch.post("https://webhook.example.com/notify", {
-      type: "daily-report",
-    });
-  });
+export async function runBackgroundTask(app: VextApp) {
+  return requestContext.run(
+    { requestId: `task-${randomUUID()}`, locale: "zh-CN" },
+    async () => {
+      await setImmediate();
+      app.logger.info("background task started");
+      return requestContext.getStore()?.requestId;
+    },
+  );
 }
 ```
 
+`run()` 返回回调的返回值，异步回调返回 Promise，因此调用方应 `await`。手动 run 只建立存储作用域，不执行 HTTP 中间件，不自动补充 auth、捕获请求头或调度任务；[Jobs 指南](/zh/guide/jobs)负责任务的发现、执行与队列。
+
 ## 与框架内置功能的关系
 
-| 功能           | 读取的字段  | 说明                                   |
-| -------------- | ----------- | -------------------------------------- |
-| `app.logger`   | `requestId` | 通过 logger mixin 自动注入到每条日志   |
-| `app.fetch`    | `requestId` | 自动注入到出站请求的 `x-request-id` 头 |
-| `app.throw()`  | `locale`    | I18nError 根据 locale 翻译错误消息     |
-| 访问日志中间件 | `requestId` | 记录入站请求的 requestId               |
+| 功能               | 使用的信息                   | 当前行为                                                                                            |
+| ------------------ | ---------------------------- | --------------------------------------------------------------------------------------------------- |
+| 默认 `app.logger`  | requestId、traceId、spanId   | 自动关联日志；关闭框架 requestContext 配置也会关闭默认 logger 的 ALS 读取，自定义 logger 需自行接入 |
+| `app.fetch`        | requestId、propagatedHeaders | ID 使用 `config.requestId.header` 指定的头名；已显式设置的出站头优先                                |
+| 默认 `app.throw()` | locale 与 app 语言目录       | 选择当前 app 可用的语言；重设 throw 实现时由自定义实现负责                                          |
+| 认证中间件         | `req.auth`                   | 同步精简快照到 store.auth；授权仍基于认证流程和路由规则                                             |
+
+默认访问日志也通过 logger 的上下文读取关联 requestId。若只有某个 Service 丢失 ID，应继续检查该方法所在的异步调用链。
 
 ## requestContext API
 
 ### requestContext.getStore()
 
-获取当前异步执行上下文的 store。在请求处理链中返回 `RequestContextStore` 对象，在请求外部返回 `undefined`。
+返回当前作用域中的 `RequestContextStore` 引用；没有作用域时返回 `undefined`。它也可能来自用户手动 run，因此“有 store”并不等于“正在处理 HTTP 请求”。
 
 ```typescript
-const store = requestContext.getStore();
-// RequestContextStore | undefined
+import { requestContext } from "vextjs";
+
+export function inspectStore() {
+  return requestContext.getStore();
+}
+// 返回类型：RequestContextStore | undefined
 ```
 
 ### requestContext.run(store, callback)
 
-创建新的请求作用域并执行回调。回调内部和所有后续异步操作都能通过 `getStore()` 访问到 store。
+在指定 store 下执行回调并返回结果。嵌套 run 不会合并 store 字段，回到外层后恢复外层作用域；回调中的异常或 Promise 拒绝应由调用方处理。
 
 ```typescript
-requestContext.run({ requestId: "abc-123", locale: "en-US" }, async () => {
-  // 这里和所有后续异步操作都能读取到 store
-  const store = requestContext.getStore();
-  console.log(store?.requestId); // 'abc-123'
-});
+import { requestContext } from "vextjs";
+
+export function inspectNestedStore() {
+  return requestContext.run({ requestId: "outer" }, () => {
+    const inner = requestContext.run({ requestId: "inner" }, () => {
+      return requestContext.getStore()?.requestId;
+    });
+    return { inner, restored: requestContext.getStore()?.requestId };
+  });
+}
+// inspectNestedStore() 得到 { inner: "inner", restored: "outer" }
 ```
 
-:::info
-通常你不需要手动调用 `run()`——框架的 Adapter 层在收到每个请求时自动调用。
-:::
+默认 HTTP 请求由 Adapter 建立作用域，通常不用手动 run。手动建立时每次创建独立对象，不要复用全局可变 store。
 
 ## 与分布式追踪（traceId）的关系
 
 ### requestId vs traceId：概念区分
 
-VextJS 内置了 `requestId`，但你可能也听说过 `traceId`。两者解决不同层次的问题：
-
-```
-requestId（vext 内置）
-  ├─ 由框架自动生成（crypto.randomUUID 或自定义）
-  ├─ 每个 HTTP 请求独立，可从入站头透传（默认 x-request-id）
-  ├─ 自动注入到 app.logger 每条日志
-  ├─ 自动传播到 app.fetch 出站请求
-  └─ 适合：日志关联、内部服务间请求链路追踪
-
-traceId（APM / 链路追踪系统生成，vext 不内置）
-  ├─ 由 Jaeger / Zipkin / OpenTelemetry / Datadog 等 APM 系统生成
-  ├─ 遵循 W3C Trace Context 标准（traceparent / tracestate 头）
-  │   或 B3 标准（x-b3-traceid 头）
-  └─ 适合：跨系统全链路追踪、APM 系统集成
-```
+requestId 用于关联日志和服务间请求，可来自入站头，也可由框架生成。traceId/spanId 则通常由 tracing SDK 随真实 span 生命周期提供。VextJS 存储这些字段并不等于创建、采样或上报 span。
 
 ### 模式一：requestId 充当 traceId（简单场景）
 
-如果你的系统不使用专业 APM 工具，可以直接将 `requestId` 的请求头名改为 `x-trace-id`，用 `requestId` 充当链路追踪 ID：
+只需共享关联 ID 时，可以把头名改为 `x-trace-id`。以下配置合入已有配置；省略 generate 时继续使用框架 UUID 生成器：
 
 ```typescript
-// src/config/default.ts
+// src/config/default.ts 中的 requestId 配置
 export default {
   requestId: {
-    header: "x-trace-id", // 从 x-trace-id 读取（网关注入）
-    responseHeader: "x-trace-id", // 写回响应头
-    generate: () => nanoid(), // 可替换为更短的 ID 生成器
+    header: "x-trace-id",
+    responseHeader: "x-trace-id",
   },
 };
 ```
 
-这样，所有日志、出站请求都会自动携带 `x-trace-id`，服务间调用形成完整追踪链。
-
-**适合场景**：内部微服务系统、不依赖外部 APM 工具、只需简单请求链路追踪。
+默认 logger 的字段名仍是 `requestId`；`app.fetch` 自动注入的头改为 `x-trace-id`。改名不会生成 W3C traceparent 或 APM span，也不意味着该 ID 满足外部追踪系统的格式要求。
 
 ### 模式二：requestId + APM traceId 并存（企业级场景）
 
-如果你接入了 OpenTelemetry / Jaeger 等 APM 系统，需要同时保留 `requestId`（日志关联）和 APM 的 `traceparent`（分布式链路追踪）：
+需要 APM 时，先完成所选 tracing SDK 的初始化、入站/出站 instrumentation 和导出配置，再把当前 span 的字段关联到日志。普通请求头透传只能传值，不会自动创建父子 span。
 
-**第一步**：配置 `config.fetch.propagateHeaders`，声明需要自动透传的追踪头：
+以下只展示将**已经配置的 SDK 所返回的数据**写入上下文的桥接函数；获取当前 span 的适配函数由该 SDK 的集成提供：
 
 ```typescript
-// src/config/default.ts
+import { requestContext } from "vextjs";
+
+type ActiveSpan = { traceId: string; spanId: string };
+
+export function bindActiveSpan(readActiveSpan: () => ActiveSpan | undefined) {
+  const store = requestContext.getStore();
+  const span = readActiveSpan();
+  if (!store || !span) return;
+  store.traceId = span.traceId;
+  store.spanId = span.spanId;
+}
+```
+
+在已经建立 HTTP 上下文且目标 span 活跃的位置调用。默认 logger 自动读取这两个字段，但 logger 自定义 mixin 可覆盖 trace_id/span_id；requestId 的内置保护规则不同。span 变化后需更新或清除对应字段，单次复制不会跟踪 SDK 后续状态。具体集成路径见[OpenTelemetry 示例](/zh/examples/opentelemetry)。
+
+### propagateHeaders 工作原理
+
+合并到现有配置的 `fetch` 中：
+
+```typescript
+// src/config/default.ts 中的 fetch 配置
 export default {
-  // requestId 保留（用于日志关联）
-  requestId: {
-    header: "x-request-id",
-    responseHeader: "x-request-id",
-  },
-  // 声明需要透传到下游的 APM 追踪头
   fetch: {
-    propagateHeaders: [
-      "traceparent", // W3C Trace Context 主头（含 traceId + spanId）
-      "tracestate", // W3C Trace Context 附加状态
-      // 或 B3 格式：'x-b3-traceid', 'x-b3-spanid', 'x-b3-sampled'
-    ],
+    propagateHeaders: ["traceparent", "tracestate"],
   },
 };
 ```
 
-**第二步**：配置生效后，当入站请求携带 `traceparent` 头时，`app.fetch` 会自动将该头注入到所有出站请求，无需手动处理：
+执行顺序：
 
-```
-Client → [Service A: traceparent=00-abc123-...] → app.fetch → [Service B: traceparent=00-abc123-...]
-                                                                        ↓
-                                                              APM 系统识别同一 trace
-```
+1. 请求元数据中间件捕获清单中的入站头，写入 store.propagatedHeaders。
+2. `app.fetch` 构建出站请求时读取该快照。
+3. 未显式设置的同名头被填入，显式出站头优先。
+4. 下游如何建立 span 取决于其 tracing 集成；单纯复制入站 traceparent 不会生成当前服务的出站 span。
 
-**第三步**（可选）：通过 OpenTelemetry SDK 将 `traceId` 注入到日志，实现日志与 APM 链路的关联：
+当前实现中，单次 `propagateRequestId: false` 只关闭自动 ID 注入，其他捕获的头仍会传播；单次 `propagateHeaders: []` 也不能作为清空快照的开关。若把 ID 头本身列入全局捕获清单，它仍可能通过该快照被带出。应按出站目标选择全局捕获清单，独立请求需要完全不继承时可使用原生 `fetch` 并明确传头。
 
-```typescript
-// src/plugins/otel-log-correlation.ts
-// 参见 examples/opentelemetry 完整示例
-export default definePlugin({
-  name: "otel-log-correlation",
-  setup(app) {
-    // OpenTelemetry SDK 自动注入 trace_id 到 Vext logger
-    // 日志输出：{ requestId: '...', trace_id: 'abc123', msg: '...' }
-  },
-});
-```
-
-**适合场景**：接入 OpenTelemetry / Jaeger / Zipkin / Datadog、需要 APM 系统全链路可观测性。
-
-### propagateHeaders 工作原理
-
-`config.fetch.propagateHeaders` 的完整工作链路：
-
-```
-1. 入站请求携带 traceparent 头
-        ↓
-2. requestId 中间件从入站请求读取该头，写入 store.propagatedHeaders
-        ↓
-3. app.fetch 出站请求时，从 store.propagatedHeaders 读取并注入到请求头
-        ↓
-4. 下游服务收到 traceparent 头，APM 系统建立 span 关联
-```
-
-:::tip
-`propagatedHeaders` 仅捕获 `config.fetch.propagateHeaders` 中声明的头。
-如需临时透传未声明的头，直接在 `app.fetch` 调用时手动设置 `headers` 即可：
+以下是已有 app 和已知目标 URL 的调用片段；函数参数明确由调用方提供：
 
 ```typescript
-await app.fetch.get(downstreamUrl, {
-  headers: { "x-custom-header": req.headers["x-custom-header"] as string },
-});
+import type { VextApp } from "vextjs";
+
+export async function callDownstream(app: VextApp, url: string, tag: string) {
+  const response = await app.fetch.get(url, {
+    headers: { "x-demo-tag": tag },
+  });
+  return response.json();
+}
 ```
 
-:::
+普通 `app.fetch` 的头传播和代理转发策略并非同一入口；代理专用行为见[内置 HTTP 客户端](/zh/guide/fetch)。
 
 ## 最佳实践
 
 ### 1. 优先使用框架内置能力
 
-大多数场景下，`app.logger`（自动注入 requestId）和 `app.fetch`（自动传播 requestId）已经覆盖了常见需求，无需手动操作 `requestContext`。
+默认 logger/fetch 已覆盖常见 ID 关联需求。出现异常时按“Adapter 作用域→元数据写入→业务读写→消费者”逐层检查，而不是先增加另一份全局 ID。
 
 ### 2. 只存储请求级数据
 
-`requestContext` 适合存储请求级别的数据（如 userId、tenantId、traceId）。不要存储大量数据或长生命周期的对象。
-
-```typescript
-// ✅ 好 — 轻量级请求级数据
-(store as any).userId = "user-123";
-(store as any).tenantId = "tenant-456";
-
-// ❌ 不好 — 大对象，浪费内存
-(store as any).fullUserProfile = {
-  /* 大量字段 */
-};
-(store as any).queryResults = [
-  /* 大量数据 */
-];
-```
+适合存放小型 ID、locale、经过验证的业务标识；避免把完整请求、大型查询结果或长期连接放进 store。响应后仍运行的异步资源可能延长相关对象的存活时间。
 
 ### 3. 处理 store 为 undefined 的情况
 
-在非请求上下文（启动阶段、定时任务、worker 线程）中，`getStore()` 返回 `undefined`。始终做安全检查：
-
-```typescript
-const store = requestContext.getStore();
-
-// ✅ 安全访问
-const requestId = store?.requestId ?? "unknown";
-const locale = store?.locale ?? "zh-CN";
-
-// ❌ 可能抛错
-const requestId = store!.requestId; // 非请求上下文时报错
-```
+可选观测信息用可选链和明确默认值；必需的业务上下文应报错，不要用默认租户绕过隔离。启动代码、独立任务或丢失上下文的回调都可能没有 store。
 
 ### 4. 使用类型声明扩展 Store
 
-如果你需要在 store 中添加自定义字段，使用 `declare module` 扩展类型而不是 `as any`：
-
-```typescript
-// src/types/request-context.d.ts
-declare module "vextjs" {
-  interface RequestContextStore {
-    userId?: string;
-    tenantId?: string;
-  }
-}
-
-// 使用时无需 as any
-const store = requestContext.getStore();
-store?.userId; // 有类型提示
-```
+沿用前面的模块扩展，并在调用位置导入 requestContext。新增字段的类型声明不代表框架会自动写入该字段。
 
 ### 5. 不要在 store 中存储可变共享对象
 
-```typescript
-// ❌ 危险 — 如果 sharedCache 在其他地方被修改，会影响当前请求
-(store as any).cache = sharedCache;
+每个 store 独立不意味着其中引用的对象独立。`{ ...shared }` 只复制第一层，嵌套对象仍共享；按业务需要创建独立数据或采用不可变对象。不要将 store 或请求数据保存在单例 Service 的成员变量中。
 
-// ✅ 安全 — 复制一份
-(store as any).cache = { ...sharedCache };
-```
+## 常见问题
+
+| 现象                               | 检查方向                                                                                  |
+| ---------------------------------- | ----------------------------------------------------------------------------------------- |
+| Service 内 getStore() 为 undefined | 是否从当前请求链调用、是否关闭 requestContext、是否在构造阶段读取、是否穿过自定义异步边界 |
+| 日志没显示 requestId               | 检查 prettyIgnore、requestId 开关、默认 logger 的上下文开关及自定义 logger                |
+| 语言总是默认值                     | 检查 Accept-Language、supported 和元数据中间件之后是否改写 locale                         |
+| 关闭 requestId 后仍有透传头        | 元数据捕获独立运行，且 app.fetch 仍读取 propagatedHeaders                                 |
+| 并发请求的数据相互覆盖             | 检查模块/Service 成员缓存、共享嵌套对象和手动 run 是否复用 store                          |
+| 增加头透传后仍看不到 APM span      | 头传播不负责 SDK 初始化、span 创建或导出                                                  |
 
 ## 下一步
 
-- 了解 [中间件](/guide/middleware) 如何在请求生命周期中写入上下文
-- 查看 [日志](/guide/logger) 中 requestId 自动注入的实现原理
-- 学习 [app.fetch 内置 HTTP 客户端](/guide/fetch) 如何自动传播 requestId 和 propagatedHeaders
-- 探索 [国际化](/guide/i18n) 中 locale 与 requestContext 的关系
-- 查看 [OpenTelemetry 集成示例](/examples/opentelemetry) 了解 APM traceId 与日志关联的完整方案
+- 用[中间件](/zh/guide/middleware)挂载上下文写入逻辑。
+- 查看[日志](/zh/guide/logger)、[HTTP 客户端](/zh/guide/fetch)和[国际化](/zh/guide/i18n)了解消费者配置。
+- 用[安全指南](/zh/guide/security)建立认证和授权，再携带业务身份快照。
+- 跨请求后台处理继续阅读[Jobs](/zh/guide/jobs)；专业追踪参考[OpenTelemetry 集成示例](/zh/examples/opentelemetry)。

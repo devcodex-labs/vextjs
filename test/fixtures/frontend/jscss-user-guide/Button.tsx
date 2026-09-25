@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { button } from "../styles/button.style";
+import { button } from "../styles/button.style.js";
 
 export function Button(props: {
   intent?: "primary" | "danger";

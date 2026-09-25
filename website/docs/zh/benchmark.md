@@ -2,10 +2,16 @@
 
 这份基准用于帮助你选择 Vext HTTP Adapter。它固定同一个 Vext 应用，在相同的轻量 Normal 负载下比较五个受支持的 Adapter。它适合作为 Adapter 选型输入，不替代你的应用在真实中间件、鉴权、日志、数据库和部署环境下的压测。
 
+## 适用版本与证据
+
+本页保留 2026-08-15、Vext 1.0.1 / 指定源码提交的历史测量，**不是当前 Vext 2.0.0 的性能基线**。下方生成区的“当前结果”表示仓库最近保留的样本，不表示重新测量了当前代码。
+
+样本数值与仓库 [RESULTS.md](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md) 所述运行对应；当前工作副本保存了结果 Markdown，但没有原始 adapter-matrix-formal-release.json。本次文档核对没有重跑压测，也没有完成原始 JSON 到生成区的一致性校验。引用时保留时间、版本、负载和证据限制，不能把数字转成跨版本的能力保证。
+
 ## 先看结论
 
 - **这是 Adapter 对比，不是跨框架排行榜。** 每一行均使用相同的 Vext routes、Normal bootstrap、handler 模式、HTTP 契约、中间件 fixture 和压测协议；唯一变量是 Adapter。
-- **本机和本负载下 Native 的吞吐最高。** 这是当前环境观测，不是它在所有环境中都最优的承诺。
+- **历史样本的机器和负载下 Native 的吞吐最高。** 这是当前环境观测，不是它在所有环境中都最优的承诺。
 - **本样本中 Fastify 与 Koa 的吞吐随后，Hono 与 Express 则取舍各自的编程模型和生态。** 对于较小差异，请结合 CV 和延迟数据判断。
 - **先按集成和迁移需求选择，再用你的业务复测。** Native 是依赖更轻的默认路径；需要相应生态时选择 Fastify、Express、Koa 或 Hono。
 
@@ -51,7 +57,7 @@ fixture 有意关闭这些 GET 场景不使用的可选请求能力：access log
 | 从 Express 或 Koa 迁移、团队已有经验         | 对应 adapter   | 不要仅依据开销百分比选择，先验证现有中间件的迁移方式                   |
 | Node.js 服务中需要 Hono / Web Standards 风格 | Hono           | 当前是 Node.js adapter，不是 Edge 运行时承诺；对 bridge 敏感负载应实测 |
 
-详细安装和配置请参见 [Adapter 指南](/guide/adapters)。
+详细安装和配置请参见 [Adapter 指南](/zh/guide/adapters)。
 
 ## 测试口径
 
@@ -172,11 +178,13 @@ npm ci
 npm run verify:benchmark-deps
 ```
 
-运行与本页一致的公开 Adapter 对照：
+在仓库根目录使用干净源码执行相同协议的 Adapter 对照；当前代码与依赖生成的是新基线。历史锁文件与今日 latest 可能不同，latest 门禁失败时不要跳过它后仍称为正式结果：
 
 ```bash
-node --expose-gc --max-old-space-size=512 test/benchmark/run-adapter-matrix.mjs --formal --scenario all --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 7 --max-cv 20 --process-priority 0 --handler-mode sync
+node --expose-gc --max-old-space-size=512 test/benchmark/run-adapter-matrix.mjs --formal --scenario all --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 7 --max-cv 20 --process-priority 0 --handler-mode sync --results-json test/benchmark/.artifacts/adapter-matrix-formal-release.json
 ```
+
+正式完整矩阵耗时约55分钟且会占用本机资源，运行前准备空闲环境。命令会更新测试报告并启动/停止本地测试目标；若中断，应确认没有遗留被测进程。新结果通过完整门禁后，才由维护者使用现有生成器更新站点；缺原始 JSON 时，verify:benchmark-docs 会失败，不能从展示表反造原始 artifact。
 
 本样本使用同步 handler。如果你的平台或权限需要不同的优先级，请改用可用值，并将结果视为新的环境基线，不要直接与本页绝对数值比较。
 
@@ -193,6 +201,8 @@ runner 使用本地 Autocannon **programmatic API**，会自动启动和停止�
 
 ## 限制
 
+- P50/P99 来自 RPS 中位数所对应的那一轮，不是汇总七轮全部请求后计算的分位数；CV 表达轮次吞吐的相对波动，不是置信区间。
+
 - 当前结果来自一台 Windows 主机，不代表 Linux、容器或云环境。
 - 这是轻量 HTTP 微基准，不衡量开发体验、插件质量、可维护性或完整业务延迟。
 - 不同日期、机器、依赖版本、handler 模式或压测协议的绝对数字不可直接合并排名。
@@ -201,6 +211,6 @@ runner 使用本地 Autocannon **programmatic API**，会自动启动和停止�
 ## 相关链接
 
 - [Benchmark 复现说明](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/README.md)
-- [Adapter 选择与配置](/guide/adapters)
-- [生产部署](/guide/deployment)
-- [配置参考](/api/config)
+- [Adapter 选择与配置](/zh/guide/adapters)
+- [生产部署](/zh/guide/deployment)
+- [配置参考](/zh/api/config)

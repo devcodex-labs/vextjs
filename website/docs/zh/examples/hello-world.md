@@ -2,9 +2,13 @@
 
 ## 可执行 2.x 权威示例
 
+先运行下面的仓库最小示例，确认服务、HTTP 与文档入口，再按需要阅读 TypeScript 扩展示例。两部分属于不同项目，不要把两套文件混放。
+
 本页的发布合同是仓库中的
 [`examples/hello-world`](https://github.com/devcodex-labs/vextjs/tree/main/examples/hello-world)
 项目。它是刻意保持最小的 JavaScript 应用：使用 `checkJs` 类型检查、Native adapter、显式 `rateLimit.enabled: false`、Vext Docs，并且只有 `GET /` 与 `GET /health` 两个路由。
+
+先在克隆的仓库根完成 `npm ci` 和 `npm run build`，再执行（以下是仓库贡献者路径；只想新建应用可直接看后面的脚手架路径）：
 
 ```bash
 cd examples/hello-world
@@ -15,9 +19,9 @@ npm test
 npm start
 ```
 
-启动后验证 `/`、`/health`、`/openapi.json` 和 `/docs`。示例中的 `"vextjs": "file:../.."` 只用于本仓库；脚手架项目与普通用户项目安装发布后的 `vextjs` 包。
+启动后验证 `/` 返回 `data.message: "hello world"`，`/health` 返回 `data.status: "ok"`，`/openapi.json` 包含这两个业务路由，`/docs` 展示 Vext Docs；未知路径返回404。结束后停止服务。示例中的 `"vextjs": "file:../.."` 只用于本仓库；脚手架项目与普通用户项目安装发布后的 `vextjs` 包。
 
-源码目录是真相源：发布前会实际校验文件树、scripts、typecheck/build、HTTP endpoint、OpenAPI 输出与 Docs 品牌。
+仓库示例源码决定其文件与 endpoint；这里的验证命令由读者执行，不表示当前本地已经完成安装、测试或发布。
 
 ## 扩展 TypeScript 教学变体
 
@@ -30,9 +34,8 @@ hello-world/
   ├── src/
   │   ├── config/
   │   │   └── default.ts
-  │   ├── routes/
-  │   │   └── index.ts
-  │   └── index.ts
+  │   └── routes/
+  │       └── index.ts
   ├── package.json
   └── tsconfig.json
 ```
@@ -42,7 +45,7 @@ hello-world/
 使用 `vext create` 脚手架快速创建：
 
 ```bash
-npx vextjs create hello-world
+npx vextjs create hello-world --template api --skip-install
 cd hello-world
 pnpm install
 ```
@@ -67,6 +70,7 @@ pnpm add -D typescript @types/node
   "type": "module",
   "scripts": {
     "dev": "vext dev",
+    "typecheck": "tsc --noEmit",
     "build": "vext build",
     "start": "vext start"
   },
@@ -86,8 +90,8 @@ pnpm add -D typescript @types/node
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -106,6 +110,8 @@ pnpm add -D typescript @types/node
 export default {
   port: 3000,
   adapter: "native",
+  rateLimit: { enabled: false },
+  openapi: { enabled: true },
   logger: {
     level: "debug",
     pretty: true,
@@ -118,7 +124,7 @@ export default {
 ```
 
 :::tip
-`adapter: 'native'` 使用内置的 Native Adapter（基于 `http.createServer` + `route-core`），不依赖第三方 HTTP 框架。也可以切换为 `'hono'`、`'fastify'`、`'express'` 或 `'koa'`，**路由业务代码无需改写**；选择前请查看[当前性能基准](/benchmark)并用实际负载复测。
+`adapter: 'native'` 使用内置的 Native Adapter（基于 `http.createServer` + `route-core`），不依赖第三方 HTTP 框架。也可以切换为 `'hono'`、`'fastify'`、`'express'` 或 `'koa'`，需先安装对应 optional peer；使用 Vext 公共 API 的路由可保留，适配器差异见[适配器](../guide/adapters)，历史结果与测试口径见[性能基准](../benchmark)。
 :::
 
 ## 4. 路由
@@ -182,7 +188,7 @@ export default defineRoutes((app) => {
     {
       validate: {
         body: {
-          name: "string:1-50",
+          name: "string:1-50!",
           language: "enum:zh,en,ja?",
         },
       },
@@ -218,17 +224,9 @@ export default defineRoutes((app) => {
 });
 ```
 
-## 5. 入口文件
+## 5. 启动入口
 
-```typescript
-// src/index.ts
-import { bootstrap } from "vextjs";
-
-bootstrap().catch((err) => {
-  console.error("启动失败:", err);
-  process.exit(1);
-});
-```
+本例使用 package.json 中的 `vext dev/build/start`，由 CLI 管理启动入口，不需要另建 `src/index.ts` 或再次调用 `bootstrap()`。需要程序化管理启动/关闭时，见 [App 生命周期](../api/app)，不要混用两种启动方式。
 
 ## 6. 运行
 
@@ -240,13 +238,14 @@ pnpm dev
 
 开发模式特性：
 
-- 文件修改自动热重载（三层策略：路由/服务/配置智能刷新）
+- 文件修改触发重载；路由/服务与配置变更采用不同策略，见[开发模式](../guide/hot-reload)
 - 美化日志输出（内置 pretty 格式）
-- 自动启用 OpenAPI 文档（访问 `http://localhost:3000/docs`）
+- 本例已显式启用 OpenAPI 文档（访问 `http://localhost:3000/docs`）
 
 ### 生产模式
 
 ```bash
+pnpm typecheck
 pnpm build
 pnpm start
 ```
@@ -283,7 +282,7 @@ curl -X POST http://localhost:3000/greet \
 
 ## 8. 响应格式说明
 
-VextJS 默认启用**出口包装**（`config.response.wrap: true`），所有 `res.json()` 的响应会自动包装为统一格式：
+VextJS 默认启用**出口包装**（`config.response.wrap: true`），本例的 JSON 成功响应会包装为统一格式；特殊无 body 状态、显式不包装和错误出口的边界见[请求与响应](../api/context)：
 
 **成功响应**：
 
@@ -306,7 +305,9 @@ VextJS 默认启用**出口包装**（`config.response.wrap: true`），所有 `
 }
 ```
 
-如果不需要包装（如微服务间通信），可在配置中禁用：
+错误字段的具体消息可能随校验器语言而变化，应先检查 HTTP 状态、业务 code 和 errors 结构。缺少必填 name 同样应返回422，不能只测试空字符串。
+
+如果不需要包装（如微服务间通信），可把下面字段合并到现有配置中禁用：
 
 ```typescript
 // src/config/default.ts
@@ -331,7 +332,7 @@ export default {
 
 ## 下一步
 
-- 📖 阅读 [快速开始](/guide/quick-start) 了解更完整的项目搭建流程
-- 📖 阅读 [CRUD API 示例](/examples/crud-api) 了解数据库集成
-- 📖 阅读 [项目结构](/guide/project-structure) 了解约定式目录规范
-- 📖 阅读 [路由](/guide/routing) 深入了解三段式路由定义
+- 阅读 [快速开始](../guide/quick-start) 了解更完整的项目搭建流程
+- 阅读 [CRUD API 示例](./crud-api) 了解数据库集成
+- 阅读 [项目结构](../guide/project-structure) 了解约定式目录规范
+- 阅读 [路由](../guide/routing) 深入了解三段式路由定义

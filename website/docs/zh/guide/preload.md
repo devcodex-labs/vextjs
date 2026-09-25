@@ -1,6 +1,6 @@
 # 预加载（Preload）
 
-VextJS 提供了 **预加载（Preload）** 机制，允许以下两类来源在 Node.js 模块加载之前执行脚本：
+VextJS 提供了 **预加载（Preload）** 机制，允许以下两类来源在应用入口模块执行之前运行脚本：
 
 1. **依赖包声明**：npm 包在 `package.json` 中声明 `vext.preload`
 2. **项目级目录**：应用项目中的规范目录 `src/preload/`
@@ -9,11 +9,49 @@ VextJS 提供了 **预加载（Preload）** 机制，允许以下两类来源在
 
 包级 preload 从当前服务声明的直接依赖解析实际包根，支持依赖提升和 pnpm 链接；包未导出 `package.json` 或只导出子路径也能读取其 preload 元数据。脚本路径相对该包根解析，按真实文件路径去重，不要求每个服务各有一份 `node_modules/<包名>`。
 
+## 完整项目级示例与验证
+
+以[快速开始](/zh/guide/quick-start)的API项目为基础，创建下面三个文件。示例仅桥接一个应用环境变量，不要求安装额外SDK。
+
+```typescript
+// src/preload/01-bootstrap-port.ts
+process.env.APP_BOOTSTRAP_PORT = "3011";
+```
+
+```typescript
+// src/config/default.ts
+export default {
+  port: Number(process.env.APP_BOOTSTRAP_PORT) || 3000,
+  adapter: "native",
+  frontend: { enabled: false },
+};
+```
+
+```typescript
+// src/routes/preload-info.ts
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  app.get("/", {}, async (_req, res) => {
+    res.json({
+      port: app.config.port,
+      preloadValue: process.env.APP_BOOTSTRAP_PORT,
+    });
+  });
+});
+```
+
+1. 在未设置VEXT_PORT、VEXT_CONFIG等覆盖的终端运行`npm run dev`，请求`http://127.0.0.1:3011/preload-info`应返回200，data.port=3011、preloadValue="3011"。
+2. 把preload中的3011改为3012，等待cold restart后请求3012，应看到两个值相应改变；恢复3011后再继续。
+3. 停止dev，执行`npm run build -- --typecheck`再执行`npm start`，仍应使用3011。构建后单独改源码不会改变已选compiled preload，需重建。验证结束停止服务。
+
+环境变量没有自动映射到Vext端口，是default.ts显式读取APP_BOOTSTRAP_PORT；构建阶段可使用3000回退，实际start在读取配置前执行preload。需要远程补丁和明确覆盖顺序时用[bootstrap provider](/zh/guide/configuration#bootstrap-config-provider)。
+
 ## 为什么需要预加载？
 
 某些工具（如 OpenTelemetry SDK）必须在应用代码加载**之前**完成初始化，才能正确 patch Node.js 内置模块（http、net、dns）和第三方库（MongoDB、pg、Redis 等）。
 
-Node.js 的 `--import` 参数正是为此设计：它确保指定脚本在**任何**用户代码执行前运行。
+Node.js的`--import`在应用入口之前执行指定模块；多个`--import`按参数顺序执行，NODE_OPTIONS中的条目先于命令行条目，`--require`先于`--import`。因此不能把Vext注入的脚本理解为早于所有其他预加载。见[Node.js 20 CLI说明](https://nodejs.org/docs/latest-v20.x/api/cli.html#--importmodule)。
 
 手动添加 `--import` 需要修改启动脚本，增加了配置负担。VextJS 的 preload 机制将这一步**自动化**：
 
@@ -74,21 +112,23 @@ src/preload/
 └── 03-polyfill.js
 ```
 
-首期规则：
+当前规则：
 
-| 规则           | 说明                                                  |
-| -------------- | ----------------------------------------------------- |
-| 目录位置       | 固定为规范目录 `src/preload/`                         |
-| 扫描范围       | **非递归**，只扫描当前目录一级文件                    |
-| 文件顺序       | 按文件名升序注入                                      |
-| 项目级 vs 包级 | **项目级 preload 先执行**，包级 `vext.preload` 后执行 |
-| 去重           | 按绝对路径去重                                        |
+| 规则           | 说明                                                     |
+| -------------- | -------------------------------------------------------- |
+| 目录位置       | 固定为规范目录 `src/preload/`                            |
+| 扫描范围       | **非递归**，只扫描当前目录一级文件                       |
+| 文件顺序       | 按文件名localeCompare排序，建议用01/02等数字前缀表达顺序 |
+| 项目级 vs 包级 | **项目级 preload 先执行**，包级 `vext.preload` 后执行    |
+| 去重           | 按绝对路径去重                                           |
 
 #### 历史根目录迁移
 
 项目根 `preload/` 仅作为临时迁移回退受支持。它含有支持的 preload 源文件时，Vext 会输出指向 `src/preload/` 的 warning。不要同时在两个目录放置支持的 preload 文件：preload 可能初始化全局 instrumentation，Vext 会 fail-fast 而不会合并它们，避免重复执行。
 
 #### 支持的文件类型
+
+子目录、非普通文件和不支持的扩展名会warning并跳过；这里没有plugins目录的`_`前缀排除约定，不要靠下划线禁用preload。
 
 | 类型   | 处理方式                                  | 推荐度  |
 | ------ | ----------------------------------------- | :-----: |
@@ -152,9 +192,9 @@ compiled 生产模式则使用 `vext build` 已生成的 `<outdir>/preload/*.mjs
 
 路径相对于包根目录（`node_modules/<package>/`），由 CLI 自动解析为绝对路径。
 
-#### 真实示例
+#### 观测SDK接入示例
 
-`@devcodex/opentelemetry` 已内置此声明：
+使用`@devcodex/opentelemetry`等观测SDK时，核对实际安装版本的package.json是否包含类似声明，以及目标脚本是否随包发布：
 
 ```json
 {
@@ -165,7 +205,7 @@ compiled 生产模式则使用 `vext build` 已生成的 `<outdir>/preload/*.mjs
 }
 ```
 
-安装后，`vext start` / `vext dev` 自动注入 `--import`，OpenTelemetry SDK 在应用启动前完成初始化，MongoDB / pg / Redis 等自动 patch 生效。
+声明和文件有效时，`vext start` / `vext dev`会注入对应脚本。实际instrumentation支持的模块/版本、SDK配置及上报状态仍需按该SDK验证；脚本被注入不等于所有数据库追踪都已生效。接入步骤见[OpenTelemetry示例](/zh/examples/opentelemetry)。
 
 ## 适用场景
 
@@ -182,7 +222,7 @@ compiled 生产模式则使用 `vext build` 已生成的 `<outdir>/preload/*.mjs
 
 | 能力                             | preload                                           | bootstrap config provider           |
 | -------------------------------- | ------------------------------------------------- | ----------------------------------- |
-| 执行时机                         | Node.js 模块加载前（`--import`）                  | 配置 merge / validate / freeze 之前 |
+| 执行时机                         | 应用入口模块执行前（`--import`）                  | 配置 merge / validate / freeze 之前 |
 | 主要职责                         | SDK 初始化、环境桥接、monkey patch、全局 polyfill | 返回结构化配置补丁                  |
 | 是否参与配置优先级链             | ❌                                                | ✅                                  |
 | 是否适合作为远程数据库配置主路径 | ❌                                                | ✅                                  |
@@ -196,13 +236,15 @@ compiled 生产模式则使用 `vext build` 已生成的 `<outdir>/preload/*.mjs
 
 ## 三种启动模式
 
-| 模式                                  | preload 生效？ | 说明                          |
-| ------------------------------------- | :------------: | ----------------------------- |
-| `vext start` / `vext dev`             |       ✅       | CLI 自动发现并注入 `--import` |
-| `node --import <path> dist/server.js` |       ✅       | 手动添加 `--import`，效果相同 |
-| `node dist/server.js`（无 --import）  |       ❌       | preload 脚本不会执行          |
+| 模式                                    | preload 生效？ | 说明                                     |
+| --------------------------------------- | :------------: | ---------------------------------------- |
+| `vext start` / `vext dev`               |       ✅       | CLI 自动发现并注入 `--import`            |
+| `node --import <path> ./entry.mjs`      |       ✅       | 自建入口手动加载脚本；入口本身由应用提供 |
+| `node ./entry.mjs`（未设置任何preload） |       ❌       | 不会自动扫描Vext的preload约定            |
 
 > 推荐使用 `vext start` / `vext dev`，享受自动注入的便利。
+
+Vext构建输出不承诺生成可直接运行的dist/server.js；生产应用使用vext start选择并验证构建产物。单独执行`vext build`会编译preload，不把它当启动脚本执行；源码配置不要依赖只有启动preload才存在的状态来完成构建。
 
 ## Cluster 模式
 
@@ -212,6 +254,8 @@ compiled 生产模式则使用 `vext build` 已生成的 `<outdir>/preload/*.mjs
 VEXT_CLUSTER=1 vext start   # 每个 Worker 自动加载 preload 脚本
 ```
 
+PowerShell用`$env:VEXT_CLUSTER="1"`后执行`vext start`；验证后移除该环境变量。初始化是每个进程各自执行，不能用preload承担只允许全局执行一次的数据迁移。
+
 ## 注意事项
 
 ### 安全行为
@@ -219,27 +263,27 @@ VEXT_CLUSTER=1 vext start   # 每个 Worker 自动加载 preload 脚本
 - **项目级目录为受控单目录**：`src/preload/` 是规范目录，并且只非递归扫描它。项目根 `preload/` 是带 warning 的兼容回退，不是第二个源目录
 - **仅扫描直接依赖**：CLI 只读取项目 `package.json` 的 `dependencies` + `devDependencies`，不递归扫描子依赖
 - **文件不存在时跳过**：`vext.preload` 指向的文件不存在时，CLI 输出 warning 并跳过，不阻断启动
-- **解析失败时降级**：依赖包 `package.json` 解析失败时静默跳过
+- **解析失败时降级**：依赖包解析失败时warning并跳过；字段不是string/string[]或数组含非字符串时也会warning，保留合法条目
 - **项目级 TS preload 编译失败时 fail-fast**：避免把明显不可执行的 TS preload 带进运行阶段
 - **无 preload 声明时无影响**：没有项目级目录、也没有包级 preload 声明时，CLI 行为与之前完全一致
 
 ### 与手动 `--import` 共存
 
-CLI 注入的 `--import` 与用户手动添加的 `--import` 不冲突。如果同一脚本被注入两次，SDK 内部通常有全局注册保护，不会重复初始化。
+CLI只对它自己解析得到的列表去重，不替用户整理NODE_OPTIONS或其他启动参数。不要依赖SDK“通常有保护”来保证幂等；选择一个注入入口，并检查实际进程日志、顺序与SDK初始化状态。NODE_OPTIONS也可能影响父进程。
 
 ### 开发 preload 脚本的建议
 
 - 脚本应快速执行，避免阻塞应用启动
 - 如果是 `.js` / `.ts`，请确保项目采用 ESM 语义（`"type": "module"`）
-- 错误应自行处理；若是 TS preload，语法编译错误会直接中断启动
+- 对可选能力可显式捕获错误并说明降级；必要能力失败应抛出，阻止带着缺失前置状态启动。TS语法编译错误会直接中断本次启动
 
 ### 部署边界
 
 如果你使用的是**项目级 `src/preload/`**：
 
-- `vext build` 会把 `src/preload/` 编译到 `dist/preload/`
+- `vext build`会把`src/preload/`编译到所选输出目录的`preload/`，默认`dist/preload/`
 - `.ts` / `.mts` / `.js` / `.mjs` 都会统一输出为可直接 `--import` 的 `.mjs` 文件
-- 因此生产部署时，通常只需要一起携带：
+- 因此生产部署至少需要一起携带：
   - 项目根 `package.json`
   - `dist/`（其中已包含 `dist/preload/`，如被使用）
 
@@ -247,22 +291,7 @@ compiled `vext start` 只加载所选输出的 `preload/`。自定义输出时�
 
 ## 编写自定义 preload
 
-### 编写项目级 preload
-
-```ts
-// src/preload/01-bootstrap-port.ts
-process.env.APP_BOOTSTRAP_PORT = "3011";
-```
-
-```js
-// src/preload/02-sdk.mjs
-try {
-  const { init } = await import("../src/sdk.js");
-  await init();
-} catch (err) {
-  console.warn("[app preload] init failed:", err.message);
-}
-```
+项目SDK初始化可以放在另一个preload中并导入实际存在的模块；例如从src/preload/02-sdk.mts导入src/sdk.ts应写`../sdk.js`，由TS构建解析，不要误写为`../src/sdk.js`。使用.mjs直接执行时，相对路径必须在实际运行位置可解析。
 
 ### 编写包级 preload
 
@@ -293,10 +322,21 @@ export {};
 }
 ```
 
-构建后，任何使用 `vext start` / `vext dev` 的项目安装此包后，preload 脚本会自动执行。
+上例的sdk.js和包构建过程由包作者提供，构建后检查声明指向的文件已包含在发布包中。消费者把该包声明为直接依赖并安装后，vext start/dev才会发现；仅作为传递依赖不满足扫描条件，生产必要SDK也不应仅存在于被省略的devDependencies中。
+
+## 排查与复验
+
+| 症状                | 原因与处理                                               | 复验                         |
+| ------------------- | -------------------------------------------------------- | ---------------------------- |
+| 脚本没执行          | 核对启动方式、直接依赖声明/安装、文件扩展名与目标路径    | 用上方preload-info读取实际值 |
+| 改源码生产无变化    | start读取已选产物preload                                 | 重建并重启后请求             |
+| 两个源目录冲突      | src/preload与历史preload都有受支持文件                   | 合并到规范目录后启动         |
+| TS编译失败/缓存冲突 | 查看具体文件；修复语法或外部改动，不能以旧缓存冒充新版本 | 重新启动且检查新值           |
+| SDK重复初始化       | 手工参数、NODE_OPTIONS或多进程重复入口                   | 每个PID分别核对初始化次数    |
+| port未改变          | 检查local/provider/CLI覆盖以及配置是否读取变量           | 清除覆盖后按完整示例重试     |
 
 ## 下一步
 
-- 查看 [OpenTelemetry 可观测性](/examples/opentelemetry) 了解 preload 的典型应用
-- 了解 [插件](/guide/plugins) 系统的完整能力
-- 探索 [Cluster 多进程](/guide/cluster) 模式下的 preload 行为
+- 查看 [OpenTelemetry 可观测性](/zh/examples/opentelemetry) 了解 preload 的典型应用
+- 了解 [插件](/zh/guide/plugins) 系统的完整能力
+- 探索 [Cluster 多进程](/zh/guide/cluster) 模式下的 preload 行为

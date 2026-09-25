@@ -1,13 +1,17 @@
 # 中间件
 
-VextJS 的中间件采用 **洋葱模型**（Onion Model），支持请求前处理和响应后处理。框架提供 `defineMiddleware` 和 `defineMiddlewareFactory` 两种定义方式，通过约定式目录自动扫描加载。
+VextJS 的中间件采用 **洋葱模型**（Onion Model），支持前置和后置逻辑。框架提供 `defineMiddleware` 和 `defineMiddlewareFactory` 两种定义方式，按配置白名单从约定目录加载。本页先用无业务依赖的完整例子验证定义、配置与路由引用，再说明认证、错误处理和生命周期。
+
+路由对中间件的引用、注册顺序与边界约束以 [HTTP 与路由规范](/zh/specification/http-and-routing) 为准。
+
+前置条件：已有按 [快速开始](/zh/guide/quick-start) 创建并能启动的项目。按“定义两个文件 → 配置白名单 → 路由引用 → 启动验证”完成第一条接入流程；后面的认证、API Key、缓存头等按需要选用，并补齐各自的配置或业务服务。
 
 ## 洋葱模型
 
-中间件通过 `await next()` 调用下一个中间件。`next()` 返回后可以执行后置逻辑，形成洋葱状的执行流程：
+中间件通过 `await next()` 调用下一个中间件。`next()` 返回后可以执行后置逻辑，形成洋葱状的调用流程。handler 可能已经发送或开始发送响应，后置代码不保证还能修改响应头：
 
 ```
-请求 →  [中间件A-前] → [中间件B-前] → [Handler] → [中间件B-后] → [中间件A-后]  → 响应
+请求 →  [中间件A-前] → [中间件B-前] → [Handler] → [中间件B-后] → [中间件A-后]
 ```
 
 ```typescript
@@ -21,7 +25,6 @@ const timing: VextMiddleware = async (req, res, next) => {
 
   // ── 后置逻辑（响应返回时执行）──
   const ms = Date.now() - start;
-  res.setHeader("X-Response-Time", `${ms}ms`);
   req.app.logger.info(
     `${req.method} ${req.path} → ${res.statusCode} (${ms}ms)`,
   );
@@ -38,83 +41,65 @@ type VextMiddleware = (
 ) => Promise<void> | void;
 ```
 
-| 参数   | 说明                                                     |
-| ------ | -------------------------------------------------------- |
-| `req`  | 框架统一的请求对象（与 Adapter 解耦）                    |
-| `res`  | 框架统一的响应对象                                       |
-| `next` | 调用下一个中间件；必须 `await`，否则后置逻辑无法正确执行 |
+| 参数   | 说明                                                            |
+| ------ | --------------------------------------------------------------- |
+| `req`  | 框架统一的请求对象（与 Adapter 解耦）                           |
+| `res`  | 框架统一的响应对象                                              |
+| `next` | 调用下一个中间件；用 `await` 等待后置逻辑，或直接返回其 Promise |
 
 ## 定义中间件
 
-中间件文件放在 `src/middlewares/` 目录下，由 `middleware-loader` 自动扫描。文件名即中间件名称。
+中间件文件放在 `src/middlewares/` 目录下，由 `middleware-loader` 按白名单查找。文件名对应中间件名称，仅放入文件并不会自动启用。
 
 ### 普通中间件 — `defineMiddleware`
 
-不需要配置参数的中间件，使用 `defineMiddleware` 标记：
+不需要参数时，用 `defineMiddleware` 标记。以下完整文件设置响应头并记录执行耗时：
 
 ```typescript
-// src/middlewares/auth.ts
+// src/middlewares/audit-log.ts
 import { defineMiddleware } from "vextjs";
 
 export default defineMiddleware(async (req, res, next) => {
-  const token = req.headers["authorization"]?.replace("Bearer ", "");
-
-  if (!token) {
-    req.app.throw(401, "Authorization token is required");
-  }
-
-  // 验证 token（示例）
+  res.setHeader("X-Audit", "visited");
+  const start = Date.now();
   try {
-    const payload = verifyJWT(token);
-    (req as any).user = payload;
-  } catch {
-    req.app.throw(401, "Invalid or expired token");
+    await next();
+  } finally {
+    req.app.logger.info(
+      { path: req.path, elapsedMs: Date.now() - start },
+      "Request finished",
+    );
   }
-
-  await next();
 });
-
-function verifyJWT(token: string) {
-  // JWT 验证逻辑...
-  return { id: "1", role: "user" };
-}
 ```
 
 ### 工厂中间件 — `defineMiddlewareFactory`
 
-需要运行时配置参数的中间件，使用 `defineMiddlewareFactory` 标记。工厂函数接收 `options` 参数，返回一个 `VextMiddleware`：
+需要参数时，用 `defineMiddlewareFactory` 返回中间件。以下完整文件由配置决定响应头的值：
 
 ```typescript
-// src/middlewares/check-role.ts
+// src/middlewares/response-label.ts
 import { defineMiddlewareFactory } from "vextjs";
 
-interface CheckRoleOptions {
-  roles: string[];
+interface LabelOptions {
+  value?: string;
 }
 
-export default defineMiddlewareFactory<CheckRoleOptions>((options) => {
-  const allowedRoles = options?.roles ?? [];
-
-  return async (req, res, next) => {
-    const user = (req as any).user;
-
-    if (!user) {
-      req.app.throw(401, "Authentication required");
-    }
-
-    if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
-      req.app.throw(403, "Insufficient permissions");
-    }
-
+export default defineMiddlewareFactory<LabelOptions>((options) => {
+  const value = options?.value ?? "default";
+  return async (_req, res, next) => {
+    res.setHeader("X-Route-Label", value);
     await next();
   };
 });
 ```
 
+响应头在 `next()` 前设置；后置逻辑适合记录结果或清理资源，不能假定响应尚未发送，尤其是流式响应。
+
 :::tip 为什么需要显式标记？
 `defineMiddleware` 和 `defineMiddlewareFactory` 通过 Symbol 标记让中间件类型显式化。`middleware-loader` 通过 `isMiddleware()` / `isMiddlewareFactory()` 检测标记，零歧义地区分普通中间件和工厂中间件。
 
-如果不标记，框架无法区分"一个函数到底是中间件本身，还是返回中间件的工厂函数"。
+未标记函数仍有兼容推断路径，但会产生弃用警告，且推断依赖默认 options 是否存在。新代码应使用显式标记，避免普通函数与工厂的歧义。
 :::
 
 ## 注册与使用
@@ -123,110 +108,118 @@ export default defineMiddlewareFactory<CheckRoleOptions>((options) => {
 
 ### Step 1: 在配置中声明白名单
 
-所有路由级中间件必须先在 `config/default.ts` 的 `middlewares` 数组中声明：
+先创建上面的两个中间件文件，再在已有项目的配置中加入白名单：
 
 ```typescript
 // src/config/default.ts
 export default {
-  port: 3000,
   middlewares: [
-    // 普通中间件 — 字符串声明
-    "auth",
-
-    // 工厂中间件 — 对象声明（附带默认参数）
-    { name: "check-role", options: { roles: ["user"] } },
-
-    // 工厂中间件 — 无默认参数
-    "rate-limit-api",
+    "audit-log",
+    { name: "response-label", options: { value: "configured" } },
   ],
 };
 ```
 
-白名单机制的好处：
-
-- **安全性**：防止路由随意引用未审核的中间件
-- **显式依赖**：一眼看到项目使用了哪些中间件
-- **参数默认值**：工厂中间件的默认参数集中管理
+白名单声明可用中间件和工厂默认参数，不会自动作用于所有路由。普通中间件不接受 `options`；需要参数时必须定义为工厂。
 
 ### Step 2: 在路由中引用
 
-通过 `options.middlewares` 为路由指定中间件：
-
-生产认证建议优先使用内置 `auth()` 中间件，并把最终 `RouteOptions.auth` 内联到路由，或保存为可静态投影的同文件 `const`。构建索引与 Doctor 会拒绝 route-options helper 调用。本节只演示更底层的 middleware 引用机制。
-
-:::tip 认证与授权
-使用 `auth()` 将身份解析到 `req.auth`，再通过 [`RouteOptions.auth`](../api/route-definition#auth) 保护路由，并让 OpenAPI security 声明保持一致。业务特定的权限资源应写在路由文件的最终 options 常量中。完整的 `permission-core` 集成见 [permission-core Auth 示例](../examples/permission-core-auth)。
-:::
-
 ```typescript
-// src/routes/admin.ts
+// src/routes/middleware-demo.ts
 import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  // 字符串引用 — 使用配置中的默认参数
   app.get(
-    "/profile",
-    {
-      middlewares: ["audit-log"],
-    },
-    async (req, res) => {
+    "/",
+    { middlewares: ["audit-log", "response-label"] },
+    (_req, res) => {
       res.json({ ok: true });
     },
   );
-
-  // 对象引用 — 覆盖默认参数
-  app.delete(
-    "/users/:id",
+  app.get(
+    "/custom",
     {
       middlewares: [
-        "auth",
-        { name: "check-role", options: { roles: ["superadmin"] } },
+        "audit-log",
+        { name: "response-label", options: { value: "route" } },
       ],
     },
-    async (req, res) => {
-      const { id } = req.valid("param");
-      await app.services.user.delete(id);
-      res.status(204).json(null);
+    (_req, res) => {
+      res.json({ ok: true });
     },
   );
 });
 ```
 
+### Step 3: 启动并验证
+
+保留项目原有配置，只把白名单合入 `src/config/default.ts`，然后在项目根目录运行 `npm run dev`。另开终端执行以下请求，端口以启动输出为准；Windows PowerShell使用 `curl.exe`：
+
+```bash
+curl -i http://localhost:3000/middleware-demo
+curl -i http://localhost:3000/middleware-demo/custom
+```
+
+| 请求                      | 预期状态与响应头                                     | 说明                       |
+| ------------------------- | ---------------------------------------------------- | -------------------------- |
+| `/middleware-demo`        | 200，`X-Audit: visited`，`X-Route-Label: configured` | 使用白名单中的工厂默认参数 |
+| `/middleware-demo/custom` | 200，`X-Audit: visited`，`X-Route-Label: route`      | 使用本路由的工厂参数       |
+
+两次响应的默认包装中均有 `data.ok: true`，服务终端还会输出 `Request finished`。若配置了环境覆盖，先核对下文“环境级中间件配置覆盖”。
+
+再做一次失败验证：停止开发进程，从白名单删除 `response-label`，保留路由引用并重新运行 `npm run dev`。应出现包含 `response-label` 的未声明中间件诊断，路由加载失败。恢复白名单、重新启动，再执行上面的两条请求。不要把“文件已存在”当作“已在配置声明”。
+
+认证场景使用 `auth()` 建立 `req.auth`，再通过 [`RouteOptions.auth`](/zh/api/route-definition#auth) 保护路由。最终选项可以内联或使用可静态投影的同文件 `const`；不要通过 route-options helper 调用隐藏最终声明。业务集成见 [permission-core Auth 示例](/zh/examples/permission-core-auth)。
+
 ### 参数优先级
 
-当工厂中间件同时在配置和路由中指定了参数时，**路由级参数覆盖配置级默认参数**：
+当工厂中间件同时在配置和路由中指定了参数时，**路由级 options 整体替换配置级默认 options（不做逐字段合并）**：
 
 ```
 配置默认参数 (config/default.ts)  →  路由覆盖参数 (options.middlewares)
 { roles: ['user'] }              →  { roles: ['superadmin'] }
 ```
 
+### 环境级中间件配置覆盖
+
+可以在环境配置文件中覆盖中间件的默认参数：
+
+```typescript
+// src/config/default.ts（接续上面的完整示例）
+export default {
+  middlewares: [
+    "audit-log",
+    { name: "response-label", options: { value: "configured" } },
+  ],
+};
+```
+
+```typescript
+// src/config/development.ts — 开发环境覆盖参数
+export default {
+  middlewares: [{ name: "response-label", options: { value: "development" } }],
+};
+```
+
+配置的 `middlewares` 数组使用智能 patch 策略：按 `name` 匹配并合并，不会简单地替换整个数组。
+
+这是环境配置合并；路由引用中传入 `options` 时采用前文所述的整体替换。配置声明 `enabled: false` 会保留名称并加载为空操作，不执行中间件正文。此时按普通中间件处理，路由应只引用名称；若仍传 `options`，会因“不接受参数”在注册时失败。
+
 ## 中间件执行顺序
 
 ### 全局中间件
 
-VextJS 内置了多个全局中间件，在所有路由之前自动执行。执行顺序：
+生产启动时，请求按已启用的功能依次进入以下层次；配置关闭的项不会安装：
 
-```
-请求进入
-  ↓
-1. requestId      — 生成/透传请求唯一标识
-2. cors           — CORS 跨域处理
-3. bodyParser     — 请求体解析（JSON / URL-encoded）
-4. rateLimit      — 全局速率限制（仅 config.rateLimit.enabled === true 时）
-5. responseWrapper — 开启响应包装（{ code, data, requestId }）
-6. accessLog      — 访问日志记录
-  ↓
-7. [路由级中间件]   — 按 options.middlewares 声明顺序
-  ↓
-8. [validateMiddleware] — 参数校验（如果配置了 validate）
-  ↓
-9. [handler]       — 路由处理函数
-  ↓
-errorHandler      — 全局错误处理（捕获任何阶段抛出的异常）
-```
+1. 请求元数据、requestId、认证上下文与 request hooks。
+2. security headers、CORS、body parser、显式启用的 rate limit。
+3. response wrapper、前端 renderer、access log、全局 Session。
+4. 插件通过 `app.use()` 注册的全局中间件。
+5. 显式启用的 CSRF，再进入匹配的路由链。
 
-内置全局中间件通过配置控制。限流采用显式启用：省略 `rateLimit`，或
+错误处理器由 adapter 单独注册，用于处理链中传播出来的异常；它不是 handler 后必然执行的普通一环。中间件直接返回响应、缓存命中或抛错时，后续步骤可能不会执行。
+
+内置全局中间件通过配置控制。限流仅在 `rateLimit.enabled === true` 时启用：省略 `rateLimit`，或
 `rateLimit.enabled` 不严格等于 `true` 时，Vext 不安装限流中间件，因此不会产生
 限流响应头或 HTTP 429。
 
@@ -253,7 +246,7 @@ Vext 会为 RateLimit 创建一个共享 Redis store，并默认按项目、prof
 
 ### 路由级中间件
 
-路由级中间件按 `options.middlewares` 数组中的声明顺序执行：
+路由链在 route:matched hook 后，依次为启用的 timeout/CORS/Session 包装、multipart、自定义中间件、auth guard、响应缓存与页面 freshness、自动 validate、handler。自定义中间件按 `options.middlewares` 数组顺序执行；其前置逻辑不能依赖尚未执行的自动校验：
 
 ```typescript
 app.post(
@@ -268,7 +261,7 @@ app.post(
 
 ## 全局中间件（插件注册）
 
-插件可以通过 `app.use()` 注册全局中间件，对所有路由生效。这些中间件在内置全局中间件之后、路由级中间件之前执行：
+插件可以通过 `app.use()` 注册全局中间件。它们位于前述全局基础层之后、显式启用的CSRF与路由链之前；前面的中间件若已短路或抛错，插件中间件不会被执行：
 
 ```typescript
 // src/plugins/request-timing.ts
@@ -280,7 +273,10 @@ export default definePlugin({
     app.use(async (req, res, next) => {
       const startedAt = Date.now();
       await next();
-      res.setHeader("Server-Timing", `app;dur=${Date.now() - startedAt}`);
+      app.logger.info(
+        { elapsedMs: Date.now() - startedAt },
+        "Request finished",
+      );
     });
   },
 });
@@ -305,67 +301,41 @@ export default {
 
 ### 认证中间件
 
+以下业务片段需要项目实现 `identity.verifyAccessToken` service：校验失败返回 `null`，成功返回用户标识和角色。框架不提供该业务身份库。
+
 ```typescript
 // src/middlewares/auth.ts
-import { defineMiddleware } from "vextjs";
+import { auth, defineMiddleware } from "vextjs";
 
-export default defineMiddleware(async (req, res, next) => {
-  const header = req.headers["authorization"];
-
-  if (!header?.startsWith("Bearer ")) {
-    req.app.throw(401, "Missing or invalid Authorization header");
-  }
-
-  const token = header.slice(7);
-
-  try {
-    // 验证 JWT token
-    const payload = await verifyToken(token);
-    (req as any).user = payload;
-  } catch (err) {
-    req.app.throw(401, "Token expired or invalid");
-  }
-
-  await next();
-});
-
-async function verifyToken(token: string) {
-  // 实际实现中使用 jsonwebtoken 或 jose 等库
-  return { id: "1", email: "user@example.com", role: "user" };
-}
+export default defineMiddleware(
+  auth({
+    source: "bearer",
+    async verify(credential, req) {
+      if (!credential) return null;
+      const user =
+        await req.app.services.identity.verifyAccessToken(credential);
+      if (!user) return null;
+      return { subject: user.id, userId: user.id, roles: user.roles };
+    },
+  }),
+);
 ```
+
+`auth()` 建立身份上下文；缺失或无效凭据会记录在 `req.auth`，受保护路由的 guard 再决定是否拒绝。不要用“返回固定用户”的占位函数作为凭据校验。
 
 ### 角色检查中间件
 
+常规角色保护直接声明在路由选项中，先执行认证中间件，再执行框架 guard：
+
 ```typescript
-// src/middlewares/check-role.ts
-import { defineMiddlewareFactory } from "vextjs";
-
-interface RoleOptions {
-  roles: string[];
-}
-
-export default defineMiddlewareFactory<RoleOptions>((options) => {
-  return async (req, res, next) => {
-    const user = (req as any).user;
-
-    if (!user) {
-      req.app.throw(401, "Not authenticated");
-    }
-
-    const allowed = options?.roles ?? [];
-    if (allowed.length > 0 && !allowed.includes(user.role)) {
-      req.app.logger.warn(
-        { userId: user.id, role: user.role, required: allowed },
-        "Access denied: insufficient role",
-      );
-      req.app.throw(403, "Access denied");
-    }
-
-    await next();
-  };
-});
+// 在同文件路由的 app.get(path, adminOptions, handler) 中使用
+const adminOptions = {
+  middlewares: ["auth"],
+  auth: { required: true, roles: ["admin"], security: "bearerAuth" },
+};
 ```
+
+自定义中间件可以读取 `req.auth.isAuthenticated` 和 `req.auth.roles`。写入私有 `req.user` 不会自动同步到 `req.auth`。完整字段与错误码见 [路由 API](/zh/api/route-definition#auth)。
 
 ### 请求耗时记录
 
@@ -379,7 +349,6 @@ export default defineMiddleware(async (req, res, next) => {
   await next();
 
   const duration = (performance.now() - start).toFixed(2);
-  res.setHeader("X-Response-Time", `${duration}ms`);
 
   req.app.logger.info(
     {
@@ -405,14 +374,12 @@ interface ApiKeyOptions {
 }
 
 export default defineMiddlewareFactory<ApiKeyOptions>((options) => {
-  const headerName = options?.header ?? "x-api-key";
+  const headerName = (options?.header ?? "x-api-key").toLowerCase();
   const validKeys = new Set(options?.keys ?? []);
 
   return async (req, res, next) => {
     if (validKeys.size === 0) {
-      // 未配置 keys，跳过验证
-      await next();
-      return;
+      req.app.throw(500, "API key middleware requires configured keys");
     }
 
     const apiKey = req.headers[headerName];
@@ -442,19 +409,21 @@ export default defineMiddlewareFactory<CacheOptions>((options) => {
   const value = maxAge > 0 ? `${directive}, max-age=${maxAge}` : "no-store";
 
   return async (req, res, next) => {
-    await next();
     res.setHeader("Cache-Control", value);
+    await next();
   };
 });
 ```
 
 ## 错误处理中间件
 
-全局错误处理由框架内置的 `error-handler` 负责，它会捕获中间件链中抛出的所有异常：
+全局错误处理由框架内置的 `error-handler` 负责，处理中间件请求链中抛出或 await 到的异常；脱离该链的后台 Promise 或定时器错误不属于这个保证：
 
-- `HttpError`（由 `app.throw()` 抛出）→ 转化为结构化 JSON 响应
-- `VextValidationError`（参数校验失败）→ 422 响应 + errors 数组
-- 其他异常 → 500 Internal Server Error
+- `HttpError`（由 `app.throw()` 抛出）→ 保留声明的 HTTP 状态和业务错误字段
+- `VextValidationError`（参数校验失败）→ 路径参数 400，其他位置 422，均包含 errors 数组
+- 普通 `Error` → 没有有效的 `status` / `statusCode` 时默认 HTTP 500；显式附带有效 HTTP 状态时归一化会采用该状态，例如 `Object.assign(new Error("Conflict"), { statusCode: 409 })` 返回 409
+
+JSON API 排查时明确请求 `Accept: application/json`。浏览器请求 HTML 时，开发覆盖层或页面错误渲染可能返回 HTML；完整的格式、消息隐藏和 `details` 边界见 [错误处理](/zh/guide/error-handling#与普通-error-的区别)。
 
 ### 什么时候用哪种抛错方式
 
@@ -508,7 +477,7 @@ export default definePlugin({
 });
 ```
 
-你**不需要**手动编写错误处理中间件。如果需要自定义错误处理逻辑（如上报到 Sentry），推荐在插件中使用 `app.use()` 注册一个 try-catch 中间件：
+你**不需要**手动编写框架错误处理器。需要观察插件中间件下游传播的异常时，可用 `app.use()` 注册 try-catch；它捕获不到排在它之前的解析、限流等步骤的异常。下例演示记录并重新抛出；接入Sentry时，在注释位置调用已安装和初始化的SDK：
 
 ```typescript
 // src/plugins/sentry.ts
@@ -541,7 +510,7 @@ export default definePlugin({
 export default defineMiddleware(async (req, res, next) => {
   // 通过 req.app 访问各种框架能力
   req.app.logger.info("Middleware executing"); // 日志
-  req.app.throw(403, "Forbidden"); // 抛出错误
+  // req.app.throw(403, "Forbidden"); // 需要拒绝时调用；调用后不再继续
   const config = req.app.config; // 读取配置
   const userSvc = req.app.services.user; // 访问服务
 
@@ -549,43 +518,27 @@ export default defineMiddleware(async (req, res, next) => {
 });
 ```
 
-## 环境级中间件配置覆盖
-
-可以在环境配置文件中覆盖中间件的默认参数：
-
-```typescript
-// src/config/default.ts
-export default {
-  middlewares: ["auth", { name: "check-role", options: { roles: ["user"] } }],
-};
-```
-
-```typescript
-// src/config/development.ts — 开发环境关闭某些中间件
-export default {
-  middlewares: [
-    { name: "check-role", options: { roles: [] } }, // 开发环境不检查角色
-  ],
-};
-```
-
-配置的 `middlewares` 数组使用智能 patch 策略：按 `name` 匹配并合并，不会简单地替换整个数组。
-
 ## 内置中间件
 
-VextJS 内置以下全局中间件，通过配置项控制行为：
+常用内置中间件及配置如下；完整装配顺序见上文，前端 renderer 仅在前端功能启用时安装：
 
-| 中间件              | 配置项              | 说明                                          |
-| ------------------- | ------------------- | --------------------------------------------- |
-| **requestId**       | `config.requestId`  | 生成/透传请求唯一标识                         |
-| **cors**            | `config.cors`       | CORS 跨域处理                                 |
-| **bodyParser**      | `config.bodyParser` | 请求体解析（JSON / URL-encoded）              |
-| **rateLimit**       | `config.rateLimit`  | 显式启用的全局限流；仅 `enabled: true` 时安装 |
-| **accessLog**       | `config.accessLog`  | 访问日志（method / path / status / duration） |
-| **responseWrapper** | `config.response`   | 响应出口包装 `{ code, data, requestId }`      |
-| **errorHandler**    | —                   | 全局错误处理（不可配置，始终启用）            |
+| 中间件              | 配置项                   | 说明                                             |
+| ------------------- | ------------------------ | ------------------------------------------------ |
+| **requestId**       | `config.requestId`       | 生成/透传请求唯一标识                            |
+| **authContext**     | `config.requestContext`  | 同步认证上下文快照，不负责验证凭据               |
+| **securityHeaders** | `config.securityHeaders` | 显式启用浏览器安全响应头                         |
+| **cors**            | `config.cors`            | CORS 跨域处理                                    |
+| **bodyParser**      | `config.bodyParser`      | 请求体解析（JSON / URL-encoded）                 |
+| **rateLimit**       | `config.rateLimit`       | 显式启用的全局限流；仅 `enabled: true` 时安装    |
+| **accessLog**       | `config.accessLog`       | 访问日志（method / path / status / duration）    |
+| **responseWrapper** | `config.response`        | 响应出口包装 `{ code, data, requestId }`         |
+| **session**         | `config.session`         | 全局启用或由路由单独启用                         |
+| **csrf**            | `config.csrf`            | 显式启用 CSRF 防护                               |
+| **errorHandler**    | —                        | 全局错误处理；暴露与日志行为由 response 配置控制 |
 
-详见 [配置](/guide/configuration) 章节了解各项配置选项。
+详见 [配置](/zh/guide/configuration) 章节了解各项配置选项。
+
+`req.auth` 在适配器创建请求对象时已初始化为匿名上下文。`requestContext.enabled: false` 会跳过上表的 authContext 中间件及框架请求 ALS 作用域，不会删除 `req.auth`，也不会禁用显式注册的 `auth()` 认证或路由 guard。
 
 ## TypeScript 类型扩展
 
@@ -593,6 +546,8 @@ VextJS 内置以下全局中间件，通过配置项控制行为：
 
 ```typescript
 // src/types/extensions.d.ts
+import "vextjs";
+
 declare module "vextjs" {
   interface VextRequest {
     user?: {
@@ -610,7 +565,7 @@ declare module "vextjs" {
 
 ### 1. 保持中间件职责单一
 
-每个中间件只做一件事。认证和授权应分为两个中间件：
+尽量让中间件职责单一。认证由中间件建立身份，常规授权可由 `RouteOptions.auth` guard 承担；确需自定义授权逻辑时，也可再引用一个中间件：
 
 ```typescript
 // ✅ 正确 — 职责单一
@@ -620,9 +575,11 @@ middlewares: ["auth", "check-role"];
 middlewares: ["auth-and-role-check"];
 ```
 
-### 2. 始终 `await next()`
+<a id="2-始终-await-next"></a>
 
-如果中间件需要执行后置逻辑或让请求继续传递，必须 `await next()`：
+### 2. 等待或返回 `next()`
+
+需要执行后置逻辑时使用 `await next()`；没有后置逻辑时也可 `return next()`，将 Promise 交给上层等待。不要调用后丢弃 Promise：
 
 ```typescript
 // ✅ 正确
@@ -632,17 +589,17 @@ export default defineMiddleware(async (req, res, next) => {
   console.log("after");
 });
 
-// ❌ 错误 — 忘记 await，后置逻辑会在 handler 完成前执行
+// ❌ 错误 — 忘记 await，后置逻辑可能在异步 handler 完成前执行
 export default defineMiddleware(async (req, res, next) => {
   console.log("before");
   next(); // 没有 await！
-  console.log("after — 这会在 handler 之前执行");
+  console.log("after — 此处没有等待下游完成");
 });
 ```
 
 ### 3. 短路响应
 
-某些中间件可能需要直接响应而不调用 `next()`（如认证失败）。在这种情况下直接返回即可，不需要调用 `next()`：
+某些中间件需要短路请求（如认证失败）：先调用 `res.json()` 等方法发送响应，再返回；也可以用 `app.throw()` 抛出错误，由框架发送错误响应。两种情况都不再调用 `next()`；仅 `return` 不会自动生成响应：
 
 ```typescript
 export default defineMiddleware(async (req, res, next) => {
@@ -666,21 +623,22 @@ export default defineMiddleware(async (req, res, next) => {
 export default defineMiddlewareFactory<{ maxAge: number }>((options) => {
   const maxAge = options?.maxAge ?? 3600;
   return async (req, res, next) => {
-    await next();
     res.setHeader("Cache-Control", `public, max-age=${maxAge}`);
+    await next();
   };
 });
 
 // ❌ 避免 — 硬编码
 export default defineMiddleware(async (req, res, next) => {
-  await next();
   res.setHeader("Cache-Control", "public, max-age=3600"); // 无法按环境变更
+  await next();
 });
 ```
 
 ## 下一步
 
-- 学习 [插件](/guide/plugins) 如何通过 `app.use()` 注册全局中间件
-- 了解 [参数校验](/guide/validation) 中间件的自动生成
-- 查看 [配置](/guide/configuration) 中内置中间件的完整选项
-- 探索 [测试](/guide/testing) 如何测试中间件逻辑
+- 学习 [插件](/zh/guide/plugins) 如何通过 `app.use()` 注册全局中间件
+- 了解 [参数校验](/zh/guide/validation) 中间件的自动生成
+- 查看 [配置](/zh/guide/configuration) 中内置中间件的完整选项
+- 探索 [测试](/zh/guide/testing) 如何测试中间件逻辑
+- 核对 [HTTP 与路由规范](/zh/specification/http-and-routing) 中的中间件规则

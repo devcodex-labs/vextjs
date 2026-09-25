@@ -1,26 +1,71 @@
 # 日志 (Logger)
 
-VextJS 内置零 runtime dependency 的 Vext logger kernel，通过 `app.logger` 在框架的任意位置使用。默认提供结构化 JSON、pretty/JSON 双模式、pretty level 彩色输出、requestId 自动注入、child logger、运行时级别控制和极简日志脱敏等能力。
+通过 `app.logger` 记录结构化业务日志，使用 child logger 标识 Service，并与请求 ID 关联。内置实现支持 JSON/pretty 输出、六级日志、运行时阈值、Error 序列化和可选字段脱敏；默认日志内核不依赖第三方日志包。
+
+先完成下面的请求流程，再按需要调整格式或接入采集系统。本页其余 API 调用片段均放在已取得 `app: VextApp` 的路由或插件中；配置片段应合并到现有配置，不要逐段替换整个文件。
 
 ## 基本用法
 
-`app.logger` 在路由、服务、插件和中间件中均可直接使用：
+前置：已有[快速开始](/zh/guide/quick-start)中的 TypeScript API-only 项目。保留 package.json、tsconfig.json 和启动脚本，合并配置并新增 Service 与路由：
 
 ```typescript
+// src/config/default.ts
+export default {
+  host: "127.0.0.1",
+  port: 3000,
+  frontend: { enabled: false },
+  logger: { level: "debug", pretty: false },
+};
+```
+
+```typescript
+// src/services/log-demo.ts
+import type { VextApp, VextRuntimeLogger } from "vextjs";
+
+export default class LogDemoService {
+  private readonly logger: VextRuntimeLogger;
+
+  constructor(app: VextApp) {
+    this.logger = app.logger.child({ service: "LogDemoService" });
+  }
+
+  list() {
+    this.logger.debug({ count: 2 }, "query started");
+    const users = [{ id: "u-1" }, { id: "u-2" }];
+    this.logger.info({ count: users.length }, "query completed");
+    return users;
+  }
+}
+```
+
+```typescript
+// src/routes/log-demo.ts
 import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
   app.get("/users", async (req, res) => {
-    app.logger.info("获取用户列表");
-    app.logger.debug({ page: 1, limit: 20 }, "查询参数");
-
-    const users = await app.services.user.findAll();
-    app.logger.info({ count: users.length }, "查询完成");
-
-    res.json(users);
+    app.logger.trace("hidden at debug threshold");
+    res.json(app.services.logDemo.list());
+  });
+  app.get("/error", async (_req, res) => {
+    const err = new Error("demonstration error");
+    app.logger.error({ err, operation: "demo" }, "caught example");
+    // 记录日志不会自动设置 HTTP 状态或抛出异常
+    res.json({ logged: true });
   });
 });
 ```
+
+运行 `npm run dev` 后，在另一个终端访问：
+
+```bash
+curl -H "x-request-id: log-demo-1" http://127.0.0.1:3000/log-demo/users
+curl -H "x-request-id: log-demo-2" http://127.0.0.1:3000/log-demo/error
+```
+
+Windows PowerShell 可用 `curl.exe`。第一项返回 200 与两个用户，JSON 日志有 level 20/30、service=LogDemoService、requestId=log-demo-1；trace 被 debug 阈值过滤。第二项返回 200 与 `data.logged: true`，并输出 level 50、requestId=log-demo-2 和 err 的 type/message/name/stack。
+
+停止 dev，执行 `npm run build`、`npm start`，重复两项请求；结束后 Ctrl+C 停止服务。将配置 level 改为 info 后重启，debug 应消失，info/error 保留。生产输出建议明确设 `pretty: false`，应用 JSON 日志与 CLI 启动提示可能同处一个输出流，采集时需区分。
 
 ## 日志级别
 
@@ -43,7 +88,7 @@ export default defineRoutes((app) => {
 // src/config/default.ts
 export default {
   logger: {
-    level: "debug", // 开发环境输出所有级别
+    level: "debug", // 输出 debug 及以上；trace 仍被过滤
   },
 };
 ```
@@ -64,16 +109,17 @@ export default {
 默认 logger 支持在运行时调整后续日志阈值，适合线上临时排障：
 
 ```typescript
-app.logger.getLevel(); // "info"
+app.logger.getLevel(); // 当前阈值；本页完整示例初始为 "debug"
 app.logger.setLevel("debug");
-app.logger.debug({ orderId }, "debug detail");
+app.logger.debug({ orderId: "order-demo" }, "debug detail");
 app.logger.setLevel("warn");
 ```
 
 - `setLevel()` 只影响后续日志，不回溯历史日志。
 - 已创建的 child logger 与父 logger 共享当前 runtime level。
 - 不支持 `app.logger.level = "debug"` 这种可写属性兼容；请使用 `setLevel()`。
-- 非法 level 会抛出明确错误，不会静默降级。
+- 使用表中支持的级别；非法值不属于公开契约。
+- `fatal()` 只记录 level 60，不会自行退出进程或执行优雅关闭。
 
 ## 生命周期日志分层
 
@@ -94,9 +140,11 @@ export default {
 也可以通过环境变量或 CLI 覆盖：
 
 ```bash
-VEXT_LIFECYCLE_LEVEL=verbose vext start
-VEXT_VERBOSE_LIFECYCLE=1 vext dev
+VEXT_LIFECYCLE_LEVEL=verbose npm start
+VEXT_VERBOSE_LIFECYCLE=1 npm run dev
 ```
+
+上面是 Bash 写法；PowerShell 可用 `$env:VEXT_LIFECYCLE_LEVEL="verbose"` 后运行 `npm start`，结束后移除该临时环境变量。CLI 的 `--verbose` 也可启用详细输出。生命周期日志详细程度不等于业务日志阈值；部分 CLI 启动提示由独立输出入口生成，不保证都被 `logger.level` 过滤。
 
 ## 结构化日志
 
@@ -121,9 +169,9 @@ app.logger.info({ event: "startup", port: 3000 });
 
 ### JSON 输出格式
 
-生产环境（`NODE_ENV=production`）下，日志输出为 JSON 格式：
+未显式覆盖 pretty 时，生产环境（`NODE_ENV=production`）使用 JSON。以下是省略 pid/hostname 的两条 JSON Lines，不是一个包含两个对象的 JSON 文件：
 
-```json
+```jsonl
 {"level":30,"time":"2026-03-05T14:23:05.123Z","requestId":"abc-123","msg":"→ GET /api/users 200 45ms"}
 {"level":30,"time":"2026-03-05T14:23:05.200Z","requestId":"abc-123","service":"UserService","msg":"查询完成","count":42}
 ```
@@ -141,10 +189,10 @@ app.logger.info({ event: "startup", port: 3000 });
 如果设置 `prettySingleLine: false`，则使用多行展开格式：
 
 ```
-[2026-03-05 14:23:05.123] INFO  服务启动
+[2026-03-05 14:23:05.123] INFO: 服务启动
     port: 3000
     adapter: "native"
-[2026-03-05 14:23:05.200] DEBUG 查询参数
+[2026-03-05 14:23:05.200] DEBUG: 查询参数
     page: 1
     limit: 20
 ```
@@ -228,7 +276,7 @@ export default {
     pretty: true,
     prettySingleLine: false,
     // 输出:
-    // [14:23:05] INFO  Seed data loaded
+    // [14:23:05] INFO: Seed data loaded
     //     count: 3
     //     service: "UserService"
   },
@@ -269,12 +317,12 @@ export default {
 // 隐藏 requestId + 自定义字段
 export default {
   logger: {
-    prettyIgnore: "pid,hostname,requestId,traceId,spanId",
+    prettyIgnore: "pid,hostname,requestId,trace_id,span_id",
   },
 };
 ```
 
-> **注意**：`prettyIgnore` 仅影响 pretty 模式（开发环境）。生产环境的 JSON 输出始终包含所有字段（包括 `requestId`），确保日志收集系统能完整解析。
+> `prettyIgnore` 只控制 pretty 的额外字段显示，不改变 JSON 内容；JSON 中仍只包含本次实际产生的字段，受级别过滤和脱敏规则影响，没有请求作用域时也可能没有 requestId。
 
 ## 日志脱敏
 
@@ -314,38 +362,17 @@ app.logger.info(
 - 脱敏不会修改调用方传入的原始对象。
 - 顶层 `level` 是日志协议字段，不会被 redaction 改写。
 - 不支持 wildcard、glob、regex、bracket notation、remove 或 function censor。
+- 不会扫描消息字符串内部的密码或 token；拼入 msg/err.message 的内容只有在对应整个字段被配置替换时才会被遮盖。prettyIgnore 只是显示隐藏，不代替脱敏。
 
 ### 自定义 Pretty 输出 {#custom-pretty-output}
 
-VextJS 默认不暴露 `messageFormat` 模板配置。大多数开发场景可以直接用 `prettySingleLine` 和 `prettyIgnore` 控制输出紧凑度：
+默认 logger 不提供 messageFormat 模板选项。优先组合 prettySingleLine、prettyIgnore 和 prettyColor；完全自定义格式或转发时使用后文的 setLogger 包装器。
 
-- `prettySingleLine: true`：额外字段以 JSON 内联在消息同一行
-- `prettySingleLine: false`：额外字段多行展开
-- `prettyIgnore`：隐藏开发日志中暂时不关心的结构化字段
-
-如果需要把日志同步到外部系统或完全接管格式化逻辑，推荐通过 `app.setLogger()` 在插件中包装当前 logger。这样不会影响框架默认 JSON 字段、requestId 注入和 child logger 行为。
-
-```typescript
-import { definePlugin } from "vextjs";
-
-export default definePlugin({
-  name: "custom-log-format",
-  setup(app) {
-    app.setLogger((original) => ({
-      ...original,
-      info(...args: unknown[]) {
-        // 可在这里转发到外部 SDK，或生成额外的人类可读日志。
-        original.info(...args);
-      },
-      child: (bindings) => original.child(bindings),
-    }));
-  },
-});
-```
+调用 original 才会继续执行默认输出路径。仅返回自定义 info/error 方法不会自动获得默认序列化、级别过滤或脱敏，包装器作者应明确哪些行为仍交给 original。
 
 ## requestId 自动注入
 
-这是 VextJS 日志系统最重要的特性之一。**无需手动传入 requestId**，所有日志自动携带当前请求的 requestId。
+默认 logger 在启用请求上下文且当前链有非空 requestId 时自动关联 ID。启动日志、独立任务或关闭 requestContext 后的日志不保证有 ID；pretty 默认还会隐藏其显示。
 
 ### 工作原理
 
@@ -357,28 +384,21 @@ app.logger.info('xxx')  ←  logger mixin 自动读取 requestId
 输出: {"requestId":"abc-123","msg":"xxx"}
 ```
 
-Vext logger 的 `mixin` 在每条日志写入前调用，从 `requestContext`（基于 `AsyncLocalStorage`）中读取当前请求的 `requestId` 并附加到日志字段。这意味着：
-
-- **handler 中的日志**：自动携带 requestId ✅
-- **service 中的日志**：自动携带 requestId ✅
-- **中间件中的日志**：自动携带 requestId ✅
-- **启动阶段的日志**：无 requestId（非请求上下文）✅
+通过阈值检查后，默认 logger 读取当前 requestContext，再合并用户 mixin 和调用参数。handler、中间件与 Service 只要仍在该请求链中就可共享 ID。
 
 ```typescript
-// 不需要这样做 ❌
-app.logger.info({ requestId: req.requestId }, "处理请求");
-
-// 直接这样就行 ✅
 app.logger.info("处理请求");
-// 输出自动包含 requestId
 ```
+
+当前字段合并顺序是 child bindings → 上下文字段 → 用户 mixin → 单次调用对象；同名普通字段以后者为准。顶层 level/time/msg 不接收结构化对象的同名覆盖。
+
+requestId 的特殊保护仅阻止 **mixin** 覆盖/伪造它；单次调用对象仍能覆盖 requestId，无 ALS 时 child bindings 中也可保留该字段。不要手动设置冲突的 requestId 并期望框架必定改回真实值。详见[请求上下文](/zh/guide/request-context)。
 
 ### 性能优化
 
-Vext logger 的请求字段注入走同步 provider 链路，并在无请求上下文或未配置用户 `mixin` 时直接跳过对应合并步骤。VextJS 做了两项优化：
+低于阈值的默认日志调用不执行序列化和 mixin；但调用前构造参数的 JavaScript 表达式已经执行。用户 mixin 必须同步且成本可控，返回 Promise 或抛错会被忽略，并至多尝试警告一次（警告仍受日志阈值影响）。
 
-1. **空上下文快速返回**：启动阶段、后台任务等非请求上下文不会生成 `requestId` / `trace_id` / `span_id` 字段
-2. **ALS 禁用检测**：当 AsyncLocalStorage 被禁用时，跳过 `getStore()` 调用
+配置 `requestContext.enabled: false` 会让默认 logger 跳过 ALS 读取；普通 `getStore()` 返回 undefined 时则省略上下文字段。手动 run 中的后台任务仍可能有关联字段。
 
 ## Child Logger
 
@@ -397,39 +417,9 @@ serviceLogger.info({ userId: "123" }, "查询用户");
 
 ### 在 Service 中使用
 
-推荐在 Service 构造函数中创建 child logger：
+前面的 LogDemoService 已提供完整用法：构造时只绑定静态 service 字段，方法执行时由 logger 读取当前请求上下文，不把某次请求的 store 缓存到成员变量。
 
-```typescript
-export class UserService {
-  private logger;
-
-  constructor(private app: any) {
-    // 创建带 service 标识的子 logger
-    this.logger = app.logger.child({ service: "UserService" });
-  }
-
-  async findById(userId: string) {
-    this.logger.debug({ userId }, "查询用户");
-
-    const user = await this.app.db.collection("users").findOne({ _id: userId });
-
-    if (!user) {
-      this.logger.warn({ userId }, "用户不存在");
-      this.app.throw(404, "用户不存在");
-    }
-
-    this.logger.info({ userId, event: "user.found" }, "用户查询成功");
-    return user;
-  }
-}
-```
-
-输出示例：
-
-```json
-{"level":20,"time":"...","requestId":"abc-123","service":"UserService","userId":"u-001","msg":"查询用户"}
-{"level":30,"time":"...","requestId":"abc-123","service":"UserService","userId":"u-001","event":"user.found","msg":"用户查询成功"}
-```
+不同 child 的顶层 bindings 独立，嵌套 child 的同名字段以后创建者为准；绑定值中的嵌套对象仍可能共享引用，运行时 level controller 也共享。包装器安装前已经保存的 logger 引用不会自动变成新的包装器，应在插件 setup 阶段安装，再加载 Service。
 
 ### 嵌套 Child Logger
 
@@ -447,41 +437,35 @@ queryLogger.debug("执行查询");
 
 ### 记录 Error 对象
 
-Vext logger 自动序列化 Error 对象（保留 message、stack、name）：
+Error 可直接传给 error/fatal，也可放在结构化字段中。内置序列化保留 type、message、name、stack；自定义附加字段及 cause 链不会自动完整展开。
 
 ```typescript
-try {
-  await someOperation();
-} catch (err) {
-  app.logger.error({ err }, "操作失败");
-  // Vext logger 会自动序列化 Error:
-  // {"err":{"type":"Error","message":"xxx","stack":"..."},"msg":"操作失败"}
-}
+const err = new Error("example failure");
+app.logger.error(err, "操作失败");
+app.logger.error({ err, operation: "demo" }, "操作失败");
 ```
 
-:::tip Error 调用方式
-直传 Error 和 `{ err }` 字段都受支持。需要附加业务上下文时，推荐使用 `{ err, ...context }`：
-
-```typescript
-// ✅ 直传 Error
-app.logger.error(error, "操作失败");
-
-// ✅ 添加业务上下文
-app.logger.error({ err: error }, "操作失败");
-```
-
-:::
+普通 BigInt 转为字符串、循环引用标为 `[Circular]`；对象里的 undefined/function/symbol 不写入，数组中相应位置为 null。日期转换为 ISO。它是日志序列化器，不是任意业务对象的完整存储格式。
 
 ### 记录错误上下文
 
+下面的函数明确接收业务操作；由调用方提供 app 和已实现的支付接口，日志行为不会吞掉支付异常：
+
 ```typescript
-async function processPayment(orderId: string, amount: number) {
+import type { VextApp } from "vextjs";
+
+export async function processPayment(
+  app: VextApp,
+  charge: (amount: number) => Promise<{ id: string }>,
+  orderId: string,
+  amount: number,
+) {
   try {
-    const result = await paymentGateway.charge(amount);
+    const result = await charge(amount);
     app.logger.info({ orderId, amount, chargeId: result.id }, "支付成功");
     return result;
   } catch (err) {
-    app.logger.error({ err, orderId, amount, gateway: "stripe" }, "支付失败");
+    app.logger.error({ err, orderId, amount }, "支付失败");
     throw err;
   }
 }
@@ -489,90 +473,69 @@ async function processPayment(orderId: string, amount: number) {
 
 ## 扩展 Logger：setLogger()
 
-`app.setLogger(wrapper)` 是插件专用的 API，允许你在不替换默认 logger kernel 的情况下，对所有日志方法进行包装——常见用途是将框架日志**同时转发**到外部系统（OTel Logs、Sentry、云日志平台等）。
+在插件 setup 中调用 `app.setLogger(wrapper)`，包装当前 app.logger。它可返回部分方法，未覆盖方法回退到原 logger；多次调用按顺序包裹前一次结果。
 
 ### 函数签名
 
 ```typescript
-setLogger(wrapper: (original: VextRuntimeLogger) => VextLoggerLike): void;
+import type { VextApp } from "vextjs";
+
+type SetLogger = VextApp["setLogger"];
+// (wrapper: (original: VextRuntimeLogger) => VextLoggerLike) => void
 ```
 
-`wrapper` 接收当前完整运行时 logger（默认 Vext logger 或上一个 wrapper 归一化后的结果），返回完整或部分 `VextLoggerLike` 实现。未返回的方法会回退到原始 logger。可以在新实现中：
-
-- 调用外部 SDK 上报日志
-- 过滤或采样某些级别
-- 注入全局字段
-
-### 典型用法：桥接到 OpenTelemetry Logs
-
-当你使用 `@devcodex/opentelemetry` 插件时，它会在 `setup()` 中调用 `app.setLogger()` 自动将 `app.logger` 的所有调用转发到 OTel Logs SDK，无需额外配置：
-
-```typescript
-// src/plugins/otel.ts
-import { opentelemetryPlugin } from "@devcodex/opentelemetry/vextjs";
-
-export default opentelemetryPlugin({
-  endpoint: "grpc://collector:4317",
-  protocol: "grpc",
-  logs: {
-    bridgeAppLogger: true, // 默认 true（endpoint 有效时自动开启）
-    globalAttributes: {
-      "app.version": "1.2.0",
-    },
-  },
-});
-// → app.logger.info("xxx") 同时上报到 OTel Collector + 输出到 stdout
-```
+wrapper 工厂必须同步返回普通对象，所提供的日志成员必须是函数。工厂抛错/结果不合法会让安装失败；**日志方法自己抛出的异常也会向调用方传播**，框架不自动捕获这些异常。
 
 ### 自定义 Logger 扩展示例
 
+在上方完整项目新增以下插件，重启后再请求两个接口。这是无需外部 SDK 的完整包装器示例；使用部分方法并省略 child，让框架对新建的 child 重新应用工厂：
+
 ```typescript
+// src/plugins/logger-bridge.ts
 import { definePlugin } from "vextjs";
-import type { VextLogger } from "vextjs";
 
 export default definePlugin({
-  name: "sentry-logger",
+  name: "logger-bridge",
   setup(app) {
+    let calls = 0;
     app.setLogger((original) => ({
-      ...original,
-      error(...args: unknown[]) {
-        // 上报 error 级别日志到 Sentry
-        const msg =
-          typeof args[0] === "string" ? args[0] : String(args[1] ?? "");
-        Sentry.captureMessage(msg, "error");
-        // 默认 logger 输出不变
-        (original.error as (...a: unknown[]) => void)(...args);
+      info(...args: unknown[]) {
+        calls++;
+        (original.info as (...values: unknown[]) => void)(...args);
       },
-      // child logger 保持原逻辑
-      child: (bindings) => original.child(bindings),
     }));
+    app.onClose(() => {
+      app.logger.info({ bridgeInfoCalls: calls }, "logger bridge closing");
+    });
   },
 });
 ```
 
-:::tip 与 setThrow 模式一致
-`setLogger` 采用与 `setThrow` 完全相同的 wrapper 模式：接收原始实现，返回包装后的实现。这意味着：
+预期：业务 info 仍包含 LogDemoService 和请求 ID，未覆盖的 debug/error 仍可输出；停止时有 bridgeInfoCalls。该计数包括经过包装器的框架 info，不能当作 HTTP 请求数。
 
-- 可以多次调用（每次包裹上一次的结果）
-- wrapper 未覆盖的方法会保留默认 logger 功能（requestId 注入、pretty 格式、child logger 与运行时日志级别控制）
-- 包装函数中抛出的异常不会影响原始 logger
-  :::
+### child logger 回退与桥接
 
-:::warning child logger 回退与桥接
-当 wrapper 未返回 `child()` 时，child logger 会回退到原始 logger。如需子 logger 也桥接，请在 wrapper 中返回 `child()` 并在该方法内包装子 logger。
-:::
+省略 child 时，setLogger 的工厂会针对原始 child 再执行，保留其 bindings 并继续包装。工厂因此可能执行多次，不要在工厂里创建连接或注册重复关闭钩子。
 
----
+显式返回 `child: bindings => original.child(bindings)` 会直接返回未桥接的 child；需要自定义 child 时应包装该 child。若 child 工厂失败，归一化逻辑可退回原始 child。此容错不延伸到普通 info/error 方法。
+
+### 典型用法：桥接到 OpenTelemetry Logs
+
+外部 SDK 的初始化、endpoint、认证、异步队列和关闭刷出由对应集成负责。先按[OpenTelemetry 示例](/zh/examples/opentelemetry)准备运行环境，再实现 wrapper 的转发逻辑；仅调用 setLogger 不会启动 Collector，也不会自动上报。
+
+转发发生在 original 处理之前时，拿到的是原始参数：默认 logger 的阈值、脱敏及格式化不自动作用于 SDK。应在插件中处理转发失败、过滤和字段策略；异步写入不能让同步日志方法遗留未处理的 Promise 拒绝。用 app.onClose 收尾 SDK，默认 logger 的关闭不会替它 flush。
 
 ## 日志存储与收集
 
-生产环境推荐让 VextJS 输出结构化 JSON 到 stdout/stderr，再由进程管理器、容器平台或日志 Agent 负责持久化、轮转和上报。这样应用进程不需要额外日志 transport 依赖，也能保持日志管线可替换。
+默认 logger 的所有级别（包括 error/fatal）均写 stdout。进程异常、CLI 或其他库还可能写 stderr；进程管理器通常按流收集，不能把 stderr 文件直接视为「所有 error 级别日志」。
+
+以下保留常见采集路径，属于部署适配示例，依赖各自已安装的组件、权限与网络。持久化、轮转和远端送达需要在实际环境验证，不由 VextJS logger 自动保证。
 
 ### 方案概览
 
 | 方案                       | 复杂度 | 适用场景              | 说明                                |
 | -------------------------- | :----: | --------------------- | ----------------------------------- |
-| **stdout → Cloud 原生**    |   ⭐   | K8s / Cloud Run / ECS | 平台自动采集 stdout                 |
+| **stdout → Cloud 原生**    |   ⭐   | K8s / Cloud Run / ECS | 按平台配置采集 stdout               |
 | **PM2 / systemd 文件收集** |   ⭐   | 单机部署              | 进程管理器收集 stdout/stderr 到文件 |
 | **logrotate**              |  ⭐⭐  | 单机 / 需要自动切割   | 系统级日志轮转，应用无需感知        |
 | **Filebeat → ELK**         | ⭐⭐⭐ | 中大型项目            | 文件采集 → Elasticsearch → Kibana   |
@@ -587,8 +550,8 @@ project/
 │   ├── app.log              # 当前应用日志
 │   ├── app.1.log            # 轮转后的历史日志
 │   ├── app.2.log
-│   ├── error.log            # 仅 error 及以上级别
-│   └── access.log           # 访问日志（可选）
+│   ├── stderr.log           # stderr 流；不等于 error 级别日志
+│   └── access.log           # 仅在采集端另行配置分流时存在
 ├── src/
 └── dist/
 ```
@@ -601,27 +564,20 @@ project/
 
 ### 方案一：stdout → Cloud 原生
 
-在 Kubernetes / AWS ECS / Google Cloud Run 等平台中，直接输出到 stdout，由平台自动采集：
+VextJS 只输出日志；持久化与查询能力取决于部署平台的日志配置：
 
-```bash
-# 不需要额外配置，JSON 日志直接输出到 stdout
-vext start
-```
+| 平台                 | 接入条件                                                                                                                                           |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Kubernetes           | 容器运行时捕获输出；集群级存储/检索另配采集组件，见[日志架构](https://kubernetes.io/docs/concepts/cluster-administration/logging/)                 |
+| AWS ECS              | 为 task 配置 awslogs 等 driver 和相应权限，见[ECS CloudWatch 接入](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/using_awslogs.html) |
+| Google Cloud Run     | 容器输出可进入 Cloud Logging，查看与筛选见[Cloud Run 日志](https://docs.cloud.google.com/run/docs/logging)                                         |
+| Azure Container Apps | 按环境配置日志目标并查看 console logs，见[应用日志](https://learn.microsoft.com/en-us/azure/container-apps/logging)                                |
 
-| 平台                     | 日志采集方式                                          |
-| ------------------------ | ----------------------------------------------------- |
-| **Kubernetes**           | stdout → kubelet → Fluentd / Fluent Bit / Loki → 存储 |
-| **AWS ECS**              | stdout → CloudWatch Logs                              |
-| **Google Cloud Run**     | stdout → Cloud Logging                                |
-| **Azure Container Apps** | stdout → Azure Monitor                                |
-
-这是最简单也最推荐的云原生方案——**不做任何日志配置**，让平台处理一切。
-
----
+验证时发起带明确 requestId 的请求，并在目标平台查到同一条业务日志；本地 stdout 有输出不等于远端采集成功。
 
 ### 方案二：PM2 / systemd 文件收集
 
-单机部署时，可以让进程管理器把 stdout/stderr 写入文件，再配合 `logrotate` 轮转。
+下面是 Linux 部署片段，需先安装对应进程管理器、完成项目构建，并确保目录存在且运行账户有写权限。Windows 使用 PM2 时替换日志路径；systemd 片段不适用于 Windows。
 
 #### PM2 示例
 
@@ -631,34 +587,40 @@ module.exports = {
   apps: [
     {
       name: "myapp",
+      cwd: "/srv/myapp",
       script: "node_modules/vextjs/dist/cli/index.js",
       args: "start",
-      error_file: "/var/log/myapp/error.log",
+      error_file: "/var/log/myapp/stderr.log",
       out_file: "/var/log/myapp/app.log",
-      log_date_format: "YYYY-MM-DD HH:mm:ss.SSS",
+      env: { NODE_ENV: "production" },
       merge_logs: true,
     },
   ],
 };
 ```
 
+PM2 的 out_file/error_file 按 stdout/stderr 分流。为保持应用 JSON 行，不添加 log_date_format/time 前缀；详见 [PM2 日志配置](https://pm2.keymetrics.io/docs/usage/log-management/)。
+
 #### systemd 示例
 
 ```ini
 # /etc/systemd/system/myapp.service
 [Service]
-ExecStart=/usr/bin/npm start
+ExecStart=/usr/bin/node /srv/myapp/node_modules/vextjs/dist/cli/index.js start
 WorkingDirectory=/srv/myapp
+Environment=NODE_ENV=production
 StandardOutput=append:/var/log/myapp/app.log
-StandardError=append:/var/log/myapp/error.log
+StandardError=append:/var/log/myapp/stderr.log
 Restart=always
 ```
+
+使用支持 append 输出模式的 systemd，按实际 Node 路径、服务账户和目录权限调整；此处只有 Service 段，不是完整安装/启用步骤。输出语义见 [systemd 官方文档源](https://github.com/systemd/systemd/blob/main/man/systemd.exec.xml)。启动后用本页请求确认 app.log 内出现业务 JSON，并检查管理器状态与 stderr。
 
 ---
 
 ### 方案三：系统级 logrotate（Linux）
 
-如果使用 PM2 或 systemd 管理进程，可以用系统自带的 `logrotate` 管理日志轮转：
+已安装 logrotate 并由定时机制调用时，可配置文件轮转。下面的 copytruncate 适用于无法协调写入者重新打开文件的场景，但复制与截断之间可能丢失少量日志，不提供无损保证，见[官方说明](https://github.com/logrotate/logrotate/blob/main/logrotate.8.in)：
 
 ```bash
 # /etc/logrotate.d/myapp
@@ -673,13 +635,13 @@ Restart=always
 }
 ```
 
-| 选项            | 说明                           |
-| --------------- | ------------------------------ |
-| `daily`         | 每天轮转                       |
-| `rotate 30`     | 保留 30 个历史文件             |
-| `compress`      | 历史文件 gzip 压缩             |
-| `delaycompress` | 最近一个文件不压缩（便于查看） |
-| `copytruncate`  | 复制后截断（不中断进程写入）   |
+| 选项            | 说明                                 |
+| --------------- | ------------------------------------ |
+| `daily`         | 每天轮转                             |
+| `rotate 30`     | 保留 30 个历史文件                   |
+| `compress`      | 历史文件 gzip 压缩                   |
+| `delaycompress` | 最近一个文件不压缩（便于查看）       |
+| `copytruncate`  | 复制后截断；并发写入窗口可能丢失日志 |
 
 ---
 
@@ -699,65 +661,38 @@ VextJS (JSON stdout)
 
 #### Filebeat 采集
 
+旧 `type: log` 在 Filebeat 7.16 弃用、9.0 禁用，参见[官方迁移说明](https://www.elastic.co/docs/reference/beats/filebeat/filebeat-input-log)。新配置使用 filestream 和 ndjson parser；下方仅是已有 Filebeat 配置的 input 段，output 的地址、认证、TLS、索引/数据流策略按部署环境设置。
+
 ```yaml
-# /etc/filebeat/filebeat.yml
+# 合并到 /etc/filebeat/filebeat.yml
 filebeat.inputs:
-  - type: log
+  - type: filestream
+    id: myapp-json
     enabled: true
     paths:
       - /var/log/myapp/app.log
-    json.keys_under_root: true # JSON 字段提升到顶层
-    json.overwrite_keys: true # 覆盖同名字段
-    json.add_error_key: true # JSON 解析失败时添加 error 字段
+    parsers:
+      - ndjson:
+          target: vext
+          add_error_key: true
     fields:
       app: myapp
       env: production
-    fields_under_root: true
-
-  - type: log
-    enabled: true
-    paths:
-      - /var/log/myapp/error.log
-    json.keys_under_root: true
-    json.overwrite_keys: true
-    fields:
-      app: myapp
-      env: production
-      log_type: error
-    fields_under_root: true
-
-output.elasticsearch:
-  hosts: ["http://elasticsearch:9200"]
-  index: "myapp-%{+yyyy.MM.dd}"
-  username: "${ELASTIC_USER}"
-  password: "${ELASTIC_PASSWORD}"
-
-# 索引模板（可选，优化映射）
-setup.template.name: "myapp"
-setup.template.pattern: "myapp-*"
-setup.template.settings:
-  index.number_of_shards: 1
-  index.number_of_replicas: 0
 ```
+
+`target: vext` 避免应用字段与采集器元数据冲突。此 parser 要求每条记录为单行 JSON；混入 CLI 文本时会标注解析错误，容器封装还需先解析外层，见[filestream parser 文档](https://www.elastic.co/docs/reference/beats/filebeat/filebeat-input-filestream)。
+
+先运行 Filebeat 自带 `test config` 和 `test output`，再发起本页请求确认实际索引中有 `vext.requestId`、`vext.level`。配置检查通过不代表日志已成功入库；轮转后的文件匹配与去重也需按采集器版本配置。
 
 #### Kibana 索引模式
 
-1. 打开 Kibana → Stack Management → Index Patterns
-2. 创建索引模式：`myapp-*`
-3. 时间字段选择 `time`（Vext logger 的 ISO 时间戳）
-4. 在 Discover 中即可搜索日志
+在 Kibana 为实际写入的索引或数据流建立 [Data View](https://www.elastic.co/docs/explore-analyze/find-and-organize/data-views/create-data-view)，使用与采集映射一致的时间字段；Vext 的 `time` 是 ISO 字符串，若选择它作为时间字段，先在 Elasticsearch 映射中配置为 date。不要把 Filebeat 接收时间自动等同于业务事件时间。
 
-常用查询：
-
-- 按 requestId 追踪：`requestId: "abc-123"`
-- 按错误级别过滤：`level: 50`（Vext logger level 50 = error）
-- 按服务过滤：`service: "UserService"`
-
----
+上面选择将应用字段放在 `vext` 下，查询对应改为 `vext.requestId: "log-demo-1"`、`vext.level >= 50`、`vext.service: "LogDemoService"`。若采用别的 target/mapping，查询字段也需同步调整。
 
 ### 方案五：Docker → Loki
 
-容器化部署时，使用 Docker logging driver 直接推送到 Grafana Loki：
+先在 Docker 主机安装 Loki driver，并准备主机/driver 可访问的 Loki 地址，再配置服务。Compose 服务名 `loki` 不保证能从 driver 所在网络解析；下面使用的 `127.0.0.1:3100` 假设该端口已在 Docker 主机发布。选项和安装前置见[官方 driver 文档](https://grafana.com/docs/loki/latest/send-data/docker-driver/configuration/)。
 
 ```yaml
 # docker-compose.yml
@@ -767,13 +702,13 @@ services:
     logging:
       driver: loki
       options:
-        loki-url: "http://loki:3100/loki/api/v1/push"
-        loki-batch-size: "400"
+        loki-url: "http://127.0.0.1:3100/loki/api/v1/push"
+        loki-batch-size: "400000"
         loki-retries: "3"
         loki-external-labels: "app=myapp,env=production"
 ```
 
-在 Grafana 中添加 Loki 数据源即可查询日志：
+部署前检查 Compose 配置，部署后确认 driver 无发送错误并且 Loki 收到日志；再在已配置 Loki 数据源的 Grafana 查询。batch-size 单位是字节，有限重试不保证送达：
 
 - 按 requestId 查询：`{app="myapp"} |= "abc-123"`
 - 按 JSON 字段过滤：`{app="myapp"} | json | level >= 50`
@@ -782,105 +717,47 @@ services:
 
 ### 方案六：app.setLogger 桥接外部 SDK
 
-如果必须在应用内同步调用外部日志 SDK，可以通过 `app.setLogger()` 包装当前 logger。该方式适合插件封装，默认 logger 仍继续输出到 stdout。
+复用前文包装器模式。SDK 写入器是项目提供的依赖，应在插件 setup 创建一次，在 app.onClose 关闭；包装器工厂只绑定方法。先验证默认 stdout，再检查外部 SDK 的成功/失败、子 logger、过滤和脱敏，最后验证关闭时队列排空。
 
-```typescript
-import { definePlugin } from "vextjs";
-
-export default definePlugin({
-  name: "cloud-logger-bridge",
-  setup(app) {
-    app.setLogger((original) => ({
-      ...original,
-      info(...args: unknown[]) {
-        cloudLogger.write("info", args);
-        original.info(...args);
-      },
-      error(...args: unknown[]) {
-        cloudLogger.write("error", args);
-        original.error(...args);
-      },
-      child: (bindings) => original.child(bindings),
-    }));
-  },
-});
-```
-
-这不是默认 logger 的替换机制，而是插件层的转发桥。后续如需官方 OTel Logs、Sentry、Loki/ELK 插件，可以在这个 wrapper 契约上继续扩展。
+本页没有提供某个云 SDK 的安装和凭证配置；这些由所选集成文档负责。不要把未定义的 cloudLogger/Sentry 对象当成 VextJS 内置能力。
 
 ## 日志与 OpenTelemetry
 
-结合 OpenTelemetry，可以在日志中自动注入 `trace_id` 和 `span_id`，实现日志与链路追踪的关联：
+已配置 tracing SDK 时，可使用同步 mixin 读取当前活跃 span；也可在正确的请求链把字段写入 requestContext，见[请求上下文](/zh/guide/request-context)。
+
+以下是类型完整的配置工厂，`readActiveSpan` 由已经初始化的 SDK 适配器提供。此函数只生成日志配置，不创建 tracing SDK 或 span：
 
 ```typescript
-// src/config/production.ts
-import { trace } from "@opentelemetry/api";
+import type { VextLoggerConfig } from "vextjs";
 
-export default {
-  logger: {
+export function tracingLoggerConfig(
+  readActiveSpan: () => { traceId: string; spanId: string } | undefined,
+): VextLoggerConfig {
+  return {
     level: "info",
+    pretty: false,
     mixin() {
-      const span = trace.getActiveSpan();
-      if (!span?.isRecording()) return {};
-      const ctx = span.spanContext();
-      return {
-        trace_id: ctx.traceId, // 注入到每条日志的 trace_id 字段（OTEL 语义约定）
-        span_id: ctx.spanId, // 注入到每条日志的 span_id 字段
-      };
+      const span = readActiveSpan();
+      return span ? { trace_id: span.traceId, span_id: span.spanId } : {};
     },
-  },
-};
+  };
+}
 ```
 
-**工作原理**：
-
-- `mixin()` 在每条日志写入前被调用，返回值会与框架内置字段合并注入
-- `requestId` 是框架保护字段，不可被用户 mixin 覆盖；`trace_id` / `span_id` 等其他字段按用户 mixin 优先
-- 未配置 `mixin` 时，不会执行用户 mixin 调用，默认请求字段注入行为保持不变
-- 框架不依赖 `@opentelemetry/api`，该包由用户在 tracing 初始化时引入
-
-**与 F-03（ALS 自动注入）的关系**：如果你在 tracing 中间件中向 `requestContext` 写入了 `traceId` / `spanId`，框架内置 mixin 会自动将其注入日志——无需配置 `mixin` 选项。`mixin` 配置适用于需要**直接从 OTEL Context API 实时读取**当前活跃 Span 的场景。
-
-详见 [OpenTelemetry 接入示例](/examples/opentelemetry) 中的日志关联章节。
+将返回值合并进 config.logger；未采样的 trace 是否仍需日志关联由 SDK 适配器决定，不必将 isRecording 当成唯一条件。mixin 可覆盖 ALS 的 trace_id/span_id，但不能覆盖 requestId；单次日志对象字段优先级更高。完整 SDK 接入继续看[OpenTelemetry 示例](/zh/examples/opentelemetry)。
 
 ## VextLogger 接口
 
-```typescript
-interface VextLogger {
-  trace(...args: unknown[]): void;
-  info(...args: unknown[]): void;
-  warn(...args: unknown[]): void;
-  error(...args: unknown[]): void;
-  debug(...args: unknown[]): void;
-  fatal(...args: unknown[]): void;
-  getLevel():
-    | "trace"
-    | "debug"
-    | "info"
-    | "warn"
-    | "error"
-    | "fatal"
-    | "silent";
-  setLevel(
-    level: "trace" | "debug" | "info" | "warn" | "error" | "fatal" | "silent",
-  ): void;
-  child(bindings: Record<string, unknown>): VextLogger;
-}
-```
+公开类型从 `vextjs` 导入，避免复制一份容易失真的接口：
 
-`VextLogger` 是框架公开的日志接口。你可以在类型声明中使用这个接口：
+| 类型                | 用途                                                                      |
+| ------------------- | ------------------------------------------------------------------------- |
+| `VextLogger`        | 兼容插件的基础接口；trace/getLevel/setLevel 为可选，child 返回 VextLogger |
+| `VextRuntimeLogger` | app.logger 保证的完整接口；上述三个方法必需，child 返回完整运行时接口     |
+| `VextLoggerLike`    | setLogger 工厂返回的部分实现，等价于 `Partial<VextLogger>`                |
+| `VextLoggerConfig`  | logger 配置字段                                                           |
 
-```typescript
-import type { VextLogger } from "vextjs";
-
-class PaymentService {
-  private logger: VextLogger;
-
-  constructor(app: VextApp) {
-    this.logger = app.logger.child({ service: "PaymentService" });
-  }
-}
-```
+完整类型用法已见 LogDemoService。公开 app.logger 没有可写 level 属性或公开 flush/close 方法；默认内核收尾由应用生命周期管理，SDK 自有资源仍需插件关闭钩子。
 
 ## 与 Pino 的能力差异
 
@@ -899,7 +776,7 @@ Vext 内置 logger 的目标是覆盖框架默认日志所需的稳定子集，�
 | browser API                        | 未支持浏览器 logger                                                  | Vext 是 Node.js 服务端框架，浏览器侧另选方案              |
 | `hooks.logMethod` / merge strategy | 未暴露日志调用 hook 或 mixin 合并策略                                | 用 `app.setLogger()` 包装公开方法                         |
 
-这些缺口不会影响 Vext 默认框架日志、access log、requestId/trace 字段注入、child logger、Error 序列化和 stdout-first 收集。后续若需要官方 OTel Logs、Sentry、Loki/ELK 插件，应优先基于 `app.setLogger()` 和外部 Agent 扩展，而不是把 transport 体系内置回 core。
+上述比较用于确定 Vext 当前边界；Pino 的完整选项以其[官方 API](https://github.com/pinojs/pino/blob/main/docs/api.md)为准。需要额外传输或格式化时，可通过 wrapper 或采集端接入，并分别验证外部路径的行为。
 
 ## 配置参考
 
@@ -920,63 +797,40 @@ Vext 内置 logger 的目标是覆盖框架默认日志所需的稳定子集，�
 
 ### 1. 使用结构化字段而非字符串拼接
 
-```typescript
-// ✅ 结构化字段 — 可索引、可过滤
-app.logger.info({ userId, action: "login", ip: req.ip }, "用户登录");
-
-// ❌ 字符串拼接 — 难以解析和过滤
-app.logger.info(`用户 ${userId} 从 ${req.ip} 登录`);
-```
+例如 `app.logger.info({ userId: "u-1", action: "login" }, "用户登录")`，便于按字段查询；msg 留作描述。错误对象使用 err 字段，不要只拼接错误字符串而丢失堆栈。
 
 ### 2. 为每个 Service 创建 Child Logger
 
-```typescript
-// ✅ 推荐 — 日志自动携带 service 标识
-this.logger = app.logger.child({ service: 'OrderService' });
-
-// ❌ 避免 — 每条日志都要手动加 service
-app.logger.info({ service: 'OrderService', ... }, 'xxx');
-```
+参考完整示例，在构造时绑定 service，调用时传业务字段。运行时上下文每次重新读取，避免将单个请求的身份绑定到长期共享 logger。
 
 ### 3. 不要在日志中输出敏感信息
 
-```typescript
-// ✅ 安全
-app.logger.info({ userId, action: "password_change" }, "密码已修改");
-
-// ❌ 危险 — 密码泄漏到日志
-app.logger.info({ userId, newPassword }, "密码已修改");
-
-// ❌ 危险 — token 泄漏到日志
-app.logger.debug({ token: req.headers.authorization }, "认证信息");
-```
+按项目的数据策略选择记录字段；如需脱敏，显式配置并验证 JSON、pretty 和外部桥接各条输出路径。内置 redaction 默认关闭，不能依赖字段名自动遮盖。
 
 ### 4. 合理使用日志级别
 
-```typescript
-// debug — 详细调试信息（生产环境不输出）
-app.logger.debug({ sql: query, params }, "执行数据库查询");
-
-// info — 重要业务事件
-app.logger.info({ orderId, total }, "订单创建成功");
-
-// warn — 需要关注但不影响运行
-app.logger.warn({ retryCount: 3, url }, "请求重试");
-
-// error — 出错了
-app.logger.error({ err, orderId }, "支付处理失败");
-
-// fatal — 应用无法继续运行
-app.logger.fatal({ err }, "数据库连接断开，无法恢复");
-```
+debug 是否输出由当前阈值决定，生产也可以显式开启。error/fatal 都不会自动抛错或终止；需要改变请求结果或关闭进程时调用相应业务/生命周期机制。
 
 ### 5. 在生产环境使用 JSON 格式
 
-JSON 日志是日志收集系统（ELK、Loki、Datadog 等）的标准输入格式。确保生产环境 `pretty: false`（默认行为）。
+明确 `pretty: false`，并在采集端解析 JSON；不要在 JSON 行前再拼接时间前缀。CLI 提示和第三方 stdout 内容可能不是 JSON，应配置独立解析或保留解析失败事件。
+
+## 常见问题
+
+| 现象                            | 检查方向                                                     |
+| ------------------------------- | ------------------------------------------------------------ |
+| debug/trace 没输出              | 当前 getLevel() 阈值；debug 不包含 trace，child 与父共享阈值 |
+| requestId 看不到                | prettyIgnore、上下文开关和调用链；手动参数是否覆盖           |
+| error.log 没有 app.logger.error | 默认所有级别写 stdout；stderr 文件不按 numeric level 分流    |
+| 包装后 child 没有转发           | 是否显式返回了 original.child；是否缓存了安装前的 logger     |
+| 日志方法引发请求失败            | wrapper/SDK 是否抛错；普通日志方法没有统一容错               |
+| Filebeat JSON 解析失败          | pretty、PM2时间前缀、CLI文本、容器外层封装、输入类型及parser |
+| 有 trace_id 却没有 trace        | 字段关联不等于 SDK 已采样、创建span或成功导出                |
 
 ## 下一步
 
-- 了解 [部署与生产环境](/guide/deployment) 中的日志收集方案
-- 查看 [OpenTelemetry 接入](/examples/opentelemetry) 实现日志与链路追踪关联
-- 学习 [中间件](/guide/middleware) 如何在请求生命周期中产生日志
-- 探索 [配置](/guide/configuration) 中的环境配置覆盖机制
+- [请求上下文](/zh/guide/request-context)：核对 ID、语言和 tracing 字段的来源。
+- [Access Log API](/zh/api/access-log)：配置请求访问日志。
+- [部署与生产环境](/zh/guide/deployment)：选择运行与采集方式。
+- [OpenTelemetry 接入](/zh/examples/opentelemetry)：准备 SDK 和 Collector。
+- [配置](/zh/guide/configuration)：理解环境覆盖和配置校验。

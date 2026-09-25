@@ -356,6 +356,9 @@ jobs:
       - name: Verify documentation source contract
         run: node scripts/validation/verify-documentation-contract.mjs
 
+      - name: Verify documentation parser and executable examples
+        run: npm run verify:docs-routing-pilot
+
       - name: Build docs (rspress build)
         working-directory: website
         run: npm run build
@@ -364,6 +367,9 @@ jobs:
 
       - name: Verify rendered documentation contract
         run: node scripts/validation/verify-documentation-contract.mjs --rendered
+
+      - name: Verify rendered documentation rejection cases
+        run: node --test test/documentation-rendered-contract.test.mjs
 
   # ────────────────────────────────────────────────────────────
   # 8. Package contract checks（Node 22）

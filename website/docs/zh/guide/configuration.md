@@ -1,23 +1,70 @@
 # 配置
 
-## Jobs 配置
+本页说明配置从哪里加载、各层如何合并，以及如何验证实际生效值。首次建项目见[快速开始](/zh/guide/quick-start)。先完成下方不依赖外部服务的完整示例，再按需要阅读加载机制与分项配置；字段的精确签名和完整嵌套项见[配置 API](/zh/api/config)。各分项代码是独立片段，需合并到已有配置中，不能反复覆盖整个文件。
 
-`config.jobs` 控制 `vext job ...`、测试、文档和 MCP 工具如何发现 Job 文件，并配置内置 scheduler、worker、store、lease 和默认重试策略。它不会让 HTTP 启动自动执行 Job。
+## 完整示例
 
-```ts
+先在已完成[快速开始](/zh/guide/quick-start)的 TypeScript 项目中验证。项目需已有 `dev`、`build`（含 `--typecheck`）、`start` 三个 npm scripts；把以下配置合并到对应文件，新增诊断路由。为得到下述结果，请使用独立的练习项目，保留脚手架的空 `bootstrap.ts`，避免已有 provider 或其他 profile 改写示例值。
+
+示例只显式设置本次验证需要的字段，其余使用框架默认值；不连接外部服务。完整字段说明见后续各节及[配置 API](/zh/api/config)。
+
+```typescript
+// src/config/default.ts
 export default {
-  jobs: {
-    enabled: true,
-    dir: "jobs",
-    runner: "inline",
-    store: { type: "file", dir: ".vext/jobs" },
-    scheduler: { enabled: true, mode: "inline" },
-    worker: { enabled: true, concurrency: 4 },
+  port: Number(process.env.PORT) || 3000,
+  host: "0.0.0.0",
+  logger: { level: "info" },
+  openapi: { enabled: true, title: "My App API", version: "1.0.0" },
+  frontend: { enabled: false },
+  // 自定义字段只演示合并；框架不会据此连接 Redis。
+  redis: { url: process.env.REDIS_URL || "redis://localhost:6379" },
+};
+```
+
+```typescript
+// src/config/production.ts
+export default {
+  logger: { level: "warn" },
+  cors: { origins: ["https://myapp.com"], credentials: true },
+  openapi: { enabled: false },
+  // logger.level: "warn" 会抑制普通 info/debug 访问日志；5xx 仍会提升为 error。
+  accessLog: { level: "info", warnOn4xx: true },
+  cluster: {
+    enabled: false, // 本例单进程；生产多 worker 配置见后文 Cluster 节
   },
 };
 ```
 
-详见 [任务与 Jobs](/zh/guide/jobs) 与 [Jobs API](/zh/api/jobs)。
+```typescript
+// src/config/local.ts
+export default {
+  port: 8080,
+  redis: {
+    url: "redis://localhost:6380",
+  },
+};
+```
+
+```typescript
+// src/routes/config-info.ts
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  app.get("/", {}, async (_req, res) => {
+    res.json({
+      port: app.config.port,
+      logLevel: app.config.logger.level,
+      docsEnabled: app.config.openapi.enabled,
+    });
+  });
+});
+```
+
+1. 清除本终端先前设置的PORT、VEXT_PORT/VEXT_HOST、VEXT_CONFIG等覆盖（或在干净终端执行），运行 `npm run dev`。请求 `http://127.0.0.1:8080/config-info`，应为200，data中port=8080、logLevel=info、docsEnabled=true，证明local在开发模式生效。
+2. 停止dev，运行 `npm run build`，成功后 `npm start`。请求 `http://127.0.0.1:3000/config-info`，应为200，port=3000、logLevel=warn、docsEnabled=false，证明production覆盖生效且未读取local。
+3. 停止服务后运行 `npm start -- --port 3100`，请求3100端口应显示port=3100，验证CLI覆盖优先级。验证结束停止该服务。
+
+只输出本例的三个非敏感诊断字段，不要把整个app.config作为业务接口返回。监听host可能是0.0.0.0或::，它不是对外服务的公开base URL；代理/CDN后的公开地址由部署合同决定，不能仅由host/port推断。
 
 VextJS 采用 **多层配置合并** 机制，支持按环境覆盖配置，同时提供丰富的内置配置项覆盖框架行为。
 
@@ -46,6 +93,8 @@ VextJS 采用 **多层配置合并** 机制，支持按环境覆盖配置，同�
 
 配置 profile 通过 `--config <name>` 或 `VEXT_CONFIG=<name>` 显式选择。未指定时，`vext start`、`vext build`、`vext deploy assets` 默认使用 `production` profile，`vext dev` 默认使用 `development` profile。
 
+显式CLI profile优先于VEXT_CONFIG。非标准NODE_ENV名称仍有带警告的旧兼容入口，推荐改用显式profile；标准NODE_ENV不能取代命令自己的默认模式。profile名称只允许字母、数字、下划线和连字符，default/local/bootstrap是保留名；不要传文件路径。
+
 profile 名可以是自定义部署环境名，例如：
 
 - `src/config/sg-sit.ts`
@@ -55,9 +104,11 @@ profile 名可以是自定义部署环境名，例如：
 启动时传入 profile 名：
 
 ```bash
-vext start --config sg-sit
-VEXT_CONFIG=sg-sit vext start
+npm start -- --config sg-sit
+VEXT_CONFIG=sg-sit npm start
 ```
+
+第二行是POSIX shell写法；PowerShell可用 `$env:VEXT_CONFIG = "sg-sit"` 后再执行命令，或直接使用跨shell的 `--config`。配置文件示例使用.ts；Loader也支持.js/.mjs/.cjs。
 
 上述生产启动使用 `default -> sg-sit -> bootstrap provider patch -> CLI override`。`local.ts` 只在 development/test 运行模式加载；生产 build 与 start（JS 源码或编译后的 TS）均不隐式执行它。部署覆盖使用显式 profile 或 bootstrap provider；选择自定义 profile 不改变运行模式。
 
@@ -75,11 +126,11 @@ VEXT_CONFIG=sg-sit vext start
 
 ### 合并规则
 
-- **对象字段**：深度合并（deep merge），环境文件只需声明需要覆盖的字段
+- **普通对象字段**：深度合并，后层只声明覆盖字段；类实例和运行能力对象有原子边界，不能据此递归patch任意实例
 - **`middlewares` 数组**：智能 patch 策略——按 `name` 匹配并合并，而非简单替换整个数组
 - **其他数组**：后层覆盖前层
 - **`bootstrap provider patch`**：在 `local.ts` 之后、CLI override 之前参与同一套 merge / validate / freeze 流程
-- **最终结果**：深冻结（`deepFreeze`），运行时不可修改
+- **最终结果**：普通配置对象和数组深冻结，运行时不应修改；客户端等非普通类实例保留内部可变状态，不会被递归冻结
 
 ### TypeScript 基础配置与覆盖层
 
@@ -106,6 +157,8 @@ export default defineBootstrapConfig({
           `https://config.example.com/${configProfile}`,
           { signal },
         );
+        if (!response.ok)
+          throw new Error(`Config request failed: ${response.status}`);
 
         const remote = await response.json();
         return {
@@ -124,8 +177,10 @@ provider 上下文字段：
 
 | 字段                    | 说明                                                             |
 | ----------------------- | ---------------------------------------------------------------- |
-| `env`                   | 当前环境（如 `development` / `production` / `test`）             |
-| `baseConfig`            | `default/env/local` 合并后的只读配置，可用于按现有配置决定 patch |
+| `mode`                  | 当前运行模式：development / production / test                    |
+| `configProfile`         | 本次选中的配置文件profile，可以与mode不同                        |
+| `env`                   | 兼容别名，已弃用；使用mode或configProfile明确表达意图            |
+| `baseConfig`            | default/profile/local合并后的只读配置，可用于按现有配置决定patch |
 | `signal`                | 超时或取消时会 abort 的 `AbortSignal`                            |
 | `rootDir` / `configDir` | 当前项目与配置目录路径                                           |
 | `command` / `isBuilt`   | 当前启动命令与是否走编译产物                                     |
@@ -139,6 +194,8 @@ provider 上下文字段：
 - 默认优先级：`local < provider < CLI`
 - 未声明 `required` 时：`production` 默认 fail-fast，`development / test` 默认 warning 后继续
 - Cluster 模式下，Master 会将本轮 provider patch 传递给 Worker 复用，避免同一启动周期出现配置漂移
+
+超时会触发 signal，但不会强制终止任意用户异步工作；provider 中的网络操作应接收该 signal。占位远端地址需要替换为实际服务，不属于开篇完整示例的必需文件。
 
 ### 配置文件格式
 
@@ -223,7 +280,9 @@ export default config;
 
 `middlewares` 数组使用智能合并，按中间件 `name` 匹配：
 
-同一个配置层中，每个中间件名称只能声明一次；同文件重名会在启动时失败。后续 profile/local 层可以声明一次同名项来 patch 前一层；`{ name, enabled: false }` 不会进入运行时 registry。
+同一个配置层中，每个中间件名称只能声明一次；同文件重名会在启动时失败。后续 profile/local 层可以声明一次同名项来 patch 前一层；`{ name, enabled: false }` 会保留名称并注册为空操作，不查找或执行原中间件文件。禁用后可按名称引用，但不能在路由引用中继续传 `options`：空操作按普通中间件处理，不再是工厂。
+
+同名声明是浅合并：`options`被后层整个替换，不递归合并内部属性。空数组不表示删除继承的白名单，禁用已有项应使用enabled:false；片段中的auth/check-role/rate-limit-api须有对应实现，白名单名称不会自动生成中间件。
 
 ```typescript
 // src/config/default.ts
@@ -241,7 +300,7 @@ export default {
 export default {
   middlewares: [
     // 只需声明要覆盖的中间件，其余保留
-    { name: "check-role", options: { roles: [] } }, // 开发环境不检查角色
+    { name: "check-role", options: { roles: [] } }, // 空数组的业务含义由工厂实现决定
     { name: "rate-limit-api", options: { max: 10000 } }, // 放宽限流
   ],
 };
@@ -259,7 +318,7 @@ middlewares: [
 
 ## 使用 Adapter
 
-默认使用 Native Adapter（`http.createServer` + `route-core`）。要切换其他 Adapter，在配置中指定 `adapter` 字段：
+默认使用 Native Adapter（`http.createServer` + `route-core`）。要切换其他 Adapter，先按 [Adapter 指南](/zh/guide/adapters)安装对应的可选依赖，再从以下四种配置中选择一种合并到 `default.ts`：
 
 ```typescript
 // src/config/default.ts — 使用 Hono Adapter
@@ -302,12 +361,12 @@ export default {
 ```
 
 :::tip
-不指定 `adapter` 时默认使用 Native Adapter，它不依赖第三方 HTTP 框架。需要特定框架的能力或迁移路径时再切换；吞吐表现会随场景变化，请结合[当前性能基准](/benchmark)和你的业务负载判断。
+不指定 `adapter` 时默认使用 Native Adapter，它不依赖第三方 HTTP 框架。切换其他Adapter前需安装对应包；吞吐表现会随场景变化，请结合[当前性能基准](/zh/benchmark)和你的业务负载判断。
 :::
 
 ## 前端配置 (`frontend`)
 
-`frontend` 控制内置浏览器流水线。它可以是 `true`、`false` 或对象：
+`frontend` 控制内置浏览器流水线。它可以是 `true`、`false` 或对象。以下展示多个可选能力的组合，假定项目已按[前端指南](/zh/frontend/overview)建立页面、样式及语言资源；其中 `admin/app/shell` 必须是实际存在的页面。仅启用默认集成可以使用 `frontend: true`，不必照搬整个片段。
 
 ```typescript
 export default {
@@ -385,7 +444,7 @@ export default {
 | `frontend.build.sourcemap`              | `boolean`            | 开发期 `true`                                  | 生成前端 source map                                   |
 | `frontend.build.server.minify`          | `boolean`            | `false`                                        | SSR renderer 压缩；刻意独立于浏览器产物               |
 | `frontend.build.server.sourcemap`       | `boolean`            | 开发期 `true`                                  | SSR renderer source-map 设置                          |
-| `frontend.build.diagnostics.sizeReport` | `boolean`            | `true`                                         | 写入 `dist/client/size-report.json`                   |
+| `frontend.build.diagnostics.sizeReport` | `boolean`            | `true`                                         | 写入实际 `frontend.outDir` 下的 `size-report.json`    |
 | `frontend.build.client.external`        | `string[]`           | `[]`                                           | 浏览器构建外置模块列表                                |
 | `frontend.build.client.externalRuntime` | `object`             | `{}`                                           | 外置模块的 import map URL                             |
 | `frontend.build.vendorChunks`           | `boolean \| object`  | `{ enabled: true }`                            | 公共依赖共享 chunk 管理                               |
@@ -400,13 +459,15 @@ export default {
 
 默认 `spaFallback.scopes` 为空，因此未知 HTML 路径不会被自动吞成 SPA 页面。需要混合 SSR + client-router 子应用时，在 `scopes[]` 中声明具体 `basePath`。`spaFallback: true` 仅作为兼容 shorthand，不推荐在企业级混合项目中使用。
 
-`frontend.deploy.upload` 启用后，`vext deploy assets` 会读取 `dist/client/deploy-manifest.json`，按 `uploadKey` 和 sha256 增量上传。内置 `filesystem` adapter 会把文件写入 `targetDir`，适合作为 CDN 同步前的 staging 目录；真实云厂商上传可通过自定义 adapter 扩展。
+`frontend.deploy.upload` 启用后，`vext deploy assets` 会读取实际所选前端输出中的deploy-manifest，默认是 `dist/client/deploy-manifest.json`，按uploadKey和sha256增量上传。内置filesystem adapter写入targetDir，适合作为CDN同步前的staging；真实云厂商上传通过自定义adapter扩展。
 
 默认上传排除 `index.html` 和 `**/*.map`：HTML 仍由 Vext 服务端渲染，source map 可保留在服务器调试链路中，不随 CDN 静态资源发布。
 
 本表只是通用配置总览。需要精确嵌套字段、resolved default、构建输出拓扑或 CDN/upload 决策时，请阅读[前端配置](/zh/frontend/configuration)与权威的 [VextFrontendConfig API 参考](/zh/api/config#vextfrontendconfig)。创建项目、修改页面、添加组件、CSS/JSCSS、静态资源、API 调用、HTML 模板和常见排错见 [前端指南](/zh/frontend/overview)。
 
-## 完整配置项参考
+## 常用配置项总览
+
+本节保留常用字段及默认值；未列出的缓存、fetch、locale、Session/CSRF细项等，以[配置 API](/zh/api/config)为完整参考。单独设置某个参数不代表对应功能已启用。
 
 ### 基础配置
 
@@ -450,13 +511,14 @@ export default {
 
 ### 限流配置 (`rateLimit`)
 
-| 配置项              | 类型      | 默认值                | 说明                            |
-| ------------------- | --------- | --------------------- | ------------------------------- |
-| `rateLimit.enabled` | `boolean` | `false`               | 是否安装全局限流                |
-| `rateLimit.max`     | `number`  | `100`                 | 时间窗口内最大请求数            |
-| `rateLimit.window`  | `number`  | `60`                  | 时间窗口（秒）                  |
-| `rateLimit.message` | `string`  | `'Too many requests'` | 限流响应消息                    |
-| `rateLimit.keyBy`   | `string`  | `'ip'`                | 限流维度（`'ip'` / 自定义字段） |
+| 配置项              | 类型                 | 默认值                | 说明                      |
+| ------------------- | -------------------- | --------------------- | ------------------------- |
+| `rateLimit.enabled` | `boolean`            | `false`               | 是否安装全局限流          |
+| `rateLimit.max`     | `number`             | `100`                 | 时间窗口内最大请求数      |
+| `rateLimit.window`  | `number`             | `60`                  | 时间窗口（秒）            |
+| `rateLimit.message` | `string`             | `'Too Many Requests'` | 限流响应消息              |
+| `rateLimit.keyBy`   | `string \| function` | `'ip'`                | 内置维度或同步请求key函数 |
+| `rateLimit.store`   | `string \| object`   | `'memory'`            | 内存或Redis Store         |
 
 ```typescript
 export default {
@@ -473,8 +535,10 @@ export default {
 关闭或省略时，Vext 不安装限流中间件，也不会产生限流响应头或 HTTP 429。
 `app.setRateLimiter()` 只替换实现，不会改变这个显式启用开关。
 
+`keyBy: "user"`读取req.user.id，未取得时回退IP；全局限流早于普通认证中间件，不会自动用req.auth隔离额度。Redis、路由覆盖和自定义实现见[请求限流](/zh/guide/rate-limit)。
+
 :::tip 路由级限流覆盖
-可以在路由的 `options.override.rateLimit` 中为特定路由覆盖限流配置：
+全局已启用限流时，可以在路由的 `options.override.rateLimit` 中为特定路由覆盖限流配置。下面是 `defineRoutes` 回调内的片段，`handler` 代表你已有的处理函数：
 
 ```typescript
 app.post(
@@ -528,11 +592,12 @@ export default {
 
 ### 请求 ID 配置 (`requestId`)
 
-| 配置项               | 类型           | 默认值              | 说明                       |
-| -------------------- | -------------- | ------------------- | -------------------------- |
-| `requestId.enabled`  | `boolean`      | `true`              | 是否启用请求 ID            |
-| `requestId.header`   | `string`       | `'x-request-id'`    | 请求 ID 透传的 header 名称 |
-| `requestId.generate` | `() => string` | `crypto.randomUUID` | 自定义 ID 生成函数         |
+| 配置项                     | 类型           | 默认值              | 说明                             |
+| -------------------------- | -------------- | ------------------- | -------------------------------- |
+| `requestId.enabled`        | `boolean`      | `true`              | 是否启用请求 ID                  |
+| `requestId.header`         | `string`       | `'x-request-id'`    | 请求 ID 透传的 header 名称       |
+| `requestId.responseHeader` | `string`       | `'x-request-id'`    | 响应中回传请求 ID 的 header 名称 |
+| `requestId.generate`       | `() => string` | `crypto.randomUUID` | 自定义 ID 生成函数               |
 
 ```typescript
 export default {
@@ -543,7 +608,7 @@ export default {
 };
 ```
 
-当请求中携带 `X-Request-Id` 头时，框架会透传该 ID 而不是生成新的。适合微服务链路追踪。
+默认从 `X-Request-Id` 请求头读取 ID，缺失或为空时调用生成器，并写入响应头。读取到的 ID 和生成器返回值都必须是长度 1–512 的字符串，且不含控制字符，否则会抛错；数组形式的请求头只取首项。它用于请求关联，不自动等同于分布式追踪的 traceId。
 
 ### 日志配置 (`logger`)
 
@@ -578,7 +643,7 @@ export default {
 };
 ```
 
-VextJS 内置零 runtime dependency 的 logger kernel，`pretty` 模式使用内置 formatter 输出可读日志。默认 logger 支持 `trace()`、`getLevel()` / `setLevel()` 和 exact key/path redaction；完整说明见 [日志文档](/guide/logger)。
+VextJS使用内置logger kernel与pretty formatter。默认logger支持trace、getLevel/setLevel和exact key/path redaction；完整说明见[日志文档](/zh/guide/logger)。
 
 ### 优雅关闭配置 (`shutdown`)
 
@@ -594,7 +659,7 @@ export default {
 };
 ```
 
-收到 `SIGTERM` / `SIGINT` 信号后，框架按注册的逆序执行所有 `onClose` 钩子（如关闭数据库连接），超时后强制退出。
+正常HTTP进程收到SIGTERM/SIGINT后进入有界关闭：停止接收、处理在途请求，再按注册逆序调用onClose。整个流水线共享期限，到期仍调用剩余清理但不再等待；测试helper关闭不会调用process.exit，也不能把某个未结束异步清理当成已完成。
 
 ### HTTP Server 配置 (`server`)
 
@@ -633,7 +698,7 @@ export default {
 | 配置项                             | 类型      | 默认值  | 说明                                                                        |
 | ---------------------------------- | --------- | ------- | --------------------------------------------------------------------------- |
 | `response.wrap`                    | `boolean` | `true`  | 是否启用出口包装（`res.json(data)` 自动包装为 `{ code, data, requestId }`） |
-| `response.hideInternalErrors`      | `boolean` | `true`  | 是否隐藏 500 错误详情（生产环境建议开启，不暴露 stack trace）               |
+| `response.hideInternalErrors`      | `boolean` | `true`  | 是否隐藏未知异常的原始消息；不隐藏显式 HttpError 的消息与 details           |
 | `response.logErrors.unknownErrors` | `boolean` | `true`  | 是否记录未知 500 错误（含完整 err 对象和 stack trace）                      |
 | `response.logErrors.http5xx`       | `boolean` | `true`  | 是否记录 HttpError 5xx（error 级别）                                        |
 | `response.logErrors.http4xx`       | `boolean` | `false` | 是否记录 HttpError 4xx（warn 级别，高流量场景建议关闭以减少日志噪音）       |
@@ -684,6 +749,8 @@ export default {
 
 `maxBodySize` 支持字符串格式（`'1mb'`、`'500kb'`）和数字格式（字节数）。
 
+这是整请求边界，不因multipart.maxFileSize增大而自动放宽；Adapter/反向代理还可能有更严格限额。
+
 ### Multipart / 文件上传配置 (`multipart`)
 
 | 配置项                       | 类型       | 默认值      | 说明                                                      |
@@ -703,6 +770,8 @@ export default {
   },
 };
 ```
+
+内置multipart是纯内存解析，不自动写盘；普通multipart文本字段不会自动进入req.body，路由覆盖也不能挽回全局提前拒绝的文件。完整示例与错误复验见[文件上传](/zh/guide/uploads)。
 
 ### Access Log 配置 (`accessLog`)
 
@@ -730,7 +799,7 @@ export default {
 };
 ```
 
-启用后，每个请求完成时自动记录：
+启用后，请求完成时会按日志级别和路径过滤设置记录访问日志；以下是 pretty 模式下的示意：
 
 ```
 GET /api/users 200 12ms | 127.0.0.1
@@ -738,35 +807,35 @@ GET /api/users 200 12ms | 127.0.0.1
 
 ### OpenAPI 配置 (`openapi`)
 
-| 配置项                                  | 类型                     | 默认值                | 说明                                                                                                                                                                               |
-| --------------------------------------- | ------------------------ | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `openapi.enabled`                       | `boolean`                | `false`               | 是否启用 OpenAPI 文档                                                                                                                                                              |
-| `openapi.title`                         | `string`                 | `'API Documentation'` | 文档标题                                                                                                                                                                           |
-| `openapi.description`                   | `string`                 | `''`                  | 文档描述                                                                                                                                                                           |
-| `openapi.version`                       | `string`                 | `'1.0.0'`             | API 版本号                                                                                                                                                                         |
-| `openapi.docs.path`                     | `string`                 | `'/docs'`             | Vext Docs 文档路径                                                                                                                                                                 |
-| `openapi.docs.assetsPath`               | `string`                 | `'/_vext/docs'`       | Vext 内部注册的 docs 资产与 source-aware 数据端点前缀，包含 app.js / style.css / favicon.svg                                                                                       |
-| `openapi.docs.assetsPublicPath`         | `string`                 | 同 `assetsPath`       | 浏览器可见的 docs 资产/数据前缀。HTML 中的 app.js / style.css / favicon.svg 使用该公开前缀，适合反向代理剥离公开前缀时配置                                                         |
-| `openapi.docsPath`                      | `string`                 | `'/docs'`             | 兼容字段；新项目推荐使用 `openapi.docs.path`                                                                                                                                       |
-| `openapi.jsonPath`                      | `string`                 | `'/openapi.json'`     | OpenAPI JSON 端点路径（vext 内部路由注册路径）                                                                                                                                     |
-| `openapi.jsonPublicPath`                | `string`                 | 同 `jsonPath`         | 外部工具和链接使用的公开 OpenAPI 规范地址。内置 source-aware docs 数据使用 `openapi.docs.assetsPublicPath` / `assetsPath`，详见[反向代理部署](/guide/openapi#反向代理路径前缀场景) |
-| `openapi.docs.renderer`                 | `'vext'`                 | `'vext'`              | 内置 Vext Docs renderer；不再支持第三方 renderer object，外部工具请直接消费 `/openapi.json`                                                                                        |
-| `openapi.docs.code`                     | `object`                 | `{ enabled: 'auto' }` | services / utils / models / components / plugins / middlewares 文档源配置                                                                                                          |
-| `openapi.docs.code.scan`                | `'lazy' \| 'background'` | `'lazy'`              | Code Docs 扫描生命周期；`lazy` 每次请求 docs data 时扫描，`background` 在文档注册时预热一次进程内快照并复用                                                                        |
-| `openapi.docs.sources`                  | `Array`                  | `[]`                  | 可选的 Public/Admin/Internal 或多版本文档面配置。每个 source 都需要 `match`；非 `All` code docs 需要显式 `code.include` / `code.exclude`                                           |
-| `openapi.docs.tryItOut.hookScript`      | `string`                 | `undefined`           | 可选的浏览器端 hook 脚本路径，Vext Docs 会加载后再按 `hookGlobal` 查找请求/响应 hook                                                                                               |
-| `openapi.docs.tryItOut.hookGlobal`      | `string`                 | `'VextDocsHooks'`     | Try it out `beforeRequest` / `afterResponse` hook 的浏览器全局变量名                                                                                                               |
-| `openapi.docs.tryItOut.defaultServer`   | `string`                 | `undefined`           | Try it out 初始 server，支持 `"first"`、`"same-origin"`、`"custom"` 或精确 OpenAPI server URL                                                                                      |
-| `openapi.docs.tryItOut.sameOrigin`      | `boolean \| 'auto'`      | `'auto'`              | 是否显示 Same origin server 选项；`auto` 仅在没有配置 OpenAPI servers 时显示                                                                                                       |
-| `openapi.docs.tryItOut.customServer`    | `boolean`                | `true`                | 是否允许访问者在浏览器中临时填写 Try it out base URL                                                                                                                               |
-| `openapi.docs.tryItOut.customServerUrl` | `string`                 | `undefined`           | Custom server 输入框的可选默认值                                                                                                                                                   |
-| `openapi.docs.access.openapiJson`       | `'filtered' \| 'public'` | `'filtered'`          | canonical `/openapi.json` 是否跟随 docs 权限过滤，或保持公开                                                                                                                       |
-| `openapi.scalar`                        | `object`                 | `undefined`           | 已废弃兼容字段；仅显式配置时触发 warning，不影响内置 Vext Docs 页面                                                                                                                |
-| `openapi.servers`                       | `Array`                  | `[]`                  | API 服务器列表                                                                                                                                                                     |
-| `openapi.tags`                          | `Array`                  | `[]`                  | 标签定义                                                                                                                                                                           |
-| `openapi.securitySchemes`               | `object`                 | `{}`                  | 安全方案                                                                                                                                                                           |
-| `openapi.contact`                       | `object`                 | `{}`                  | 联系方式                                                                                                                                                                           |
-| `openapi.license`                       | `object`                 | `{}`                  | 许可证信息                                                                                                                                                                         |
+| 配置项                                  | 类型                     | 默认值                | 说明                                                                                                                                                                                  |
+| --------------------------------------- | ------------------------ | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `openapi.enabled`                       | `boolean`                | `false`               | 是否启用 OpenAPI 文档                                                                                                                                                                 |
+| `openapi.title`                         | `string`                 | `'VextJS API'`        | OpenAPI 规范的 info.title；内置 UI 标题可由 docs.ui.title 单独配置，无两者时 UI 使用 Vext API Docs                                                                                    |
+| `openapi.description`                   | `string`                 | `''`                  | 文档描述                                                                                                                                                                              |
+| `openapi.version`                       | `string`                 | `'1.0.0'`             | API 版本号                                                                                                                                                                            |
+| `openapi.docs.path`                     | `string`                 | `'/docs'`             | Vext Docs 文档路径                                                                                                                                                                    |
+| `openapi.docs.assetsPath`               | `string`                 | `'/_vext/docs'`       | Vext 内部注册的 docs 资产与 source-aware 数据端点前缀，包含 app.js / style.css / favicon.svg                                                                                          |
+| `openapi.docs.assetsPublicPath`         | `string`                 | 同 `assetsPath`       | 浏览器可见的 docs 资产/数据前缀。HTML 中的 app.js / style.css / favicon.svg 使用该公开前缀，适合反向代理剥离公开前缀时配置                                                            |
+| `openapi.docsPath`                      | `string`                 | `'/docs'`             | 兼容字段；新项目推荐使用 `openapi.docs.path`                                                                                                                                          |
+| `openapi.jsonPath`                      | `string`                 | `'/openapi.json'`     | OpenAPI JSON 端点路径（vext 内部路由注册路径）                                                                                                                                        |
+| `openapi.jsonPublicPath`                | `string`                 | 同 `jsonPath`         | 外部工具和链接使用的公开 OpenAPI 规范地址。内置 source-aware docs 数据使用 `openapi.docs.assetsPublicPath` / `assetsPath`，详见[反向代理部署](/zh/guide/openapi#反向代理路径前缀场景) |
+| `openapi.docs.renderer`                 | `'vext'`                 | `'vext'`              | 内置 Vext Docs renderer；不再支持第三方 renderer object，外部工具请直接消费 `/openapi.json`                                                                                           |
+| `openapi.docs.code`                     | `object`                 | `{ enabled: 'auto' }` | services / utils / models / components / plugins / middlewares 文档源配置                                                                                                             |
+| `openapi.docs.code.scan`                | `'lazy' \| 'background'` | `'lazy'`              | Code Docs 扫描生命周期；`lazy` 每次请求 docs data 时扫描，`background` 在文档注册时预热一次进程内快照并复用                                                                           |
+| `openapi.docs.sources`                  | `Array`                  | `[]`                  | 可选的 Public/Admin/Internal 或多版本文档面配置。每个 source 都需要 `match`；非 `All` code docs 需要显式 `code.include` / `code.exclude`                                              |
+| `openapi.docs.tryItOut.hookScript`      | `string`                 | `undefined`           | 可选的浏览器端 hook 脚本路径，Vext Docs 会加载后再按 `hookGlobal` 查找请求/响应 hook                                                                                                  |
+| `openapi.docs.tryItOut.hookGlobal`      | `string`                 | `'VextDocsHooks'`     | Try it out `beforeRequest` / `afterResponse` hook 的浏览器全局变量名                                                                                                                  |
+| `openapi.docs.tryItOut.defaultServer`   | `string`                 | `undefined`           | Try it out 初始 server，支持 `"first"`、`"same-origin"`、`"custom"` 或精确 OpenAPI server URL                                                                                         |
+| `openapi.docs.tryItOut.sameOrigin`      | `boolean \| 'auto'`      | `'auto'`              | 是否显示 Same origin server 选项；`auto` 仅在没有配置 OpenAPI servers 时显示                                                                                                          |
+| `openapi.docs.tryItOut.customServer`    | `boolean`                | `true`                | 是否允许访问者在浏览器中临时填写 Try it out base URL                                                                                                                                  |
+| `openapi.docs.tryItOut.customServerUrl` | `string`                 | `undefined`           | Custom server 输入框的可选默认值                                                                                                                                                      |
+| `openapi.docs.access.openapiJson`       | `'filtered' \| 'public'` | `'filtered'`          | canonical `/openapi.json` 是否跟随 docs 权限过滤，或保持公开                                                                                                                          |
+| `openapi.scalar`                        | `object`                 | `undefined`           | 已废弃兼容字段；仅显式配置时触发 warning，不影响内置 Vext Docs 页面                                                                                                                   |
+| `openapi.servers`                       | `Array`                  | `[]`                  | API 服务器列表                                                                                                                                                                        |
+| `openapi.tags`                          | `Array`                  | `[]`                  | 标签定义                                                                                                                                                                              |
+| `openapi.securitySchemes`               | `object`                 | `{}`                  | 安全方案                                                                                                                                                                              |
+| `openapi.contact`                       | `object`                 | `{}`                  | 联系方式                                                                                                                                                                              |
+| `openapi.license`                       | `object`                 | `{}`                  | 许可证信息                                                                                                                                                                            |
 
 `openapi.docs.access.cacheKey` 当前版本不支持，并会被配置校验拒绝。请直接配置 resolver；后续若引入文档缓存层，应由独立缓存契约重新定义。
 
@@ -816,7 +885,7 @@ export default {
 
 ### 数据库配置 (`database`)
 
-添加 `database` 会启用 Vext 内置的 `monsqlize@3.3.0` 生命周期：连接归一化、
+提供非空 `database` 时，会启用 Vext 内置的 `monsqlize@3.3.0` 生命周期；当前没有database.enabled关闭开关，未配置、null或空对象才会跳过。生命周期包括连接归一化、
 日志桥接、Model 加载、挂载原始 `app.db` 以及关闭清理。这些由
 Vext 管理的能力继续使用一等字段配置。`database.monsqlizeOptions` 是带类型且
 经过运行时校验的高级 allowlist 入口；受保护或未知字段会在上游构造函数运行前失败。
@@ -896,6 +965,25 @@ export default {
 
 也可以通过环境变量 `VEXT_CLUSTER=1` 开启 Cluster 模式，无需修改配置文件。
 
+### Jobs 配置
+
+`config.jobs` 配置 Job runtime 的任务发现、scheduler、worker、Store、租约和默认执行策略，不会让 HTTP 启动自动执行 Job。测试 helper 使用显式传入的 Job 定义；Vext Docs 的 Job source 有自己的目录配置，不能假定修改 jobs.dir 会自动同步所有文档或工具入口。各入口的职责与实际生效字段见下方指南及 API。
+
+```ts
+export default {
+  jobs: {
+    enabled: true,
+    dir: "jobs",
+    runner: "inline",
+    store: { type: "file", dir: ".vext/jobs" },
+    scheduler: { enabled: true, mode: "inline" },
+    worker: { enabled: true, concurrency: 4 },
+  },
+};
+```
+
+详见 [任务与 Jobs](/zh/guide/jobs) 与 [Jobs API](/zh/api/jobs)。
+
 ### Dev 模式配置 (`dev`)
 
 | 配置项                       | 类型                | 默认值   | 说明                                                            |
@@ -954,12 +1042,12 @@ export default {
 ### 路由中
 
 ```typescript
+import { defineRoutes } from "vextjs";
+
 export default defineRoutes((app) => {
-  app.get("/info", async (_req, res) => {
+  app.get("/info", {}, async (_req, res) => {
     res.json({
       port: app.config.port,
-      runtimeMode: process.env.NODE_ENV,
-      configProfile: process.env.VEXT_CONFIG,
       openapi: app.config.openapi.enabled,
     });
   });
@@ -969,12 +1057,15 @@ export default defineRoutes((app) => {
 ### 服务中
 
 ```typescript
+import type { VextApp } from "vextjs";
+
 export default class MyService {
   constructor(private app: VextApp) {}
 
-  getApiBaseUrl() {
+  getListenAddress() {
     const { host, port } = this.app.config;
-    return `http://${host}:${port}`;
+    const address = host.includes(":") ? `[${host}]` : host;
+    return `http://${address}:${port}`;
   }
 }
 ```
@@ -982,6 +1073,8 @@ export default class MyService {
 ### 插件中
 
 ```typescript
+import { definePlugin } from "vextjs";
+
 export default definePlugin({
   name: "my-plugin",
   setup(app) {
@@ -993,7 +1086,7 @@ export default definePlugin({
 ```
 
 :::tip 配置只读
-`app.config` 在启动后被深冻结（`deepFreeze`），任何修改尝试都会抛出 `TypeError`。这确保配置在运行时不被意外修改。
+`app.config`的普通对象与数组在加载后被深冻结；ESM严格模式下改写冻结属性会抛TypeError。显式传入的非普通类实例不被递归冻结，因此不能把这个机制理解成会冻结Redis客户端内部状态。
 :::
 
 ## 自定义配置字段
@@ -1021,6 +1114,8 @@ export default {
 
 ```typescript
 // src/types/config.d.ts
+import "vextjs";
+
 declare module "vextjs" {
   interface VextConfig {
     redis?: {
@@ -1065,145 +1160,45 @@ export default {
 };
 ```
 
-:::warning 安全提示
-敏感信息（如数据库密码、API Key）不要硬编码在配置文件中。推荐：
+:::tip 配置来源选择
+部署值可以由项目选定的配置文件、平台注入或provider提供；框架不要求统一使用某一种来源。例如：
 
 - 使用环境变量：`process.env.DB_PASSWORD`
 - 使用 `local.ts`（已加入 `.gitignore`）存放本地开发的敏感配置
-  :::
+
+生产模式不会加载local.ts，生产值应通过实际加载的profile/provider或显式环境输入提供。
+:::
 
 ## 配置校验
 
-`config-loader` 在合并完成后会执行 Fail Fast 校验，检查以下内容：
+`config-loader` 在合并完成后执行启动校验。下面是常见检查摘要；各配置域还有专用校验，不能把这份清单理解为所有字段和业务值均已被验证：
 
 - `port` 必须是 1-65535 范围内的正整数
 - `adapter` 必须是已知的内置标识或合法的 adapter 对象/函数
 - `middlewares` 数组中每个元素必须是字符串或 `{ name: string }` 对象
-- `rateLimit.max` 必须是正整数
-- `rateLimit.window` 必须是正整数
+- `rateLimit.max`、`rateLimit.window` 当前检查类型为 number 且不小于 1，并未完整检查有限性与整数性。应用应使用有限的正数，次数 `max` 使用整数；`window` 的单位是秒
 - `logger.level` 必须是合法的日志级别
 - `logger.redactKeys` / `logger.redactPaths` 必须是字符串数组，`logger.redactValue` 必须是字符串
-- `shutdown.timeout` 必须是非负数（单位：秒）
+- `shutdown.timeout` 必须是有限非负数（单位：秒）
 - `server.requestTimeout`、`server.headersTimeout`、`server.keepAliveTimeout`、`server.socketTimeout` 必须是非负有限数（单位：毫秒）
 - `server.maxHeaderSize`、`server.connectionsCheckingInterval` 必须是正整数，`server.maxRequestsPerSocket` 必须是非负整数
 - `cluster.workers` 必须是正整数或 `'auto'` / `'auto-1'`
 
-如果校验失败，框架会在启动时立即报错并给出清晰的错误信息，避免配置错误在运行时才暴露。
+命中已有校验时，框架在启动阶段报错。自定义字段、外部服务可用性及未覆盖的业务约束仍需应用检查；配置加载通过不能单独证明应用可用。
 
-## 完整示例
+## 排查与复验
 
-```typescript
-// src/config/default.ts
-export default {
-  port: Number(process.env.PORT) || 3000,
-  host: "0.0.0.0",
-  adapter: "native",
-  trustProxy: false,
-
-  logger: {
-    level: "info",
-  },
-
-  cors: {
-    origins: ["*"],
-    credentials: false,
-  },
-
-  rateLimit: {
-    enabled: true,
-    max: 100,
-    window: 60, // 单位：秒
-    keyBy: "ip",
-  },
-
-  requestId: {
-    enabled: true,
-    header: "x-request-id",
-  },
-
-  bodyParser: {
-    enabled: true,
-    maxBodySize: "1mb",
-  },
-
-  accessLog: {
-    enabled: true,
-    level: "info",
-  },
-
-  response: {
-    wrap: true,
-    hideInternalErrors: true,
-  },
-
-  shutdown: {
-    timeout: 10, // 单位：秒
-  },
-
-  server: {
-    requestTimeout: 120_000, // 接收完整请求的最大时间，单位：毫秒
-    headersTimeout: 60_000, // 接收完整请求头的最大时间，单位：毫秒
-    keepAliveTimeout: 5_000, // 响应完成后的 keep-alive 空闲等待时间，单位：毫秒
-    socketTimeout: 0, // socket inactivity timeout，0 表示禁用
-    maxHeaderSize: 16 * 1024, // 最大请求头大小，单位：bytes
-    maxRequestsPerSocket: 0, // 单连接请求数上限，0 表示不限
-    connectionsCheckingInterval: 30_000, // 未完成请求超时检查间隔，单位：毫秒
-  },
-
-  requestContext: {
-    enabled: true,
-  },
-
-  openapi: {
-    enabled: true,
-    title: "My App API",
-    version: "1.0.0",
-  },
-
-  frontend: {
-    enabled: true,
-    framework: "react",
-    publicDir: "public",
-    publicPath: "/",
-  },
-
-  middlewares: ["auth", { name: "check-role", options: { roles: ["user"] } }],
-
-  // 自定义配置
-  redis: {
-    url: process.env.REDIS_URL || "redis://localhost:6379",
-  },
-};
-```
-
-```typescript
-// src/config/production.ts
-export default {
-  logger: { level: "warn" },
-  cors: { origins: ["https://myapp.com"], credentials: true },
-  openapi: { enabled: false },
-  // logger.level: "warn" 会抑制普通 info/debug 访问日志；5xx 仍会提升为 error。
-  accessLog: { level: "info", warnOn4xx: true },
-  cluster: {
-    enabled: true,
-    workers: "auto",
-  },
-};
-```
-
-```typescript
-// src/config/local.ts — 不提交到 Git
-export default {
-  port: 8080,
-  redis: {
-    url: "redis://localhost:6380",
-  },
-};
-```
+| 症状                   | 判断与处理                                                                        | 复验                       |
+| ---------------------- | --------------------------------------------------------------------------------- | -------------------------- |
+| profile似乎未生效      | CLI/env选择、profile文件名与实际构建是否一致；文件本身可选，不存在时没有该层patch | 用上方诊断字段验证         |
+| production仍读到本地值 | 区分环境变量、provider和local层，不把自定义profile当运行模式                      | 干净环境build/start重试    |
+| 中间件options缺字段    | 同名options整项替换，不是内部深合并                                               | 检查最终配置并请求对应路由 |
+| provider超时后启动失败 | production默认required；核对远端状态与signal处理                                  | 恢复依赖后重启验证         |
+| 修改配置抛TypeError    | 普通配置已冻结，调整源配置后按需重启                                              | 从新进程读取生效值         |
 
 ## 下一步
 
-- 了解 [Adapter 架构](/guide/adapters) 的详细配置和切换方法
-- 学习 [中间件](/guide/middleware) 白名单的配置方式
-- 查看 [OpenAPI 文档](/guide/openapi) 的高级配置
-- 探索 [Cluster 多进程](/guide/cluster) 的配置选项
+- 了解 [Adapter 架构](/zh/guide/adapters) 的详细配置和切换方法
+- 学习 [中间件](/zh/guide/middleware) 白名单的配置方式
+- 查看 [OpenAPI 文档](/zh/guide/openapi) 的高级配置
+- 探索 [Cluster 多进程](/zh/guide/cluster) 的配置选项

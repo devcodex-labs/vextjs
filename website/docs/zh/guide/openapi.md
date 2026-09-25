@@ -1,14 +1,12 @@
 # OpenAPI 文档
 
-## Job 文档源
-
-启用 `openapi.docs.code.jobs` 后，Vext Docs 可以包含 Job 条目。Job 不是 HTTP 端点，因此这些条目与 OpenAPI operations 分开展示。详见 [任务与 Jobs](/zh/guide/jobs)。
-
 VextJS 内置 OpenAPI 文档自动生成功能。基于路由的 `validate` 和 `docs` 配置，框架自动生成 OpenAPI 3.0 规范 JSON，并通过 Vext Docs Renderer 提供默认 `/docs` 文档页。第三方文档工具请直接消费 `/openapi.json`。
 
 内置 renderer 与官网共用同一套 Vext 标记几何、青绿/青色 light/dark theme token、绿色/琥珀色标记辅色和 favicon。即使自定义 docs 路径，这些资产仍由 Vext 内置并保持一致，应用无需另装 OpenAPI UI 包。
 
 ## 快速开始
+
+前置条件：已按 [快速开始](/zh/guide/quick-start) 建立含 dev/build/start scripts 的 TypeScript 项目。以下两文件组成独立示例，已有项目请合并配置。用户数据只保存在当前进程内，重启即清空；本例用于验证文档生成，不包含数据库、认证或邮箱唯一性检查。
 
 ### 1. 启用 OpenAPI
 
@@ -16,28 +14,43 @@ VextJS 内置 OpenAPI 文档自动生成功能。基于路由的 `validate` 和 
 
 ```typescript
 // src/config/default.ts
+import type { VextUserConfig } from "vextjs";
+
 export default {
   port: 3000,
+  host: "127.0.0.1",
+  adapter: "native",
+  frontend: { enabled: false },
   openapi: {
     enabled: true,
+    title: "Users API",
   },
-};
+} satisfies VextUserConfig;
 ```
 
 ### 2. 在路由中添加文档信息
 
 ```typescript
 // src/routes/users.ts
+import { randomUUID } from "node:crypto";
 import { defineRoutes } from "vextjs";
 
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  age?: number;
+}
+
 export default defineRoutes((app) => {
+  const users: User[] = [];
   app.get(
     "/",
     {
       validate: {
         query: {
-          page: "number:1-",
-          limit: "number:1-100",
+          page: "integer:1-1000?",
+          limit: "integer:1-100?",
         },
       },
       docs: {
@@ -46,9 +59,14 @@ export default defineRoutes((app) => {
       },
     },
     async (req, res) => {
-      const { page = 1, limit = 20 } = req.valid("query");
-      const users = await app.services.user.findAll({ page, limit });
-      res.json(users);
+      const { page = 1, limit = 20 } = req.valid<{
+        page?: number;
+        limit?: number;
+      }>("query");
+      res.json({
+        items: users.slice((page - 1) * limit, page * limit),
+        total: users.length,
+      });
     },
   );
 
@@ -62,14 +80,15 @@ export default defineRoutes((app) => {
           age: "number:0-150?",
         },
       },
-      middlewares: ["audit-log"],
       docs: {
         summary: "创建用户",
+        responses: { 201: { description: "创建成功" } },
       },
     },
     async (req, res) => {
-      const data = req.valid("body");
-      const user = await app.services.user.create(data);
+      const data = req.valid<Omit<User, "id">>("body");
+      const user = { ...data, id: randomUUID() };
+      users.push(user);
       res.json(user, 201);
     },
   );
@@ -78,12 +97,31 @@ export default defineRoutes((app) => {
 
 ### 3. 访问文档
 
-启动项目后，访问以下地址：
+运行 `npm run dev`，看到 ready 后访问以下地址：
 
-| 地址                                 | 说明                                                                                             |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| `http://localhost:3000/docs`         | Vext Docs 文档界面（HTTP API、Pages、services/utils/models/components/plugins/middlewares 文档） |
-| `http://localhost:3000/openapi.json` | OpenAPI JSON 规范文件                                                                            |
+| 地址                                 | 说明                  |
+| ------------------------------------ | --------------------- |
+| `http://127.0.0.1:3000/docs`         | Vext Docs 文档界面    |
+| `http://127.0.0.1:3000/openapi.json` | OpenAPI JSON 规范文件 |
+
+JSON 中应包含 `/users` 的 GET、POST，GET 的 page/limit 是 integer，POST 的 name/email 必填。文档页应显示“获取用户列表”和“创建用户”，可展开参数与响应说明。
+
+### 4. 验证请求与构建结果
+
+在另一终端执行（Windows PowerShell 可直接使用）：
+
+```powershell
+Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:3000/users' -ContentType 'application/json' -Body '{"name":"Alice","email":"alice@example.com"}'
+Invoke-RestMethod -Uri 'http://127.0.0.1:3000/users?page=1&limit=20'
+Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:3000/users' -ContentType 'application/json' -Body '{"name":"Alice","email":"invalid"}'
+Invoke-RestMethod -Uri 'http://127.0.0.1:3000/users?page=1.5'
+```
+
+预期依次为 201（`data.id` 非空）、200（`data.total` 为 1）、422（email 错误）、422（page 必须为整数）。后两条 PowerShell 会报告 HTTP 错误；失败请求不会增加用户记录。Ctrl+C 结束开发服务，运行 `npm run build -- --typecheck`、`npm start`，重复查看两个文档地址及请求；新进程需要重新创建用户。
+
+后续为独立配置或路由片段，`app`、`handler` 和业务 Service 由应用提供；对象字段展示不应当作完整文件执行，也不要把所有同路径片段注册到一个应用。运行时验证边界见 [参数校验](/zh/guide/validation)，认证装配见 [认证与安全](/zh/guide/security)。
+
+## 阅读文档界面与多文档面
 
 默认 Vext Docs UI 会把 HTTP API、Pages、Services、Utils、Models、已发现的 Components、Plugins、Middlewares 作为顶层入口，当前选中的顶层入口可以收缩/展开自己的左侧导航树。
 
@@ -108,13 +146,13 @@ Locales / Config / Styles / Preload 静态源码文档仍是可选高级来源�
 
 `x-tagGroups` 仅在显式配置 `openapi.tagGroups` 时作为原始 OpenAPI vendor extension 输出；内置文档导航不依赖它。存在 OpenAPI security schemes 时，UI 会展示接口鉴权状态，并提供全局 Authorize 控件供同源 Try it out 合并使用。
 
-B26 进一步补齐主题与密度控制、Overview 工作台、搜索快捷键、类别过滤、命中高亮、桌面右侧大纲、endpoint/link/response/usage/source path 复制按钮和导航深链。动态 path 参数仍弱化展示，但当中间动态段后面还有稳定子资源时会保留层级，例如 `/docs-nav/{id}/sdfs/sdfaf` 会保留参数节点与后续资源层级。
+文档页支持主题与密度控制、Overview 工作台、搜索快捷键、类别过滤、命中高亮、桌面右侧大纲、endpoint/link/response/usage/source path 复制按钮和导航深链。动态 path 参数仍弱化展示，但当中间动态段后面还有稳定子资源时会保留层级，例如 `/docs-nav/{id}/sdfs/sdfaf` 会保留参数节点与后续资源层级。
 
-B27 将 Try it out 升级为轻量请求控制台。每个接口可展示 server 选择、完整 URL 预览与 Copy URL，并用 Params、Headers、Body、Samples、History、Response 标签页收纳输入、样例、历史和响应。Query/Header 没有声明字段时保持紧凑空态，仍支持 raw fallback；Header 行会从 OpenAPI `parameters[in=header]` 自动生成，包括 `validate.header`。Headers 标签页同时展示 auth 状态和最终有效 headers 预览，让 Authorize 自动注入的请求头与手动覆盖关系放在同一个位置确认。Samples 标签页包含 cURL/browser fetch/Node fetch/Axios 代码样例，固定 Response 标签页保留 pretty/raw body 模式，并同时展示实际发送的 request headers 与 response headers，方便确认请求到底携带了什么。Axios 只是示例文本，Vext 不会把 Axios 加入运行时依赖。
+Try it out 提供请求控制台。每个接口可展示 server 选择、完整 URL 预览与 Copy URL，并用 Params、Headers、Body、Samples、History、Response 标签页收纳输入、样例、历史和响应。Query/Header 没有声明字段时保持紧凑空态，仍支持 raw fallback；Header 行会从 OpenAPI `parameters[in=header]` 自动生成，包括 `validate.header`。Headers 标签页同时展示 auth 状态和最终有效 headers 预览，让 Authorize 自动注入的请求头与手动覆盖关系放在同一个位置确认。Samples 标签页包含 cURL/browser fetch/Node fetch/Axios 代码样例，固定 Response 标签页保留 pretty/raw body 模式，并同时展示实际发送的 request headers 与 response headers，方便确认请求到底携带了什么。Axios 只是示例文本，Vext 不会把 Axios 加入运行时依赖。
 
-B31 进一步优化小屏与大接口量场景。移动端使用带同步搜索和分类筛选的抽屉导航，窄屏下生成字段表格会切换为带字段标签的卡片行，Try it out 内部控件只在打开接口控制台时创建，HTTP API 长列表会增量渲染并提供 Load more，同时保留 deep link 目标的首屏可达性。
+小屏与大接口量场景支持响应式布局和按需渲染。移动端使用带同步搜索和分类筛选的抽屉导航，窄屏下生成字段表格会切换为带字段标签的卡片行，Try it out 内部控件只在打开接口控制台时创建，HTTP API 长列表会增量渲染并提供 Load more，同时保留 deep link 目标的首屏可达性。
 
-B32 增加多版本 / 多文档面的 source-aware 能力。当生成的 OpenAPI paths 中至少存在两个版本 source group，例如 `/api/v1/**`、`/api/v2/**`、`/api/beta/**`、`/v1/**`、`/v2/**`、`/beta/**` 时，Vext Docs 会自动展示有序的 `All / API v1 / API v2 / API Beta` 这类切换器。数字版本会排在 `alpha`、`beta`、`rc` 这类命名发布通道之前。
+多版本 / 多文档面支持按 source 切换。当生成的 OpenAPI paths 中至少存在两个版本 source group，例如 `/api/v1/**`、`/api/v2/**`、`/api/beta/**`、`/v1/**`、`/v2/**`、`/beta/**` 时，Vext Docs 会自动展示有序的 `All / API v1 / API v2 / API Beta` 这类切换器。数字版本会排在 `alpha`、`beta`、`rc` 这类命名发布通道之前。
 
 每个 source 会分别读取过滤后的 `/_vext/docs/openapi.json?source=<id>`、`code.json?source=<id>`、`search.json?source=<id>` 数据，因此当前 source 拥有独立的 Overview 统计、导航树、搜索状态、权限过滤后的接口集合和 deep link。
 
@@ -122,7 +160,7 @@ B32 增加多版本 / 多文档面的 source-aware 能力。当生成的 OpenAPI
 
 如果自动版本识别不够，项目可以通过 `openapi.docs.sources` 显式定义文档面，`source.access`，包括 `source.access.visible`，也会作用于 source 切换器和 source-aware 数据端点。每个显式 source 仍需要 `match`，因为它定义 OpenAPI 数据作用域；纯 Code JSDoc source 可以使用 `/sdk/**` 这类稳定的非 API namespace，再通过 `code.include` / `code.exclude` 纳入对应代码文档。
 
-B32 同时增强 Try it out 的真实项目接入能力。OpenAPI `servers[].variables` 会在 server 选择器旁渲染为控件，并参与 URL 预览、Copy URL、代码样例、历史记录和 Send 请求。
+Try it out 支持服务地址变量。OpenAPI `servers[].variables` 会在 server 选择器旁渲染为控件，并参与 URL 预览、Copy URL、代码样例、历史记录和 Send 请求。
 
 项目也可以通过 `openapi.docs.tryItOut.hookScript` 与 `hookGlobal` 配置浏览器端请求 hook；`hookGlobal` 只是浏览器查找名，只有配置了 hook script 或运行时全局对象暴露 `beforeRequest` / `afterResponse` 时才显示 hook 提示。
 
@@ -170,7 +208,11 @@ export default {
 };
 ```
 
-`source.access` 会作为 `kind: "source"` descriptor 传给 `openapi.docs.access.resolver`。`source.access.visible: false` 会在 resolver 执行前隐藏该 source。`options.docs.access` 会写入 `x-vext-docs-access`，并作为 `kind: "operation"` descriptor 的 `access` 字段传给同一个 resolver；`visible: false` 会直接隐藏该 operation，`tryItOut: false` 会禁用该 operation 的 Try it out。`source.code.include` / `source.code.exclude` 用于让非 `All` source 纳入 Code JSDoc 条目；不配置时，非 `All` source 只暴露 OpenAPI 条目。Code 过滤会同时匹配条目的 id、title 与 source file，因此 `models/*`、`services/sdk/**` 这类路径风格模式可用于常见源码范围。
+`source.access` 会作为 `kind: "source"` descriptor 传给 `openapi.docs.access.resolver`；`source.access.visible: false` 会在 resolver 执行前隐藏该 source。这一文档源筛选独立于下述 operation 过滤开关。
+
+`options.docs.access` 会写入 `x-vext-docs-access`。要让接口条目的 `visible: false`、`tryItOut: false` 和 resolver 决策用于文档过滤，需要设置 `openapi.docs.access.mode: "visibility-only"` 或 `"enforce"`；默认 `"off"` 不执行 operation 过滤。启用后，resolver 接收 `kind: "operation"` descriptor 及其 `access` 字段；隐藏条目或禁用 Try it out 均不改变真实 API 的访问权限。两种模式对 canonical `/openapi.json` 的区别见下方“按环境控制”。
+
+`source.code.include` / `source.code.exclude` 用于让非 `All` source 纳入 Code JSDoc 条目；不配置时，非 `All` source 只暴露 OpenAPI 条目。Code 过滤会同时匹配条目的 id、title 与 source file，因此 `models/*`、`services/sdk/**` 这类路径风格模式可用于常见源码范围。
 
 ### Try it out 请求 Hook
 
@@ -228,6 +270,10 @@ export default definePlugin({
 });
 ```
 
+## Job 文档源
+
+启用 `openapi.docs.code.jobs` 后，Vext Docs 可以包含 Job 条目。Job 不是 HTTP 端点，因此这些条目与 OpenAPI operations 分开展示。详见 [任务与 Jobs](/zh/guide/jobs)。
+
 ## 文档配置
 
 ### 全局配置
@@ -276,9 +322,9 @@ export default {
 
     // 标签定义（控制全局 tag 描述，默认文档页仍按 path segment 导航）
     tags: [
-      { name: "用户管理", description: "用户 CRUD 操作" },
-      { name: "订单管理", description: "订单相关接口" },
-      { name: "系统", description: "系统级接口" },
+      { name: "Users", description: "/users 路径的接口" },
+      { name: "Orders", description: "/orders 路径的接口" },
+      { name: "General", description: "/health 等通用接口" },
     ],
 
     // 安全方案定义
@@ -435,6 +481,8 @@ docs: {
 
 不希望出现在文档中的路由（如内部接口）：
 
+`hidden` 仅从生成文档移除条目，不关闭真实路由。内部接口仍需自己的访问控制。
+
 ```typescript
 app.get(
   "/internal/metrics",
@@ -500,7 +548,7 @@ app.get(
 );
 ```
 
-如果需要显式指定安全方案，可使用 `auth: { security: "bearerAuth" }`。`auth: { required: false }` 且没有 roles、scopes、permissions 或 `check` 时，OpenAPI 会把该路由标记为公开；如果同时声明这些授权规则，运行时仍会要求认证，OpenAPI 也会输出认证 security。`config.openapi.guardSecurityMap` 仍兼容只声明 middleware 的历史路由，但不应再作为新 Auth 示例的主路径。
+如果需要显式指定安全方案，可使用 `auth: { security: "bearerAuth" }`。未显式设置 `auth.security`，且 `required: false`、没有 roles、scopes、permissions 或 `check` 时，Auth 合同投影的 OpenAPI security 为 `[]`；否则优先采用显式 `auth.security`，没有显式方案时默认使用 `bearerAuth`。roles、scopes、permissions 或 `check` 会使运行时仍要求认证；单独的 `auth.security` 只影响文档。更高优先级的 `docs.security` 仍可覆盖文档结果，不改变运行时检查。`config.openapi.guardSecurityMap` 仍兼容只声明 middleware 的历史路由，但不应再作为新 Auth 示例的主路径。
 
 #### 区分运行时授权、OpenAPI security 与 Docs access
 
@@ -515,7 +563,7 @@ app.get(
 手动覆盖：
 
 ```typescript
-// 无需认证（即使有 auth 中间件）
+// 仅让文档不声明安全要求；不会撤销运行时 auth 检查
 docs: {
   security: [];
 }
@@ -552,7 +600,7 @@ app.get(
     },
     docs: {
       responses: {
-        200: { description: "成功返回用户列表" },
+        200: { description: "成功返回用户详情" },
         401: { description: "未认证" },
         403: { description: "权限不足" },
         500: { description: "服务器内部错误" },
@@ -580,8 +628,10 @@ selector 不得在两处重复声明 schema；框架会在路由注册阶段报�
 选择其中一个。
 
 HEAD 路由与精确 `204` 契约不会编译或发送响应体。`rawJson()`、`text()`、
-redirect、file/download、stream 以及 HTML/SSR `render()` 都会有意绕过 JSON
+redirect、`download()`、stream 以及 HTML/SSR `render()` 都会有意绕过 JSON
 契约序列化器。
+
+上例的 `4xx` schema 用于 handler 主动调用 `res.json(data, 4xx)` 的业务数据；`app.throw()` 进入统一错误处理，不受该路由 schema 改写。文档响应示例也不会自动设置运行时状态、响应体或响应头。
 
 #### 响应示例
 
@@ -645,7 +695,7 @@ docs: {
 ```
 
 `contentType` 是文档元数据。运行时编译响应 schema 仅支持 JSON；非 JSON
-载荷应使用 `text()`、file/download、stream 或其他匹配的响应方法。
+载荷应使用 `text()`、`download()`、stream 或其他匹配的响应方法。
 
 #### 响应头
 
@@ -679,8 +729,8 @@ app.get(
   {
     validate: {
       query: {
-        page: "number:1-",
-        limit: "number:1-100",
+        page: "integer:1-1000?",
+        limit: "integer:1-100",
         status: "active|inactive|banned",
         keyword: "string?",
       },
@@ -695,7 +745,7 @@ app.get(
 
 | 参数      | 位置  | 类型    | 约束                                   |
 | --------- | ----- | ------- | -------------------------------------- |
-| `page`    | query | integer | minimum: 1                             |
+| `page`    | query | integer | minimum: 1, maximum: 1000              |
 | `limit`   | query | integer | minimum: 1, maximum: 100               |
 | `status`  | query | string  | enum: ["active", "inactive", "banned"] |
 | `keyword` | query | string  | —                                      |
@@ -745,13 +795,21 @@ app.post(
         content: schemaAdapter
           .compileField("string:1-20000!")
           .description("待翻译文本，长度 1-20000 个字符"),
-        targetLanguages: [
-          {
-            code: schemaAdapter
-              .compileField("string:1-64!")
-              .description("目标语言代码"),
+        targetLanguages: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              code: {
+                type: "string",
+                minLength: 1,
+                maxLength: 64,
+                description: "目标语言代码",
+              },
+            },
+            required: ["code"],
           },
-        ],
+        },
         format: schemaAdapter
           .compileField("enum:plain_text,preserve_line_breaks")
           .description("输出格式"),
@@ -792,8 +850,12 @@ app.post(
 app.post(
   "/upload/avatar",
   {
-    middlewares: ["upload"],
+    bodyParser: { maxBodySize: "6mb" },
     multipart: {
+      enabled: true,
+      maxFiles: 1,
+      maxFileSize: 5 * 1024 * 1024,
+      allowedMimeTypes: ["image/jpeg", "image/png"],
       files: {
         avatar: {
           description: "头像图片（JPEG/PNG，最大 5MB）",
@@ -834,10 +896,10 @@ app.post(
 }
 ```
 
-`required: true` 同时是运行时契约和 OpenAPI 提示。请求缺少 required 上传字段时，Vext 会返回 `400` 并包含缺失字段名。optional 和未声明的文件字段允许上传，除非违反 `maxFiles`、`maxFileSize` 或 `allowedMimeTypes`。
+`required: true` 是 OpenAPI 提示，也在启用 multipart 解析、收到 multipart 请求时参与运行时检查：缺少该字段会返回 `400`。它不保证非 multipart 请求一定被拒绝，handler 仍需检查 `req.files` 和字段是否存在。optional 和未声明字段不受 files 白名单限制，但数量、大小及 MIME 限制仍生效。完整接收、读取与失败验证见 [文件上传](/zh/guide/uploads)。
 
 :::tip 和 validate.body 的关系
-`multipart.files` 和 `validate.body` 互斥。同时配置时，`multipart.files` 优先。
+这两项同时声明时，OpenAPI 的 requestBody 投影优先使用 `multipart.files`。这不表示运行时互斥：`validate.body` 仍可能运行；内置 multipart 解析器不把文本 part 填入 `req.body`，不要假定表单文本已能按 JSON body 校验。
 :::
 
 ## 按环境控制
@@ -869,7 +931,7 @@ export default {
 };
 ```
 
-如果生产环境需要保留 API 文档（只读参考）：
+如果生产环境保留 API 文档并关闭页面发送请求的入口，合并以下配置：
 
 ```typescript
 // src/config/production.ts
@@ -878,6 +940,7 @@ export default {
     enabled: true,
     docs: {
       path: "/docs",
+      ui: { tryItOut: false },
       access: {
         mode: "visibility-only",
       },
@@ -886,7 +949,7 @@ export default {
 };
 ```
 
-`visibility-only` 会保持公开 `/openapi.json` 完整，但 Vext Docs 页面、文档 OpenAPI 数据、config source 数据、code docs、search 数据和菜单会收到按可见性过滤后的数据。若隐藏的 operations 或 code docs 也必须从 canonical docs data 中移除，应使用 `enforce`。
+`ui.tryItOut: false` 只关闭文档页交互入口，不阻止其他客户端请求 API。`visibility-only` 保持公开 `/openapi.json` 完整；文档数据按 `access.visible` 和 `access.resolver` 的实际决策过滤，仅设置 mode 不会自动识别受众。若 canonical OpenAPI 也需过滤，使用 `enforce` 并配置相应决策。运行时 API 仍需独立认证和授权。
 
 ## 自定义文档路径
 
@@ -1039,11 +1102,10 @@ Vext 默认文档页聚焦当前应用生成的 OpenAPI 文档。如果需要把
 
 ### 示例：生成 TypeScript 客户端
 
+这是可选的外部工具，需要 Java 11 或更新版本；首次执行会下载 npm 包及生成器。确认本地接口已启动后执行，输出目录应选未存放手写代码的位置。用法和运行条件见 [OpenAPI Generator 官方安装说明](https://openapi-generator.tech/docs/installation/)。
+
 ```bash
-npx openapi-generator-cli generate \
-  -i http://localhost:3000/openapi.json \
-  -g typescript-fetch \
-  -o ./generated/api-client
+npx @openapitools/openapi-generator-cli generate -i http://127.0.0.1:3000/openapi.json -g typescript-fetch -o ./generated/api-client
 ```
 
 ## 文档最佳实践
@@ -1075,16 +1137,14 @@ docs: {
 
 ### 2. 使用一致的标签
 
-统一使用中文或英文标签，并在全局 `tags` 中预定义顺序和描述：
+全局 `tags` 名称应匹配自动推断的 operation tag，用于补充描述；它不改写路由标签或内置侧栏顺序。例如 `/api/v1/**` 对应 `API v1`，`/webhooks/**` 对应 `Webhooks`：
 
 ```typescript
 // ✅ 在 config 中统一定义
 openapi: {
   tags: [
-    { name: '认证', description: '登录、注册、Token 管理' },
-    { name: '用户', description: '用户 CRUD' },
-    { name: '订单', description: '订单管理' },
-    { name: '系统', description: '健康检查、配置信息' },
+    { name: 'API v1', description: '版本 1 接口' },
+    { name: 'Webhooks', description: '第三方回调' },
   ],
 }
 ```
@@ -1201,6 +1261,8 @@ export default {
 
 ### 各路由文件
 
+以下展示业务应用中的目录组合，不能作为第二套独立快速开始。需先实现并加载 user、order、dashboard、payment Service，以及配置并加载 auth、check-role 中间件；各方法及参数以片段调用为业务契约。认证与资源归属检查由应用实现，目录分组和文档声明不会提供这些检查。缺少这些依赖时请先使用本页开头的两文件示例。
+
 #### `routes/api/v1/users.ts` — 用户公开接口
 
 ```typescript
@@ -1214,8 +1276,8 @@ export default defineRoutes((app) => {
     {
       validate: {
         query: {
-          page: "number:1-",
-          limit: "number:1-50",
+          page: "integer:1-1000?",
+          limit: "integer:1-50",
           role: "admin|user?",
         },
       },
@@ -1268,7 +1330,7 @@ export default defineRoutes((app) => {
         param: { id: "string!" },
         query: {
           status: "pending|paid|shipped|completed?",
-          limit: "number:1-100",
+          limit: "integer:1-100",
         },
       },
       docs: {
@@ -1366,8 +1428,8 @@ export default defineRoutes((app) => {
       ],
       validate: {
         query: {
-          page: "number:1-",
-          limit: "number:1-100",
+          page: "integer:1-1000?",
+          limit: "integer:1-100",
           status: "active|banned|suspended?",
         },
       },
@@ -1424,6 +1486,7 @@ export default defineRoutes((app) => {
   app.post(
     "/",
     {
+      bodyParser: { enabled: false },
       validate: {
         header: { "stripe-signature": "string!" },
       },
@@ -1438,27 +1501,29 @@ export default defineRoutes((app) => {
     },
     async (req, res) => {
       const signature = req.valid("header")["stripe-signature"];
-      await app.services.payment.handleStripeWebhook(req.body, signature);
+      await app.services.payment.handleStripeWebhook(req, signature);
       res.json({ received: true });
     },
   );
 });
 ```
 
+此处 `payment.handleStripeWebhook(req, signature)` 是应用自己的接入契约：需通过应用插件或适配器集成提供受限的原始请求读取，再使用 Stripe SDK、签名和 endpoint secret 验证，最后处理事件及幂等。公共 `VextRequest` 没有通用原始流读取方法；关闭 body parser 不会自动获得原始内容，也不能使用 `req.body` 代替。这个片段只说明目录与文档声明，不是可直接使用的支付接入；原始 body 要求见 [Stripe 官方说明](https://docs.stripe.com/webhooks/signature)。
+
 ### 生成的 OpenAPI 路径
 
 以上目录结构最终自动生成以下 OpenAPI 路径。默认 Vext Docs 侧栏按路径段导航，tags 作为接口元数据保留：
 
-| OpenAPI 路径                          | 方法  | Tag         | 来源文件                      |
-| ------------------------------------- | ----- | ----------- | ----------------------------- |
-| `/api/v1/users`                       | GET   | v1/用户     | `api/v1/users.ts`             |
-| `/api/v1/users/{id}`                  | GET   | v1/用户     | `api/v1/users.ts`             |
-| `/api/v1/users/{id}/orders`           | GET   | v1/用户订单 | `api/v1/users/[id]/orders.ts` |
-| `/api/v1/users/{id}/orders/{orderId}` | GET   | v1/用户订单 | `api/v1/users/[id]/orders.ts` |
-| `/api/v1/admin/dashboard/stats`       | GET   | v1/管理后台 | `api/v1/admin/dashboard.ts`   |
-| `/api/v1/admin/users`                 | GET   | v1/管理后台 | `api/v1/admin/users.ts`       |
-| `/api/v1/admin/users/{id}/ban`        | PATCH | v1/管理后台 | `api/v1/admin/users.ts`       |
-| `/webhooks/stripe`                    | POST  | Webhook     | `webhooks/stripe.ts`          |
+| OpenAPI 路径                          | 方法  | Tag      | 来源文件                      |
+| ------------------------------------- | ----- | -------- | ----------------------------- |
+| `/api/v1/users`                       | GET   | API v1   | `api/v1/users.ts`             |
+| `/api/v1/users/{id}`                  | GET   | API v1   | `api/v1/users.ts`             |
+| `/api/v1/users/{id}/orders`           | GET   | API v1   | `api/v1/users/[id]/orders.ts` |
+| `/api/v1/users/{id}/orders/{orderId}` | GET   | API v1   | `api/v1/users/[id]/orders.ts` |
+| `/api/v1/admin/dashboard/stats`       | GET   | API v1   | `api/v1/admin/dashboard.ts`   |
+| `/api/v1/admin/users`                 | GET   | API v1   | `api/v1/admin/users.ts`       |
+| `/api/v1/admin/users/{id}/ban`        | PATCH | API v1   | `api/v1/admin/users.ts`       |
+| `/webhooks/stripe`                    | POST  | Webhooks | `webhooks/stripe.ts`          |
 
 :::tip 多级目录最佳实践
 
@@ -1470,7 +1535,7 @@ export default defineRoutes((app) => {
 
 ## 标签分组（x-tagGroups）
 
-OpenAPI 3.x 规范的 `tags` 是**一维扁平列表**，不原生支持嵌套层级。当路由数量较多时，所有 tags 在文档侧边栏中平铺并列，不便于导航。
+OpenAPI 3.x 的 `tags` 是**一维列表**。部分外部文档工具按 tags 平铺导航，可用它们支持的 `x-tagGroups` 扩展分组；内置 Vext Docs 使用路径树。
 
 VextJS 只有在显式配置 `openapi.tagGroups` 时才会透传 `x-tagGroups`。内置 Vext Docs renderer 的默认侧栏主导航会优先使用 OpenAPI path segment 生成递归树，因此 `x-tagGroups` 只是原始 OpenAPI vendor extension 元数据，不是 Vext Docs 的导航能力。
 
@@ -1481,7 +1546,7 @@ VextJS 默认不生成 `x-tagGroups`。内置 Vext Docs renderer 会使用 OpenA
 路由级 `docs.tags` 已废弃并会被忽略。如果交付链路里的其他 OpenAPI 工具需要 `x-tagGroups`，可以在配置中显式指定 `tagGroups`，并确保分组里的名称匹配自动推断出的 operation tags 或全局 `openapi.tags`：
 
 ```typescript
-// src/config/app.ts
+// src/config/default.ts
 export default {
   port: 3000,
   openapi: {
@@ -1532,9 +1597,11 @@ export default {
 4. 重新生成 OpenAPI spec（配置了 `tagGroups` 时包含显式 `x-tagGroups`）
 5. 在新 adapter 上重新注册 `/docs` 和 `/openapi.json` 端点
 
-无需重启 dev server，刷新文档页面即可看到更新后的分组。
+路由变更后的新 spec 会包含当前配置的扩展；这不会让内置侧栏按 tagGroups 重排。修改配置文件时则遵循配置变更的重启流程，不能把路由 soft reload 当作配置热更新。
 
 ## 完整示例
+
+以下是完整的订单**路由文件**，不是独立可运行项目。需先按 [认证与安全](/zh/guide/security) 注册 auth，并实现 order Service：`findAll(auth, filters)` 返回 `{ items, total }`，`create(auth, data)` 和 `cancel(auth, id, reason)` 必须检查当前身份、资源归属与业务状态。`req.auth` 由认证链建立；仅声明 OpenAPI security 不会验证凭据。本页开头的两文件示例用于独立验证文档生成。
 
 ```typescript
 // src/routes/orders.ts
@@ -1547,8 +1614,8 @@ export default defineRoutes((app) => {
     {
       validate: {
         query: {
-          page: "number:1-",
-          limit: "number:1-50",
+          page: "integer:1-1000?",
+          limit: "integer:1-50",
           status: "pending|paid|shipped|completed|cancelled",
           startDate: "date?",
           endDate: "date?",
@@ -1574,8 +1641,12 @@ export default defineRoutes((app) => {
     },
     async (req, res) => {
       const filters = req.valid("query");
-      const orders = await app.services.order.findAll(filters);
-      res.json(orders);
+      const { items, total } = await app.services.order.findAll(
+        req.auth,
+        filters,
+      );
+      res.setHeader("X-Total-Count", String(total));
+      res.json(items);
     },
   );
 
@@ -1586,7 +1657,7 @@ export default defineRoutes((app) => {
       validate: {
         body: {
           productId: "string!",
-          quantity: "number:1-99!",
+          quantity: "integer:1-99!",
           shippingAddress: "string:1-200!",
           couponCode: "string?",
         },
@@ -1611,7 +1682,7 @@ export default defineRoutes((app) => {
     },
     async (req, res) => {
       const data = req.valid("body");
-      const order = await app.services.order.create(data);
+      const order = await app.services.order.create(req.auth, data);
       res.json(order, 201);
     },
   );
@@ -1638,7 +1709,7 @@ export default defineRoutes((app) => {
     async (req, res) => {
       const { id } = req.valid("param");
       const { reason } = req.valid("body");
-      await app.services.order.cancel(id, reason);
+      await app.services.order.cancel(req.auth, id, reason);
       res.json({ success: true });
     },
   );
@@ -1647,7 +1718,7 @@ export default defineRoutes((app) => {
 
 ## 下一步
 
-- 了解 [参数校验](/guide/validation) 的 DSL 语法如何映射到 OpenAPI
-- 学习 [配置](/guide/configuration) 中 OpenAPI 的完整选项
-- 查看 [Adapter 架构](/guide/adapters) 了解不同 Adapter 下的文档行为
-- 探索 [测试](/guide/testing) 如何验证 API 文档的准确性
+- 了解 [参数校验](/zh/guide/validation) 的 DSL 语法如何映射到 OpenAPI
+- 学习 [配置](/zh/guide/configuration) 中 OpenAPI 的完整选项
+- 查看 [Adapter 架构](/zh/guide/adapters) 了解不同 Adapter 下的文档行为
+- 探索 [测试](/zh/guide/testing) 如何验证 API 文档的准确性

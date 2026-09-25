@@ -5,6 +5,11 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { classifyReleaseVersion } from "./release-channel.mjs";
 import {
+  assertPublishable,
+  resolveDocsRollout,
+  resolveDocsVerification,
+} from "../website/scripts/docs-rollout.mjs";
+import {
   verifyReleaseCandidateReceipt,
   verifyReleaseCandidateSourceInputs,
 } from "./validation/freeze-release-candidate.mjs";
@@ -12,6 +17,7 @@ import { verifyExternalEvidenceFile } from "./validation/verify-external-evidenc
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const finalMode = process.argv.includes("--final");
+assertPublishable(resolveDocsRollout(), resolveDocsVerification());
 const pkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
 const failures = [];
 const packageMajor = /^([1-9]\d*)\./u.exec(String(pkg.version))?.[1];
@@ -310,7 +316,12 @@ run(
   ["audit", "--omit=dev", "--audit-level=high"],
   path.join(root, "website"),
 );
-run("website build", npm, ["run", "build"], path.join(root, "website"));
+run(
+  "website build",
+  npm,
+  ["run", "build:publish", "--", "--rollout=final"],
+  path.join(root, "website"),
+);
 run("rendered documentation contract", npm, [
   "run",
   "verify:docs-contract",

@@ -2,6 +2,8 @@
 
 本页详细介绍 VextJS 的路由定义 API，包括 `defineRoutes`、路由选项、参数校验、中间件引用和文档配置。
 
+本页用于查询接口与边界，完整步骤见 [路由指南](/zh/guide/routing)。片段中的 handler、业务 service 和中间件须由项目提供；HTTP 调用均位于 factory 内。路由模块的规范级约束见 [HTTP 与路由规范](/zh/specification/http-and-routing)。
+
 ## defineRoutes
 
 `defineRoutes` 是创建路由文件的核心函数。它接收一个工厂回调，在回调中通过 `app` 对象注册路由。
@@ -19,7 +21,10 @@ export default defineRoutes((app) => {
 ### 函数签名
 
 ```typescript
-function defineRoutes(factory: RouteFactory): RouteDefinition;
+function defineRoutes<TFactory extends RouteFactory>(
+  factory: TFactory &
+    (ReturnType<TFactory> extends PromiseLike<unknown> ? never : unknown),
+): RouteDefinition;
 
 type RouteFactory = (app: VextApp) => void;
 ```
@@ -30,15 +35,22 @@ handler 仍然可以是 `async`。该约束保证运行时注册、构建索引�
 
 ### 工作原理
 
-1. `defineRoutes(factory)` 被调用时，内部创建一个 **collector**（路由收集器）
-2. `factory(collector)` 被执行，用户代码中的 `app.get/post/...` 实际调用 collector 的方法
-3. 每条路由被推入内部的 `routes` 数组
-4. 返回 `RouteDefinition` 对象
-5. `router-loader` 扫描 `src/routes/` 目录，对每个文件的 `default export` 调用 `register()` 注册到底层适配器
+1. 模块求值时调用 `defineRoutes(factory)`：检查同步函数与注册语法，创建并返回 `RouteDefinition`；此时尚未执行 factory，`routes` 为空。
+2. loader 读取默认导出并注入来源信息，用真实应用的 facade 执行 factory。
+3. factory 的 HTTP 方法收集路由；services/config/logger 等能力转发到真实应用。factory 结束后 HTTP 收集入口关闭，失败时清空本次收集。
+4. loader 检查路由身份、中间件引用和配置，准备请求链，再调用 adapter 注册路由。业务代码不需要调用 `register()`。
 
-:::tip
-在 factory 回调中，`app` 不仅有 HTTP 方法（`get/post/put/...`），还可以访问 `app.services`、`app.config`、`app.throw`、`app.logger` 等完整能力。这些属性由 `router-loader` 在执行 factory 前注入。
-:::
+`defineRoutes` 返回路由定义对象，不是 app。factory 参数是应用 facade，不是应用属性快照。支持内联同步箭头函数或 function expression，也支持可静态解析到同类函数的绑定。
+
+### 参数、返回值与失败边界
+
+| 项目           | 合同                                                                  |
+| -------------- | --------------------------------------------------------------------- |
+| factory        | 一个普通标识符参数、块体、同步且非 generator；HTTP 注册是直接顶层语句 |
+| factory 返回值 | 必须为 undefined；Promise、thenable 和其他返回值被拒绝                |
+| 返回对象       | RouteDefinition，由 loader 管理收集和注册                             |
+| handler        | 可同步或异步，与 factory 的同步要求独立                               |
+| 失败           | 非函数、非法注册形态、晚到注册、重复路由或非法配置在对应阶段报错      |
 
 ---
 
@@ -194,7 +206,12 @@ interface RouteOptions {
         autoCommit?: boolean;
       };
   timeout?: number | false;
+  bodyParser?: VextBodyParserConfig;
   multipart?: {
+    enabled?: boolean;
+    maxFileSize?: number;
+    maxFiles?: number;
+    allowedMimeTypes?: string[];
     files?: Record<
       string,
       string | { description?: string; required?: boolean }
@@ -210,31 +227,50 @@ interface RouteOptions {
 }
 ```
 
+### 字段与省略行为
+
+| 字段              | 省略时的行为                            | 查询入口                          |
+| ----------------- | --------------------------------------- | --------------------------------- |
+| `validate`        | 不创建路由自动输入校验                  | [validate](#validate)             |
+| `responses`       | 不启用声明式业务 JSON 序列化器          | [响应 Schema](#运行时响应-schema) |
+| `middlewares`     | 无自定义路由中间件引用                  | [middlewares](#middlewares)       |
+| `docs`            | 使用框架推导的文档元数据                | [docs](#docs)                     |
+| `cache`           | 该路由不启用响应缓存                    | [cache](#cache)                   |
+| `frontend`        | 默认动态页面策略                        | [前端 freshness](#前端-freshness) |
+| `auth`            | 不安装路由 auth guard；已有中间件仍生效 | [auth](#auth)                     |
+| `csrf`            | 跟随全局 CSRF；`false` 跳过             | [CSRF](#csrf)                     |
+| `securityHeaders` | 跟随全局响应头策略；`false` 跳过        | [override](#override)             |
+| `session`         | 跟随全局 Session 配置                   | [session](#session)               |
+| `timeout`         | 无路由期限；兼容读取 `override.timeout` | [override](#override)             |
+| `bodyParser`      | 跟随全局 body parser                    | [bodyParser](#bodyparser)         |
+| `multipart`       | 跟随全局 multipart 配置                 | [multipart](#multipart)           |
+| `override`        | 沿用各项全局配置                        | [override](#override)             |
+
 ### 前端 freshness
 
 `RouteOptions.frontend` 把页面 freshness 保留在既有路由声明中：
 
 ```ts
-frontend: {
-  mode: "dynamic" | "static" | "revalidate",
-  revalidate?: number, // 秒；revalidate mode 必填
-  staticParams?: Array<Record<string, string | number | boolean>>,
-  clientOnly?: boolean,
-  hydration?: "full" | "none",
+interface VextRouteFrontendOptions {
+  mode?: "dynamic" | "static" | "revalidate";
+  revalidate?: number; // 秒；revalidate mode 必填
+  staticParams?: ReadonlyArray<Record<string, string | number | boolean>>;
+  clientOnly?: boolean;
+  hydration?: "full" | "none";
   seo?: {
-    title?: string,
-    description?: string,
-    canonical?: string,
-    originKey?: string,
-    index?: boolean,
-  },
-  tags?: string[],
-  page?: string,
+    title?: string;
+    description?: string;
+    canonical?: string;
+    originKey?: string;
+    index?: boolean;
+  };
+  tags?: ReadonlyArray<string>;
+  page?: string;
   staticBudget?: {
     maxParams?: number;
     maxDurationMs?: number;
     maxBytes?: number;
-  },
+  };
 }
 ```
 
@@ -242,15 +278,21 @@ frontend: {
 `"revalidate"`，且是正数秒级间隔。`clientOnly` 保留 route
 document/data/assets，同时有意跳过服务端 page body；它不是 PPR，也不是第二套路由。
 
+静态生成建议显式声明 `frontend.page`。构建器按 `staticParams` 直接给页面传 `{ params }`，不会执行路由处理器、认证或 service 查询；它不是完整业务请求的预执行。需要处理器准备数据的页面应保留动态 SSR。完整示例见[渲染模式](/zh/frontend/rendering-modes)。
+
 `hydration: "none"` 与 `clientOnly` 的方向相反：它要求并保留 SSR page body，但移除 Vext/React browser runtime、hydration data 与路由 JS preload。它不能与 `clientOnly` 或关闭 SSR 组合。`seo` 是静态、JSON-safe 的路由元数据，会在单次 render SEO 前合并。
 
-构建索引涉及的路径与路由元数据使用有限静态语法，避免构建索引与运行时产生分歧。索引接受字面量、同文件 `const` 绑定，以及 TypeScript 的 `as const` / 简单 `as Type` / `satisfies` 包装。route options helper 调用会被拒绝：索引不会执行 helper 函数体，无法确认它是否新增、删除或覆盖合同字段。请内联 helper 的最终对象，或把该最终对象保存为同文件 `const` 后直接传入。注释、字符串、模板文本与正则表达式不会参与结构匹配。
+### 静态投影边界
+
+以下限制适用于所有参与构建索引的路由声明。路径与路由元数据使用有限静态语法，避免构建索引与运行时产生分歧。索引接受字面量、同文件 `const` 及可解析源码模块的导入绑定，以及 TypeScript 的 `as const` / 简单 `as Type` / `satisfies` 包装。route options helper 调用会被拒绝：索引不会执行 helper 函数体，无法确认它是否新增、删除或覆盖合同字段。请内联 helper 的最终对象，或把该最终对象保存为同文件 `const` 后直接传入。注释、字符串、模板文本与正则表达式不会参与结构匹配。
 
 每个 `app.get(...)` / `app.post(...)` 注册都必须是 `defineRoutes` 回调内的直接顶层语句。条件式或嵌套注册会阻断静态投影，因为构建索引无法保证运行时控制流是否执行该注册。
 
-索引不会执行导入值、计算表达式或带插值的模板字符串。路由 path、任一 `validate` 位置或 response schema 无法静态投影时，build/doctor/typegen 会携带文件、HTTP method 与 route 上下文失败，而不是静默漏掉路由或生成空合同。依赖请求数据的元数据应放在 `res.render(..., { seo })`。详见 [SEO、Sitemap 与 Robots](/zh/frontend/seo-sitemap)。
+索引沿可解析源码的导入/重导出读取静态声明，不执行用户 helper 或任意模块运行时代码；计算表达式、带插值模板和不透明导入值不保证能投影。路由 path、任一 `validate` 位置或 response schema 无法静态投影时，build/doctor/typegen 会携带文件、HTTP method 与 route 上下文失败，而不是静默漏掉路由或生成空合同。依赖请求数据的元数据应放在 `res.render(..., { seo })`。详见 [SEO、Sitemap 与 Robots](/zh/frontend/seo-sitemap)。
 
-### 完整示例
+### 组合配置片段 {#完整示例}
+
+以下片段展示选项之间的组合；需放入 `defineRoutes` 工厂，并提供 `auth` 中间件、白名单与业务 `handler`。
 
 ```typescript
 app.put(
@@ -293,7 +335,7 @@ app.put(
 
 声明式参数校验基于 `schema-dsl` DSL 语法，并在 handler 执行前完成。`param`（路径参数）非法时返回 HTTP `400`；`query`、`header`、`cookie` 或 `body` 非法时返回 HTTP `422`。
 
-字段类型为 `VextSchemaField`，支持 schema-dsl 字符串、字段级 DslBuilder、嵌套对象和对象数组。字段级 DslBuilder 常用于给 OpenAPI 文档补充业务描述：
+字段类型为 `VextSchemaField`，可表达 schema-dsl 字符串、字段级 DslBuilder、嵌套对象和数组合同；实际使用还须同时满足运行编译与静态投影。当前数组采用显式 `{ type: "array", items: ... }` 或受支持的数组DSL；不要使用 `["string"]`、`[{ code: "string!" }]` 简写，即使类型层能推导，当前静态编译仍会拒绝。完整数组示例见[参数校验](/zh/guide/validation#与-openapi-文档的联动)。字段级 DslBuilder 常用于给 OpenAPI 文档补充业务描述：
 
 ```typescript
 import { schemaAdapter } from "vextjs";
@@ -320,8 +362,7 @@ app.post(
 
 静态投影器只识别从 `vextjs` named import 的 `schemaAdapter`（允许 alias）、
 `compileField(<静态字符串>)` 与最多一次 `.description(<静态字符串>)`。完整 builder
-可保存为同文件无歧义 `const`。导入的 builder、动态参数、其他 call chain 以及不透明的
-Zod/Yup 对象都会阻断构建，不会生成残缺的 request contract。
+可保存为同文件无歧义 `const`，也可沿可分析源码绑定解析。动态参数、其他 call chain 和不透明 Zod/Yup 对象会阻断投影；导入本身并不等于不受支持。
 
 ### 校验位置
 
@@ -351,29 +392,31 @@ app.get(
   },
   async (req, res) => {
     const { page, limit, keyword } = req.valid("query");
-    // page: number, limit: number, keyword: string | undefined
+    // page/limit: number | undefined；keyword: string | undefined
   },
 );
 ```
 
 ### DSL 语法速查
 
-| DSL              | 说明                | 示例                             |
-| ---------------- | ------------------- | -------------------------------- |
-| `'string'`       | 必填字符串          | `name: 'string'`                 |
-| `'string:1-50'`  | 长度 1-50 的字符串  | `name: 'string:1-50'`            |
-| `'string?'`      | 可选字符串          | `nickname: 'string?'`            |
-| `'number'`       | 必填数字            | `age: 'number'`                  |
-| `'number:0-'`    | 大于等于 0 的数字   | `page: 'number:0-'`              |
-| `'number:1-100'` | 1 到 100 之间的数字 | `limit: 'number:1-100'`          |
-| `'boolean'`      | 必填布尔值          | `active: 'boolean'`              |
-| `'email'`        | 邮箱格式            | `email: 'email'`                 |
-| `'url'`          | URL 格式            | `website: 'url'`                 |
-| `'date'`         | 日期格式            | `birthday: 'date'`               |
-| `'uuid'`         | UUID 格式           | `id: 'uuid'`                     |
-| `'enum:a,b,c'`   | 枚举值              | `status: 'enum:active,inactive'` |
-| `'array'`        | 数组                | `tags: 'array'`                  |
-| `'object'`       | 对象                | `metadata: 'object'`             |
+对象字段必填使用 `!`（如 `string!`），可选使用 `?` 或省略必填标记。裸 string/number 不等于必填；raw JSON Schema 通过对象的 required 数组声明。
+
+| DSL              | 说明                     | 示例                             |
+| ---------------- | ------------------------ | -------------------------------- |
+| `'string'`       | 字符串（不单独声明必填） | `name: 'string'`                 |
+| `'string:1-50'`  | 长度 1-50 的字符串       | `name: 'string:1-50'`            |
+| `'string?'`      | 可选字符串               | `nickname: 'string?'`            |
+| `'number'`       | 数字（不单独声明必填）   | `age: 'number'`                  |
+| `'number:0-'`    | 大于等于 0 的数字        | `page: 'number:0-'`              |
+| `'number:1-100'` | 1 到 100 之间的数字      | `limit: 'number:1-100'`          |
+| `'boolean'`      | 布尔值（不单独声明必填） | `active: 'boolean'`              |
+| `'email'`        | 邮箱格式                 | `email: 'email'`                 |
+| `'url'`          | URL 格式                 | `website: 'url'`                 |
+| `'date'`         | 日期格式                 | `birthday: 'date'`               |
+| `'uuid'`         | UUID 格式                | `id: 'uuid'`                     |
+| `'enum:a,b,c'`   | 枚举值                   | `status: 'enum:active,inactive'` |
+| `'array'`        | 数组                     | `tags: 'array'`                  |
+| `'object'`       | 对象                     | `metadata: 'object'`             |
 
 :::tip
 `schema-dsl` 会自动做**类型转换**。例如查询参数 `?page=2` 中的 `'2'`（字符串）会被自动转换为 `2`（数字），前提是 schema 声明为 `'number'` 类型。
@@ -408,7 +451,7 @@ const body = req.valid("body");
 // body.email → IDE 知道是 string
 ```
 
-显式泛型仅保留为动态或外部 Schema 的逃生口；它会覆盖自动推导结果。
+显式泛型覆盖自动推导结果，但不会增加运行时校验。自动 validate 位于路由中间件之后；前置中间件不能假定 req.valid 已有校验结果。
 
 ### 校验失败响应
 
@@ -446,13 +489,15 @@ app.get(
 
 ### 对象引用（带配置覆盖）
 
+以下为 factory 内的配置片段，`handler` 是业务处理器；先按 [中间件指南](/zh/guide/middleware#定义中间件) 创建并声明 `audit-log` 和 `response-label`。`response-label` 的 `value` 由该工厂定义，路由 options 整体替换其配置默认值。内置限流使用全局 `rateLimit` 与 [override.rateLimit](#override)，其 `window` 单位为秒。
+
 ```typescript
 app.get(
   "/admin/users",
   {
     middlewares: [
       "audit-log",
-      { name: "rate-limit", options: { window: 60_000, max: 30 } },
+      { name: "response-label", options: { value: "admin" } },
     ],
   },
   handler,
@@ -470,8 +515,10 @@ type VextMiddlewareRef = string | { name: string; options?: unknown };
 路由级中间件在**全局中间件之后**、**handler 之前**执行：
 
 ```
-请求 → [全局中间件链] → [路由级中间件] → [validate 中间件] → handler → 响应
+全局中间件 → 路由内置包装/multipart → 自定义中间件 → auth guard → 缓存/freshness → validate → handler
 ```
+
+路由引用中的 options 整体替换工厂的配置默认 options，不逐字段合并；普通中间件不接受 options。已启用的包装、短路和缓存命中会影响后续步骤。
 
 ### 配置白名单
 
@@ -488,20 +535,7 @@ export default {
 };
 ```
 
-```typescript
-// src/middlewares/auth.ts
-import { defineMiddleware } from "vextjs";
-
-export default defineMiddleware(async (req, _res, next) => {
-  const token = req.headers.authorization?.replace("Bearer ", "");
-  if (!token) {
-    req.app.throw(401, "未提供认证令牌");
-  }
-  // 验证 token...
-  req.user = decoded;
-  await next();
-});
-```
+对应中间件文件必须存在并导出普通中间件或工厂。完整定义、白名单和引用见 [中间件指南](/zh/guide/middleware#注册与使用)。
 
 :::warning
 引用未在白名单中声明的中间件会在启动时抛出错误：
@@ -522,8 +556,43 @@ registered in config.middlewares whitelist.
 - `auth()` 中间件读取请求凭据并填充 `req.auth`。
 - `auth: true` 要求请求已经认证。
 - 对象形式可以要求 roles、scopes、permissions 或自定义 `check`。
-- `auth: { required: false }` 表示身份可选；没有 roles、scopes、permissions 或 `check` 时，OpenAPI 会把该路由标记为公开。
+- `auth: { required: false }` 表示身份可选；没有 roles、scopes、permissions、`check` 且未显式设置 `auth.security` 时，Auth 合同投影的 OpenAPI security 为 `[]`。显式 `docs.security` 仍具有更高的文档优先级。
 - `auth: false` 表示路由显式公开，并禁用从 `middlewares` 回退推断 OpenAPI security 的旧逻辑。
+
+### VextAuthRequirement
+
+对象形式的公开字段如下：
+
+```typescript
+interface VextAuthRequirement {
+  required?: boolean;
+  roles?: string[];
+  scopes?: string[];
+  permissions?: VextPermissionRequirement[];
+  mode?: "any" | "all";
+  security?: string | string[] | Array<Record<string, string[]>>;
+  check?: (
+    req: VextRequest,
+    auth: VextAuthContext,
+  ) => boolean | Promise<boolean>;
+}
+
+type VextPermissionRequirement =
+  | string
+  | {
+      action: string;
+      resource?: string | ((req: VextRequest) => string | undefined);
+      context?:
+        | Record<string, unknown>
+        | ((req: VextRequest) => Record<string, unknown> | undefined);
+    };
+```
+
+`required` 默认 `true`。`roles`、`scopes`、`permissions` 省略或为空时不增加该组检查；`mode` 默认 `"any"`，控制每一组内部匹配任一项还是全部项，不会把不同组变成“任一组通过即可”。例如同时声明 roles 和 scopes 时，两组都必须通过；随后执行 `check(req, auth)`，返回 false 拒绝，抛错按 provider 错误处理。permission 字符串表示 action，对象形式可补充资源与上下文。
+
+`required: false` 且没有额外授权规则时允许匿名请求；若认证中间件已经记录 `req.auth.error`，guard 仍会拒绝该请求。guard 位于路由自动校验之前，`check` 不能假定 `req.valid()` 已有结果。`security` 的文档含义及默认方案见下文，不改变这些运行时检查。
+
+以下固定 demo-token 只演示认证合同；真实项目须接入凭据校验。这些组合片段需声明白名单并在 factory 中注册路由。
 
 ```typescript
 // src/middlewares/auth.ts
@@ -540,7 +609,7 @@ export default defineMiddleware(
         roles: ["admin"],
         scopes: ["posts:write"],
         can(action, resource) {
-          return action === "post:update" && resource === "post-1";
+          return action === "post:update" && resource === "POST:/posts/:id";
         },
       };
     },
@@ -557,17 +626,19 @@ const updatePostOptions = {
   auth: {
     roles: ["admin"],
     scopes: ["posts:write"],
-    permissions: [{ action: "post:update", resource: "POST:/api/posts/:id" }],
+    permissions: [{ action: "post:update", resource: "POST:/posts/:id" }],
     mode: "all",
     security: "bearerAuth",
   },
   docs: { summary: "更新文章" },
 } satisfies RouteOptions;
 
-app.post("/posts/:id", updatePostOptions, handler);
+app.post("/:id", updatePostOptions, handler);
 ```
 
 构建索引接受最终内联对象，或 `updatePostOptions` 这种同文件 `const`。它不会执行 helper 函数体，因此会拒绝 route-options helper 调用。每条路由的完整保护合同应保持在这些可静态投影的形态中；可复用的运行时授权逻辑仍应放在 middleware 或 permission provider。
+
+这里的路由语句放在 `src/routes/posts.ts` 的 `defineRoutes` 回调内：文件前缀 `/posts` 与子路径 `/:id` 组成 `POST /posts/:id`。示例权限 resource 是业务双方约定的字符串，不由框架从 URL 自动生成；若修改该字符串，认证 provider 与路由声明应一起调整。
 
 ### 运行时 auth、OpenAPI security 与 Docs access
 
@@ -596,38 +667,65 @@ Guard 失败会使用稳定错误码：
 
 ## cache
 
-路由级响应缓存配置。响应缓存发生在服务端，会缓存接口响应内容；它不是自定义中间件，也不是浏览器 `Cache-Control` 响应头。
+路由级响应缓存发生在服务端，配置位于 `RouteOptions.cache`，与浏览器 Cache-Control 不同。
 
 ```typescript
-import { route } from "vext";
+// src/routes/cache-demo.ts
+import { defineRoutes } from "vextjs";
 
-route({
-  method: "GET",
-  path: "/posts",
-  cache: {
-    ttl: 30_000, // 毫秒
-    methods: ["GET"],
-    headers: ["accept-language"],
-    partitionKey: (req) => req.user?.tenantId ?? "public",
-  },
-  handler: async () => {
-    return await listPosts();
-  },
+export default defineRoutes((app) => {
+  app.get(
+    "/",
+    { cache: { ttl: 30_000, vary: ["accept-language"] } },
+    (_req, res) => {
+      res.json({ generatedAt: Date.now() });
+    },
+  );
 });
 ```
 
-常用写法：
+启用响应缓存后，重复 GET `/cache-demo` 会在 TTL 内复用响应；query、vary 或分区不同会形成不同缓存项。
 
-| 配置                           | 说明                                                                                |
-| ------------------------------ | ----------------------------------------------------------------------------------- |
-| `cache: false`                 | 禁用该路由响应缓存                                                                  |
-| `cache: 30000`                 | 启用响应缓存，TTL 为 30000 毫秒                                                     |
-| `cache: { ttl: 30000 }`        | 使用完整配置对象                                                                    |
-| `headers: ["accept-language"]` | 指定参与缓存 key 的请求头；不建议把所有请求头都纳入 key                             |
-| `partitionKey`                 | 生成用户、租户或区域隔离维度，避免不同访问者共享同一缓存响应                        |
-| `allowCookieCache`             | 允许带 `Cookie` 请求头的请求参与缓存；只有 cookie 输入已纳入安全缓存 key 时才应开启 |
+| 配置                    | 类型/单位                          | 行为                                               |
+| ----------------------- | ---------------------------------- | -------------------------------------------------- |
+| cache                   | false / number / RouteCacheOptions | 不声明则不启用该路由缓存；number 为 TTL 毫秒       |
+| ttl                     | number，毫秒                       | 公开类型中必填，使用正数；运行时兜底见下文         |
+| key                     | 字符串或请求函数                   | 自定义 key；默认包含方法、路径、query 和 vary      |
+| condition               | 请求函数返回 boolean               | false 时跳过缓存                                   |
+| vary                    | string[] / "\*"                    | 参与 key 的请求头，例如 `["accept-language"]`      |
+| partitionKey            | 字符串或请求函数                   | 用户/租户隔离；应使用已验证身份                    |
+| allowAuthorizationCache | boolean，默认 false                | 允许带 Authorization 且未分区的请求缓存            |
+| allowCookieCache        | boolean，默认 false                | 控制带 Cookie 回源结果写入；已有缓存读取限制见指南 |
+| cacheControl            | boolean，默认 true                 | 是否输出 Cache-Control                             |
+| tags                    | string[]                           | 用于 `app.cache.invalidate(tag)` 的标签            |
 
-详见 [响应缓存指南](/guide/cache)。
+对象中的 `ttl` 缺失或为 `0` 时，运行时会尝试使用正数的全局默认 TTL；负数会禁用该路由缓存。因此不要用 `{ ttl: 0 }` 表达禁用，请使用 `cache: false` 或数字形式 `cache: 0`。类型化配置仍应显式填写正数 `ttl`。
+
+`config.cache.enabled: false` 会禁用路由响应缓存。认证路由先进行身份与权限检查，再考虑分区缓存；Authorization 请求默认绕过，除非有非空分区或显式允许。当前 Cookie 默认策略只阻止回源结果写入，已有公开缓存仍可能被读取；要完全排除 Cookie 请求，请用 `condition: (req) => req.headers.cookie === undefined` 或禁用缓存。详见 [响应缓存指南](/zh/guide/cache)。
+
+---
+
+## responses — 运行时响应 Schema {#运行时响应-schema}
+
+```typescript
+interface RuntimeResponseConfig {
+  schema: Record<string, unknown> | string;
+}
+
+type RuntimeResponses = Record<string | number, RuntimeResponseConfig>;
+```
+
+该映射声明在顶层 `RouteOptions.responses`。selector 支持精确状态（`201`）、
+状态族（`2xx`）与 `default`；`response:before` 完成后按最终状态以“精确 →
+状态族 → default”选择。Vext 在路由注册时编译每个 JSON schema，并在后续请求
+中复用。同一份闭合 schema 会投影到 OpenAPI、路由 manifest、静态 build 索引
+和生成客户端类型。
+
+schema 描述传给 `res.json()` 的业务数据，不需要手写重复的响应包裹。未声明
+字段会递归移除，缺失 required 值会在提交字节前失败。HEAD、精确 204、raw
+JSON、text、redirect、file/download、stream 与 render/SSR 响应会绕过该序列化器。
+生命周期和 raw JSON Schema 细节见
+[OpenAPI 响应契约](/zh/guide/openapi#responses--运行时响应契约与文档元数据)。
 
 ---
 
@@ -670,7 +768,9 @@ interface RouteDocsConfig {
 
 `docs.access` 会写入 OpenAPI operation 的 `x-vext-docs-access` vendor extension，并在 Vext Docs 过滤阶段作为 `kind: "operation"` descriptor 的 `access` 字段传给 `openapi.docs.access.resolver`。字符串值通常用于角色、租户或分组标识；对象值可以携带 `roles`、`permissions`、`group`、`visible` 和 `tryItOut` metadata。这只是文档访问 metadata：隐藏 operation 或关闭 Try it out 不会为 route 增加认证或授权。
 
-### 完整示例
+### 文档配置片段 {#完整示例-1}
+
+以下片段需放入工厂并接入项目的用户 service；`docs` 描述接口，实际输入校验由 `validate` 执行。
 
 ```typescript
 app.post(
@@ -763,15 +863,15 @@ app.get(
 默认情况下，安全方案按以下顺序推断：
 
 1. 显式设置的 `docs.security`，包括 `[]`。
-2. `RouteOptions.auth` 为 `true` 或对象时；`auth: { required: false }` 且没有 roles/scopes/permissions/check 时会输出公开 security。
+2. `RouteOptions.auth` 为 `true` 或对象时；优先使用显式 `auth.security`。未指定该字段且 `required: false`、没有 roles/scopes/permissions/check 时输出 `[]`，其余情况默认使用 `bearerAuth`。
 3. 旧的 `middlewares` 推断，通过 `config.openapi.guardSecurityMap` 映射。
 
-`auth:false` 会禁用该路由的旧 `middlewares` 回退推断。`auth: { required: false }` 如果同时声明 roles、scopes、permissions 或 `check`，运行时仍会要求认证，OpenAPI 也会输出认证 security。
+`auth:false` 会禁用该路由的旧 `middlewares` 回退推断。`auth: { required: false }` 如果同时声明 roles、scopes、permissions 或 `check`，运行时仍会要求认证；文档结果仍按上述显式方案优先级生成，即使显式声明空 security，也不会取消运行时保护。
 
 也可以手动覆盖：
 
 ```typescript
-// 显式声明需要 bearerAuth
+// 仅在 OpenAPI 文档中声明需要 bearerAuth
 app.get(
   "/secure",
   {
@@ -782,7 +882,7 @@ app.get(
   handler,
 );
 
-// 声明无需认证（即使有全局安全要求）
+// 仅在 OpenAPI 文档中声明无需认证（覆盖文档的全局安全要求）
 app.get(
   "/public",
   {
@@ -794,35 +894,16 @@ app.get(
 );
 ```
 
-### 运行时响应 Schema
-
-```typescript
-interface RuntimeResponseConfig {
-  schema: Record<string, unknown> | string;
-}
-
-type RuntimeResponses = Record<string | number, RuntimeResponseConfig>;
-```
-
-该映射声明在顶层 `RouteOptions.responses`。selector 支持精确状态（`201`）、
-状态族（`2xx`）与 `default`；`response:before` 完成后按最终状态以“精确 →
-状态族 → default”选择。Vext 在路由注册时编译每个 JSON schema，并在后续请求
-中复用。同一份闭合 schema 会投影到 OpenAPI、路由 manifest、静态 build 索引
-和生成客户端类型。
-
-schema 描述传给 `res.json()` 的业务数据，不需要手写重复的响应包裹。未声明
-字段会递归移除，缺失 required 值会在提交字节前失败。HEAD、精确 204、raw
-JSON、text、redirect、file/download、stream 与 render/SSR 响应会绕过该序列化器。
-生命周期和 raw JSON Schema 细节见
-[OpenAPI 响应契约](/zh/guide/openapi#responses--运行时响应契约与文档元数据)。
-
 ### 响应文档元数据
+
+以下 `ResponseConfig` 是便于查阅的结构摘录；公开声明位于
+`RouteDocsConfig.responses`，并未单独导出这个名称。
 
 ```typescript
 interface ResponseConfig {
   description?: string;
   /** 仅文档兼容入口；优先使用 RouteOptions.responses。 */
-  schema?: Record<string, unknown> | string;
+  schema?: Record<string, VextSchemaField> | string;
   contentType?: string;
   example?: unknown;
   examples?: Record<
@@ -923,10 +1004,12 @@ app.post(
 | `files[].description` | `string`                           | 字段说明（用于 OpenAPI 文档）                                             |
 | `files[].required`    | `boolean`                          | 运行时是否要求至少上传一个同名文件（默认 `false`）                        |
 
-缺少 required 文件字段时，Vext 返回 `400`，响应中包含缺失字段名。optional 字段和未声明上传字段仍允许上传；它们继续受 `maxFiles`、`maxFileSize` 和 `allowedMimeTypes` 限制。
+对启用内置 multipart 解析的 multipart 请求，缺少 required 文件字段时，Vext 返回 `400`，响应中包含缺失字段名。optional 字段和未声明上传字段仍允许上传；它们继续受 `maxFiles`、`maxFileSize` 和 `allowedMimeTypes` 限制。非 multipart 请求会跳过这些文件检查；接口若必须接收文件，还需在 handler 中检查 `req.files`。
 
 :::warning 注意
-`multipart.files` 与 `validate.body` 互斥，同时配置时 `multipart.files` 优先生效于 OpenAPI 文档生成。
+内置 multipart 解析只将文件放入 `req.files`，不会把普通文本字段写入 `req.body`。同时声明 `multipart.files` 和 `validate.body` 时，OpenAPI 优先生成 multipart 描述，但这不代表普通字段已被解析。运行时仍对当前 `req.body` 执行校验；只使用内置解析且 body schema 有必填字段时，即使表单提交了同名文本字段，body 校验仍会失败并返回 `422`。
+
+需要文件与普通字段混传时，应接入会显式填充 `req.body` 的自定义解析器，并协调好请求体读取；也可将普通字段改为独立 JSON 请求。字段边界见 [req.files 与表单字段](/zh/guide/uploads#reqfiles-与表单字段)，接管方式见 [内存、adapter 与自定义上传](/zh/guide/uploads#内存adapter-与自定义上传)。
 :::
 
 ---
@@ -947,9 +1030,24 @@ app.post(
 
 ---
 
+## bodyParser
+
+`bodyParser?: VextBodyParserConfig` 为路由级请求体解析配置，优先级高于全局 `bodyParser`。它由已安装的 body parser 消费，不会自行安装一个被全局关闭的解析器。
+
+```typescript
+// 在路由 options 中关闭该路由的内置 body 解析
+const rawRouteOptions = { bodyParser: { enabled: false } };
+```
+
+只要声明了 `bodyParser` 对象，就优先使用该对象，不再读取兼容字段 `override.maxBodySize`；对象中未指定的大小上限回退全局值。没有 `bodyParser` 对象时才读取 `override.maxBodySize`。关闭内置解析后，handler 不应再假定 `req.body` 已解析；需要自行处理时参阅 [配置说明](/zh/guide/configuration)。
+
+## csrf
+
+`csrf?: false` 只提供跳过开关。省略时遵守全局 CSRF 配置；它不会自行开启防护，也不负责建立认证身份。使用 Cookie/Session 的路由是否跳过，应按实际调用方式决定；详细配置见 [Cookie 与 Session](/zh/guide/cookies-session)。
+
 ## override
 
-路由级配置覆盖，覆盖 `src/config/default.ts` 中的全局配置。
+路由级配置覆盖。override.rateLimit 调整已启用的全局 limiter，不会自行开启限流；window 单位为秒，timeout 为毫秒。
 
 ```typescript
 app.post(
@@ -1010,11 +1108,11 @@ interface RouteDefinition {
 }
 ```
 
-| 字段         | 类型            | 说明                                  |
-| ------------ | --------------- | ------------------------------------- |
-| `routes`     | `RouteRecord[]` | 收集到的路由记录列表                  |
-| `sourceFile` | `string`        | 来源文件路径（由 router-loader 注入） |
-| `register()` | `Function`      | 将路由注册到底层适配器                |
+| 字段         | 类型            | 说明                                            |
+| ------------ | --------------- | ----------------------------------------------- |
+| `routes`     | `RouteRecord[]` | 创建时为空，loader 执行 factory 后填充          |
+| `sourceFile` | `string`        | 来源文件路径（由 router-loader 注入）           |
+| `register()` | `Function`      | 内部兼容入口，不等同于 loader 完整准备/校验流程 |
 
 ### RouteRecord
 
@@ -1036,19 +1134,20 @@ interface RouteRecord {
 路由处理函数的类型定义：
 
 ```typescript
-type VextHandler = (
-  req: VextRequest,
-  res: VextResponse,
-) => Promise<void> | void;
+type VextHandler<
+  TValidated extends VextValidatedData = VextDefaultValidatedData,
+> = (req: VextRequest<TValidated>, res: VextResponse) => Promise<void> | void;
 ```
 
-Handler 是中间件链的最后一环，不调用 `next()`。
+Handler 是中间件链的最后一环，不调用 `next()`。三段式路由从
+`options.validate` 自动推导校验结果类型；显式提供泛型只改变 TypeScript 类型，
+不增加运行时校验。
 
 ### 基本示例
 
 ```typescript
 const handler: VextHandler = async (req, res) => {
-  const users = await app.services.user.findAll();
+  const users = await req.app.services.user.findAll();
   res.json(users);
 };
 ```
@@ -1079,103 +1178,7 @@ export default defineRoutes((app) => {
 
 ## 多路由注册
 
-一个路由文件中可以注册多条路由：
-
-```typescript
-// src/routes/users.ts
-import { defineRoutes } from "vextjs";
-
-export default defineRoutes((app) => {
-  // GET /users/list
-  app.get(
-    "/list",
-    {
-      validate: {
-        query: { page: "number:1-", limit: "number:1-100" },
-      },
-      docs: { summary: "用户列表" },
-    },
-    async (req, res) => {
-      const { page, limit } = req.valid("query");
-      const result = await app.services.user.findAll({ page, limit });
-      res.json(result);
-    },
-  );
-
-  // GET /users/:id
-  app.get(
-    "/:id",
-    {
-      validate: {
-        param: { id: "string:1-" },
-      },
-      docs: { summary: "获取用户详情" },
-    },
-    async (req, res) => {
-      const { id } = req.valid("param");
-      const user = await app.services.user.findById(id);
-      if (!user) app.throw(404, "用户不存在");
-      res.json(user);
-    },
-  );
-
-  // POST /users
-  app.post(
-    "/",
-    {
-      validate: {
-        body: { name: "string:1-50", email: "email" },
-      },
-      middlewares: ["auth"],
-      auth: { required: true, security: "bearerAuth" },
-      docs: { summary: "创建用户" },
-    },
-    async (req, res) => {
-      const data = req.valid("body");
-      const user = await app.services.user.create(data);
-      res.json(user, 201);
-    },
-  );
-
-  // PUT /users/:id
-  app.put(
-    "/:id",
-    {
-      validate: {
-        param: { id: "string:1-" },
-        body: { name: "string:1-50?", email: "email?" },
-      },
-      middlewares: ["auth"],
-      auth: { required: true, security: "bearerAuth" },
-      docs: { summary: "更新用户" },
-    },
-    async (req, res) => {
-      const { id } = req.valid("param");
-      const data = req.valid("body");
-      const user = await app.services.user.update(id, data);
-      res.json(user);
-    },
-  );
-
-  // DELETE /users/:id
-  app.delete(
-    "/:id",
-    {
-      validate: {
-        param: { id: "string:1-" },
-      },
-      middlewares: ["auth"],
-      auth: { required: true, security: "bearerAuth" },
-      docs: { summary: "删除用户" },
-    },
-    async (req, res) => {
-      const { id } = req.valid("param");
-      await app.services.user.delete(id);
-      res.status(204).json(null);
-    },
-  );
-});
-```
+同一个 factory 可以声明多个 HTTP 方法与子路径，每条声明都是块体内的直接顶层语句。同路径的不同方法可共存，规范化后的相同方法与路径不可重复。完整业务组合见 [路由指南](/zh/guide/routing#完整示例)，首次使用可先运行该指南开头的无业务依赖示例。
 
 ---
 
@@ -1183,7 +1186,7 @@ export default defineRoutes((app) => {
 
 ### 不要直接在 app 上调用 HTTP 方法
 
-`defineRoutes` 返回的 `app` 是一个收集器，不是真正的应用实例。直接在应用实例上调用 HTTP 方法会抛出错误：
+`defineRoutes` 返回 RouteDefinition；factory 参数是带有可关闭 HTTP 收集入口的应用 facade。根应用上的 HTTP 方法是占位入口，直接调用会抛错：
 
 ```typescript
 // ❌ 错误用法
@@ -1200,28 +1203,26 @@ export default defineRoutes((app) => {
 
 ### 路由文件必须 default export
 
-构建期消费者只接受有限的默认导出语法。`defineRoutes` 必须来自 `vextjs` named
-import（可使用 import alias），factory 必须是内联同步箭头函数或 function expression：
+构建期需把默认导出解析到来自 `vextjs` named import 的 `defineRoutes` 调用（允许 alias）。只有 named export 不构成路由入口；property/namespace 调用或不透明 helper 也不满足该身份要求。
+
+推荐直接默认导出。需要提取 factory 时，可使用带块体的同步函数绑定：
 
 ```typescript
-import { defineRoutes, defineRoutes as routes } from "vextjs";
+// src/routes/binding-demo.ts
+import { defineRoutes, type VextApp } from "vextjs";
 
-// ✅ 直接默认导出
-export default defineRoutes((app) => { ... });
+const register = (app: VextApp) => {
+  app.get("/", (_req, res) => {
+    res.json({ ok: true });
+  });
+};
 
-// ✅ alias + 内联 function expression
-export default routes(function (app) { ... });
-
-// ✅ 同文件顶层绑定
-const routeDefinition = defineRoutes((app) => { ... });
-export { routeDefinition as default };
-
-// ❌ 只有 named export 不构成路由文件身份
-export const ignored = defineRoutes((app) => { ... });
+export default defineRoutes(register);
 ```
 
-重导出、导入的 route definition、property/namespace callee、callback identifier，
-以及没有受支持默认导出的文件都会失败，诊断中包含 route file。
+支持先创建定义再 `export { routeDefinition as default }`。可完整解析的默认重导出同样受支持，例如 `src/routes/account.ts` 写 `export { default } from "../features/account.js"`；前缀仍为 `/account`，定义在被引用模块解析。目标必须存在于可分析的源码范围，导出和绑定都可解析，不能推导成任意动态导入都受支持。
+
+表达式体 `(app) => app.get(...)`、异步 factory、条件/循环/嵌套 helper 中注册、方括号或提取 HTTP 方法均不受支持。factory 返回非 undefined 值也会失败。
 
 ### 路由路径规范化
 
@@ -1235,3 +1236,9 @@ export const ignored = defineRoutes((app) => { ... });
 | `/`          | `/`       | `/`           |
 | `/`          | `/health` | `/health`     |
 | `/api/users` | _（空）_  | `/api/users`  |
+
+入口文件前缀也受静态索引唯一性检查：users.ts 与 users/index.ts 不能同时作为路由入口。规范化后的同方法/路径不可重复，包含大小写和尾斜杠变体。
+
+## 相关规范
+
+- [HTTP 与路由规范](/zh/specification/http-and-routing)：路由模块、工厂回调、校验和中间件的 Rule ID。

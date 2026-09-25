@@ -2,6 +2,8 @@
 
 Vext MCP 提供项目事实、生成候选和检查流程。宿主负责应用文件、执行命令并验证业务。`ready` 表示候选可进入宿主审查；`scaffold: true` 表示骨架，不能据此宣布业务完成。安装或导出 Skill 也不能证明宿主已实际调用 MCP。
 
+前提是已有 Vext 项目，并让宿主连接该项目根的 MCP；安装、stdio 启动与配置检查见 [CLI 的 MCP 说明](./cli)。本页说明连接后的使用流程。这里的依赖知识是随框架提供的 MCP 检索内容，与[站点文档数据](../resources/documentation-data-and-ai)以及后续能力图谱是不同的数据来源，不能用其中一个已存在来证明另一个已经接入。
+
 ## 一次开发的顺序
 
 1. 调用 `vext_project_inspect`，取得当前项目身份、目录、配置和依赖事实；检查覆盖是否完整。
@@ -12,6 +14,28 @@ Vext MCP 提供项目事实、生成候选和检查流程。宿主负责应用�
 6. 执行项目已有的类型检查、定向测试、格式检查、构建及实际运行验证，记录命令、退出码和行为证据。最后停止本次验证启动的服务并清理临时产物。
 
 MCP JSON 分析结果使用 `schemaVersion: 2`；workspace/dev.mcp 配置格式仍为 1。声明范围、内容身份、加载实现身份和运行实例状态是不同事实，不能相互替代。
+
+### 最小候选示例
+
+以“生成共享的非负金额相加函数”为例，先 inspect 并取回真实 `projectId`、`contextRevision`。下面是传给 `vext_generate_changes` 的业务输入；实际调用时另附本次 inspect 返回的 `expectedIdentity`，不要复制历史身份：
+
+```json
+{
+  "recipeId": "utility",
+  "name": "add-amounts",
+  "options": {
+    "language": "ts",
+    "description": "相加两个非负有限数值，非法输入抛错",
+    "target": "shared",
+    "parameters": "left: number, right: number",
+    "returnType": "number",
+    "body": "if (!Number.isFinite(left) || !Number.isFinite(right) || left < 0 || right < 0) throw new Error('Invalid amount'); return left + right;"
+  },
+  "policyPatch": { "outputLanguage": "zh", "commentLanguage": "zh" }
+}
+```
+
+确认返回 `status: "ready"` 后，把完整 `changeSet`、相同 `expectedIdentity` 和策略交给 `vext_validate_changes`。检查候选的实际路径、导出名和 SHA，再由宿主应用；按返回导出测试 `2+3=5` 和负数抛错。不要把 ready 或候选校验成功当作这些业务测试已运行。目标文件已存在时 create-only 候选必须被拒绝，已有代码应由宿主增量修改。
 
 ## 目录默认值与用户覆盖
 
@@ -146,10 +170,10 @@ CLI `sourceBuild` 检查仅在框架源码存在时比较构建输入，源码�
 
 MCP 遇到这种明显的根对象混用会要求补充或改正输入；项目检查会提示复核。项目显式替换 validator 时，应以该 validator 的真实请求测试为准。默认校验有类型转换能力；严格 JSON 布尔值、额外字段和空白业务规则可放在请求前置中间件与 `validators`，不要为此改变整个应用的 query 转换行为。
 
-## 本次业务消费者补充的边界
+## 生成后仍需验证的集成边界
 
 - Job 提供 payload 字段表时，Recipe 同时生成运行 schema 与推导类型，默认位于 `src/schemas/<name>-payload.ts` 和 `src/types/server/jobs/<name>.ts`；Job 引用它们。JS 使用 JSDoc，`job-types` 角色及上级目录可由用户策略覆盖。无 payload 时不创建空类型。
 - 内置 scheduler 创建 scheduled run 时不携带业务 payload。带必填 payload 的 Job 应由宿主显式 `run/enqueue`，或让 scheduled handler 自行查询待处理数据；内置 store 的 `completeRun()` 只允许当前 running owner 完成并清理 lease，迟到或重复 completion 不覆盖终态。
 - API 字段级 `{ type: "boolean" }`、`{ enum: ["draft", "published"] }` 要与真实运行校验一致，不能转换成带有 type/enum 子字段的对象。整个请求位置仍是 DSL 字段表；完整根 JSON Schema 不可与它混淆。
-- 退出或 401 应清除 token、旧存储键、列表和编辑状态；保存已提交而刷新失败要单独呈现。SSR 图片可能早于 hydration 失败，挂载后还需检查原生图片的 complete/naturalWidth。
+- 若生成登录、编辑或图片页面，宿主仍需按业务验证退出/401 的状态清理、保存成功但刷新失败的反馈、SSR 图片早于 hydration 失败等场景；这些是消费者验收责任，不是 Recipe 自动提供的行为。
 - 构建成功后才消费实际生成的 API client；源码不能凭空导入未生成文件。真实消费者包含 TS/JS、HTTP、OpenAPI、客户端类型与浏览器，不能用静态候选通过替代这些证据。

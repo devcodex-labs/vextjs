@@ -6,6 +6,8 @@
 [`examples/crud-api`](https://github.com/devcodex-labs/vextjs/tree/main/examples/crud-api)
 项目。它是 TypeScript Todo API，使用隔离 MongoDB 数据库，以及只通过 `app.db` 暴露的 raw MonSQLize 实例。
 
+先启动可连接的 MongoDB，并在仓库根完成 `npm ci`、`npm run build`。下面数据库名仅用于示例，选择自己的隔离测试库；应用默认端口3100，不是后面内存变体的3000。
+
 ```powershell
 cd examples/crud-api
 $env:MONGODB_URI = "mongodb://127.0.0.1:27017/vext_crud_example"
@@ -18,9 +20,19 @@ npm start
 
 model 声明 `collection: "todos"`，因此 service 使用精确 raw registry key：`app.db.model("todos")`。应用显式关闭全局 rate limit，并启用 OpenAPI/Vext Docs。
 
-实际 endpoint 是 `GET /`、`GET /todos`、`POST /todos`、`GET /todos/:id`、`PATCH /todos/:id` 与 `DELETE /todos/:id`。所有必填 path `id` 都使用 `string:1-!`：缺失/非法 path 参数会在 handler 执行前返回 HTTP 400，并在 OpenAPI 中显示 `required: true`；body/query 校验失败仍为 HTTP 422。
+实际 endpoint 是 `GET /`、`GET /todos`、`POST /todos`、`GET /todos/:id`、`PATCH /todos/:id` 与 `DELETE /todos/:id`。必填 path `id` 使用 `string:1-!`，OpenAPI 显示 `required: true`；匹配带参数的路由后，param 校验失败是 HTTP 400，body/query 校验失败是 HTTP 422。路径未匹配与参数校验不同，例如 `GET /todos` 会进入列表接口，不能用它验证“缺 id 返回400”。
 
-发布验证会安装、typecheck、build、启动并实际执行 Mongo CRUD 生命周期；mock 数据库不计为通过。
+`npm test` 目前检查示例源码合同，不执行 Mongo CRUD；数据库流程需要实际请求，mock 数据库不计为已验证真实连接。启动后在另一 PowerShell 终端执行：
+
+```powershell
+$created = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:3100/todos -ContentType 'application/json' -Body '{"title":"文档验证"}'
+$id = $created.data.id
+Invoke-RestMethod -Uri "http://127.0.0.1:3100/todos/$id"
+Invoke-RestMethod -Method Patch -Uri "http://127.0.0.1:3100/todos/$id" -ContentType 'application/json' -Body '{"completed":true}'
+Invoke-RestMethod -Method Delete -Uri "http://127.0.0.1:3100/todos/$id"
+```
+
+预期依次为201创建、200读取、200更新、200返回 `deleted: true`；再次读取同一 id 应404，空 title 应422。`/openapi.json` 与 `/docs` 应包含 Todo 路由。结束后停止示例服务；清理你创建的测试记录，不操作其他数据库。
 
 ## 扩展内存/Auth 教学变体
 
@@ -38,9 +50,8 @@ crud-api/
   │   ├── routes/
   │   │   ├── index.ts
   │   │   └── users.ts
-  │   ├── services/
-  │   │   └── user.ts
-  │   └── index.ts
+  │   └── services/
+  │       └── user.ts
   ├── test/
   │   └── users.test.ts
   ├── package.json
@@ -50,10 +61,13 @@ crud-api/
 ## 1. 初始化项目
 
 ```bash
-npx vextjs create crud-api
+npx vextjs create crud-api --template api --skip-install
 cd crud-api
 pnpm install
+pnpm add -D vitest
 ```
+
+沿用 API 模板的 package.json、tsconfig；scripts 增加 `"test": "vitest run"` 和 `"typecheck": "tsc --noEmit"`，将下文文件分别写到注释标明的位置。此变体使用本地 Map，每个进程独立且重启复原，不依赖 Mongo，也没有跨进程唯一约束或持久化保证。
 
 ## 2. 配置
 
@@ -92,7 +106,7 @@ export default {
       bearerAuth: {
         type: "http",
         scheme: "bearer",
-        bearerFormat: "JWT",
+        bearerFormat: "demo-token",
         description: "使用 Bearer Token 认证",
       },
     },
@@ -115,21 +129,16 @@ import { auth, defineMiddleware } from "vextjs";
 /**
  * 简易认证中间件
  *
- * 生产环境中应使用 JWT 库（如 jose）进行令牌验证。
- * 此处为了演示简化为静态 token 校验。
+ * 本地教学使用固定 token，不是 JWT，也不建立生产身份体系。
+ * 真实应用请接入认证服务，见安全与认证指南。
  */
 export default defineMiddleware(
   auth({
     provider: "crud-demo",
     verify(token) {
-      if (!token || token === "undefined") return false;
-
-      // 简单示例：token 格式为 "user-{id}-{role}"
-      // 生产代码应使用 jose/jsonwebtoken 校验真实 JWT。
-      const parts = token.split("-");
-      if (parts.length < 3 || parts[0] !== "user") return false;
-
-      const [, userId, role] = parts;
+      if (token !== "user-1-admin") return false;
+      const userId = "1";
+      const role = "admin";
       return {
         subject: `user:${userId}`,
         userId,
@@ -314,7 +323,9 @@ export default class UserService {
 
     const updated: User = {
       ...user,
-      ...data,
+      ...Object.fromEntries(
+        Object.entries(data).filter(([, value]) => value !== undefined),
+      ),
       updatedAt: new Date().toISOString(),
     };
 
@@ -398,8 +409,8 @@ export default defineRoutes((app) => {
     {
       validate: {
         query: {
-          page: "number:1-", // 页码，最小值 1
-          limit: "number:1-100", // 每页条数，1-100
+          page: "integer:1-!", // 必填整数页码，最小值 1
+          limit: "integer:1-100!", // 必填整数，每页条数1-100
           keyword: "string?", // 搜索关键词（可选）
         },
       },
@@ -441,7 +452,7 @@ export default defineRoutes((app) => {
     "/:id",
     {
       validate: {
-        param: { id: "string:1-" },
+        param: { id: "string:1-!" },
       },
       docs: {
         summary: "获取用户详情",
@@ -471,8 +482,8 @@ export default defineRoutes((app) => {
     {
       validate: {
         body: {
-          name: "string:1-50", // 必填，长度 1-50
-          email: "email", // 必填，邮箱格式
+          name: "string:1-50!", // 必填，长度1-50
+          email: "email!", // 必填，邮箱格式
           age: "number:0-200?", // 可选，0-200
           role: "enum:admin,user?", // 可选，枚举值
         },
@@ -520,7 +531,7 @@ export default defineRoutes((app) => {
     "/:id",
     {
       validate: {
-        param: { id: "string:1-" },
+        param: { id: "string:1-!" },
         body: {
           name: "string:1-50?", // 可选
           email: "email?", // 可选
@@ -563,7 +574,7 @@ export default defineRoutes((app) => {
     "/:id",
     {
       validate: {
-        param: { id: "string:1-" },
+        param: { id: "string:1-!" },
       },
       docs: {
         summary: "删除用户",
@@ -592,17 +603,9 @@ export default defineRoutes((app) => {
 });
 ```
 
-## 6. 入口文件
+## 6. 启动入口
 
-```typescript
-// src/index.ts
-import { bootstrap } from "vextjs";
-
-bootstrap().catch((err) => {
-  console.error("启动失败:", err);
-  process.exit(1);
-});
-```
+使用模板的 `vext dev/build/start` scripts，由 CLI 管理入口，无需创建额外 `src/index.ts`。执行 `pnpm typecheck`、`pnpm build` 后可 `pnpm start`；服务类型生成与手动扩展方式见[服务](../guide/services)。
 
 ## 7. 测试
 
@@ -617,7 +620,9 @@ describe("用户 CRUD", () => {
   const AUTH_TOKEN = "user-1-admin"; // 模拟管理员 token
 
   beforeEach(async () => {
-    testApp = await createTestApp();
+    testApp = await createTestApp({
+      config: { middlewares: [{ name: "auth" }] },
+    });
   });
 
   afterEach(async () => {
@@ -832,6 +837,8 @@ describe("用户 CRUD", () => {
 
 ## 8. 运行
 
+`createTestApp` 不读取项目 default.ts，所以上面的测试显式传入中间件白名单。本页源码路由直接由 Node import，测试需 Node.js 22.18+ 或同等默认类型擦除能力；仅安装 Vitest 不会让 Node20自动加载TS路由。其他加载器/编译产物方案见[测试指南](../guide/testing)。测试中的每个 app 创建独立 UserService 和种子，不会写入仓库 Todo 示例的 Mongo 数据库。还应验证缺少必填 name/email、分页缺失/小数、无效 token 与更新未提供字段保持原值。
+
 ### 开发模式
 
 ```bash
@@ -892,7 +899,7 @@ curl -X DELETE http://localhost:3000/users/2 \
 curl -X POST http://localhost:3000/users \
   -H "Content-Type: application/json" \
   -d '{"name":"Test","email":"test@example.com"}'
-# → 401 {"code":-1,"message":"未提供认证令牌","requestId":"..."}
+# → 401 {"code":"AUTH_REQUIRED","message":"Authentication required","requestId":"..."}
 
 # 参数校验失败
 curl -X POST http://localhost:3000/users \
@@ -928,7 +935,7 @@ handler 中 app.throw(404, '用户不存在')
   → 抛出 HttpError
   → error-handler 中间件捕获
   → 转换为标准错误响应
-  → {"code":-1,"message":"用户不存在","requestId":"..."}
+  → {"code":404,"message":"用户不存在","requestId":"..."}
   → HTTP 404
 ```
 
@@ -942,11 +949,11 @@ handler 中 app.throw(404, '用户不存在')
 | **Auth 保护**        | `auth()` 填充 `req.auth`，`RouteOptions.auth` 保护路由并驱动 OpenAPI security |
 | **声明式校验**       | `validate` 使用 schema-dsl DSL 语法，自动类型转换                             |
 | **统一错误处理**     | `app.throw()` 抛出错误，框架自动转为标准格式                                  |
-| **出口包装**         | 所有成功响应自动包装为 `{ code: 0, data, requestId }`                         |
+| **出口包装**         | 本例JSON成功响应包装为 `{ code: 0, data, requestId }`；204没有body            |
 | **OpenAPI 自动生成** | 从 `validate` 和 `docs` 配置自动生成 API 文档                                 |
 
 ## 下一步
 
 - 📖 [permission-core Auth 接入](/zh/examples/permission-core-auth) — 将细粒度授权内核接入 Vext Auth
-- 📖 [测试](/guide/testing) — 深入了解 VextJS 测试工具的高级用法
-- 📖 [OpenAPI 文档](/guide/openapi) — 深入了解 OpenAPI 自动生成的配置选项
+- [测试](../guide/testing) — 深入了解 VextJS 测试工具的高级用法
+- [OpenAPI 文档](../guide/openapi) — 深入了解 OpenAPI 自动生成的配置选项

@@ -71,6 +71,41 @@ function createRes() {
 }
 
 describe("route multipart middleware", () => {
+  it.each(["global", "route"])(
+    "parses files without filling ordinary body fields through the %s parser",
+    async (level) => {
+      const boundary = "----vext-test-boundary";
+      const textPart = [
+        `--${boundary}`,
+        'Content-Disposition: form-data; name="title"',
+        "",
+        "Example title",
+        "",
+      ].join("\r\n");
+      const req = createReq({
+        rawBody: Buffer.concat([
+          Buffer.from(textPart),
+          createMultipartBody(boundary, "avatar"),
+        ]),
+      });
+      const middleware =
+        level === "global"
+          ? createBodyParserMiddleware({ enabled: true }, { enabled: true })
+          : createRouteMultipartMiddleware({ enabled: true });
+      const res = createRes();
+      const next = vi.fn();
+
+      await middleware(req, res as any, next);
+
+      expect(req.files).toEqual([
+        expect.objectContaining({ fieldname: "avatar", size: 5 }),
+      ]);
+      expect(req.body).toBeUndefined();
+      expect(res.rawJson).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it("skips global multipart parsing when the route disables multipart", async () => {
     const middleware = createBodyParserMiddleware(
       { enabled: true },

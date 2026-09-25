@@ -1,44 +1,76 @@
 # Adapter 架构
 
-VextJS 使用 **Adapter 架构**替换底层 HTTP 处理层。基于 VextJS `req` / `res` 编写的路由与服务通常可以保持原有接口；底层框架专属的中间件、插件和能力仍需核对适配边界。选择 Adapter 本身只需修改配置字段。
-
-## 工作原理
-
-```
-用户代码（路由 / 中间件 / 服务）
-        ↕  VextRequest / VextResponse（框架统一接口）
-    Adapter 层（适配器）
-        ↕  底层框架原生对象
-  HTTP Server（Node.js）
-```
-
-Adapter 负责：
-
-1. **启动 HTTP 服务** — 使用底层框架创建服务器并监听端口
-2. **请求转换** — 将底层框架的原生请求对象转换为 `VextRequest`
-3. **响应转换** — 将 `VextResponse` 的操作映射到底层框架的响应对象
-4. **路由注册** — 将框架收集到的路由注册到底层路由系统
-5. **中间件注册** — 将全局中间件注册到底层框架
+VextJS 使用 **Adapter 架构**替换底层 HTTP 处理层。基于 VextJS `req` / `res` 编写的路由与服务通常可以保持原有接口；底层框架专属的中间件、插件和能力仍需核对适配边界。本页先完成一次安装、配置、启动和切换验证，再解释实现自定义适配器需要满足的接口。
 
 ## 内置 Adapter
 
 VextJS 内置 5 种 Adapter，覆盖主流 Node.js HTTP 框架：
 
-| Adapter            | 底层框架                           | 特点                             | 适用场景               | 额外依赖  |
-| ------------------ | ---------------------------------- | -------------------------------- | ---------------------- | --------- |
-| **Native**（默认） | `http.createServer` + `route-core` | 零第三方 HTTP 框架依赖，默认路径 | 新项目、希望减少依赖   | 无        |
-| **Hono**           | Hono                               | Web Standards API，轻量          | Node.js 全栈 HTTP 服务 | `hono`    |
-| **Fastify**        | Fastify                            | 插件生态、JSON 序列化能力        | 需要 Fastify 能力      | `fastify` |
-| **Express**        | Express v5                         | 成熟的中间件生态                 | 从 Express 迁移        | `express` |
-| **Koa**            | Koa v3                             | 轻量中间件模型                   | 团队已有 Koa 经验      | `koa`     |
+| Adapter            | 底层实现                     | 当前项目声明的 peer 范围            | 需要额外安装                    |
+| ------------------ | ---------------------------- | ----------------------------------- | ------------------------------- |
+| **Native**（默认） | Node.js HTTP + `route-core`  | 无额外 HTTP 框架 peer               | 无；`route-core` 随 VextJS 安装 |
+| **Hono**           | Hono 路由与 Node.js 请求桥接 | `hono ^4.0.0`                       | `hono`                          |
+| **Fastify**        | Fastify 路由与 HTTP 服务     | `fastify ^5.0.0`                    | `fastify`                       |
+| **Express**        | Express 路由与 Node.js HTTP  | `express ^5.0.0`                    | `express`                       |
+| **Koa**            | Koa + `@koa/router`          | `koa ^3.0.0`、`@koa/router ^15.6.0` | `koa @koa/router`               |
+
+以上范围来自当前 VextJS 包的依赖声明；升级时以实际安装版本的 peer 要求为准。选中其他 Adapter 不会自动开放该框架的原生插件注册接口。
 
 ### 性能对比
 
 本页不保存独立数字快照，避免旧环境与当前结果形成两套口径。Raw Native 与 Raw Fastify 的领先项会随场景和 handler 形态变化；五个 adapter 的百分比也只表示 Vext 相对各自 Raw 基线的组合开销，不是框架总排名。
 
-请在[性能基准](/benchmark)查看唯一的当前结果、测试方法、限制和复现命令。选择 adapter 后，仍应使用实际中间件、认证、日志和 I/O 负载验证你的目标。
+请在[性能基准](/zh/benchmark)查看唯一的当前结果、测试方法、限制和复现命令。选择 adapter 后，仍应使用实际中间件、认证、日志和 I/O 负载验证你的目标。
 
 ## 使用方法
+
+### 先跑通一条路由
+
+前置条件：已按[快速开始](/zh/guide/quick-start#方式二手动创建)准备 Node.js、ESM package.json、TypeScript 配置及 dev/build/start scripts。以下在 API-only 项目中验证，不需要数据库或外部服务；已有项目请合并配置，并避开同名路由。
+
+```typescript
+// src/config/default.ts
+export default {
+  port: 3000,
+  host: "127.0.0.1",
+  adapter: "native",
+  frontend: { enabled: false },
+};
+```
+
+```typescript
+// src/routes/adapter-demo.ts
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  app.get("/:id", {}, async (req, res) => {
+    res.json({ id: req.params.id, adapter: req.app.adapter.name });
+  });
+  app.post(
+    "/",
+    { validate: { body: { name: "string!" } } },
+    async (req, res) => {
+      const { name } = req.valid<{ name: string }>("body");
+      res.json({ name, adapter: req.app.adapter.name }, 201);
+    },
+  );
+});
+```
+
+文件名 `adapter-demo.ts` 会生成 `/adapter-demo` 前缀，文件内只写 `/:id` 和 `/`，避免重复前缀。
+
+运行 `npm run dev`，在另一个终端执行（PowerShell 使用 `curl.exe`）：
+
+```bash
+curl -i http://127.0.0.1:3000/adapter-demo/u-1
+curl -i -X POST http://127.0.0.1:3000/adapter-demo -H 'Content-Type: application/json' --data '{"name":"Alice"}'
+curl -i -X POST http://127.0.0.1:3000/adapter-demo -H 'Content-Type: application/json' --data '{}'
+curl -i http://127.0.0.1:3000/adapter-demo-missing
+```
+
+预期分别为：200 且 `data` 为 `{ "id": "u-1", "adapter": "native" }`；201 且 `data.name` 为 `Alice`；422 校验错误；404 未匹配路由。成功响应默认还有 `code: 0` 与 `requestId`。
+
+先用 Ctrl+C 停止 dev，再执行 `npm run build` 和 `npm start`，重复四个请求，验证生产产物。结束后停止服务释放端口。下方各配置示例只展示 Adapter 选项，合并到当前配置，保留其他字段。
 
 ### Native Adapter（默认）
 
@@ -125,7 +157,7 @@ export default {
 };
 ```
 
-Fastify 是高性能的 Node.js Web 框架，拥有丰富的插件生态和内置的 JSON Schema 校验 + 序列化优化。
+VextJS 使用 Fastify 承载路由与 HTTP 服务，校验和 JSON 序列化由 VextJS 自己的链路处理。`res.json()` 先经 VextJS 序列化后发送，不会因选择 Fastify 就自动改用 Fastify 的 route schema 或插件。需要设置选项时使用工厂，例如 `fastifyAdapter({ caseSensitive: true })`；传入的是 `FastifyAdapterOptions`，不是任意 Fastify 配置。
 
 ### Express Adapter
 
@@ -155,16 +187,16 @@ export default {
 };
 ```
 
-Express 是 Node.js 生态中最成熟的 Web 框架，拥有最大的中间件生态。VextJS 支持 Express v5。适合从现有 Express 项目迁移。
+当前实现基于 Express v5。迁移时可复用与 HTTP 对象无关的业务逻辑；原 Express 路由与 `(req, res, next)` 中间件需要按 VextJS 接口调整。工厂的 `ExpressAdapterOptions` 提供 `bodyLimit` 字符串选项，不等于接受整个 Express 应用实例。
 
 :::tip Express v5
-VextJS 的 Express Adapter 基于 Express v5。如果你使用的是 Express v4，需要先升级。v5 相比 v4 主要变化包括：路由处理支持 `async`/`await`、改进的 `req.query` 解析等。
+现有 Express v4 依赖不满足本 Adapter 的 peer 范围。请先核对应用依赖与迁移影响，再安装符合要求的版本；不能仅更换 `adapter` 字符串就认为迁移完成。
 :::
 
 ### Koa Adapter
 
 ```bash
-npm install koa
+npm install koa @koa/router
 ```
 
 **推荐方式（字符串标识）：**
@@ -189,24 +221,24 @@ export default {
 };
 ```
 
-Koa 是 Express 团队打造的下一代 Web 框架，以轻量和优雅著称。VextJS 支持 Koa v3。
+当前实现基于 Koa v3，由 `@koa/router` 负责路由匹配，两个包都需要安装。`KoaAdapterOptions` 提供 `bodyLimit` 字符串选项；VextJS 中间件接收统一请求/响应对象，不接收 Koa `ctx`。
 
 ## 切换 Adapter
 
-切换 Adapter 只需要修改 `src/config/default.ts` 中的 `adapter` 字段：
+先停止当前服务，安装目标 peer 包（Hono 为 `npm install hono`），再修改 `src/config/default.ts`：
 
-```typescript
+```diff
 // 从 Native 切换到 Hono
-- // adapter 默认 native
-+ import { honoAdapter } from 'vextjs/adapters/hono';
-
   export default {
-+   adapter: honoAdapter(),
+-   adapter: "native",
++   adapter: "hono",
     port: 3000,
   };
 ```
 
-基于 `VextRequest` / `VextResponse` 的路由 handler 和服务代码通常可以直接复用。底层原生中间件、插件或框架专属行为并非完全解耦，切换前应按目标 Adapter 的集成说明复核。
+重新执行 `npm run dev` 与四个请求：成功响应中的 `data.adapter` 应变为 `hono`，状态码、参数和校验结果保持一致。停止 dev 后重新 build/start 再验证，避免生产仍运行旧产物。其余 Adapter 按依赖表安装并更换字符串，用同样步骤核验。
+
+基于 `VextRequest` / `VextResponse` 的路由 handler 和服务代码通常可以复用。迁移还应覆盖项目实际使用的大小写/尾斜杠、查询参数、上传、流式响应、取消和错误路径；四个入门请求不能证明整个业务迁移已完成。
 
 ## 如何选择 Adapter
 
@@ -219,27 +251,45 @@ Koa 是 Express 团队打造的下一代 Web 框架，以轻量和优雅著称�
 
 ### 选择 Hono
 
-- 需要使用 Hono 生态的中间件或工具
-- 希望在 Node.js 服务中复用 Hono 路由能力；未来 Edge / Serverless 部署需等待专门适配器
-- 偏好 Web Standards API 风格
+- 团队了解 Hono，希望采用其路由与 Web Request/Response 桥接实现
+- 部署目标是受支持的 Node.js 环境
+- 已验证所需功能可通过 VextJS 公共接口使用；原生 Hono 中间件另行适配
 
 ### 选择 Fastify
 
-- 需要使用 Fastify 丰富的插件生态
-- 大型项目，看重 Fastify 的成熟度和社区支持
-- 需要 `fast-json-stringify` 序列化优化
+- 需要使用 Fastify 的路由实现或本 Adapter 暴露的选项
+- 团队已有 Fastify 运维和排障经验
+- 已验证业务负载；不要把 Fastify 原生插件或自动序列化当成切换后自动获得的能力
 
 ### 选择 Express
 
 - 从现有 Express 项目迁移到 VextJS
-- 需要复用大量 Express 中间件
+- 愿意将原生 HTTP 中间件转换为 VextJS 中间件
 - 团队对 Express 最熟悉
 
 ### 选择 Koa
 
-- 偏好 Koa 的轻量设计
-- 中小型项目
-- 需要使用 Koa 特定的中间件
+- 团队已有 Koa 与 `@koa/router` 的使用经验
+- 接受安装两个 peer，并已经验证路由匹配行为
+- 已为需要的原生 Koa 中间件安排适配
+
+## 工作原理
+
+```
+用户代码（路由 / 中间件 / 服务）
+        ↕  VextRequest / VextResponse（框架统一接口）
+    Adapter 层（适配器）
+        ↕  底层框架原生对象
+  HTTP Server（Node.js）
+```
+
+Adapter 负责：
+
+1. **启动 HTTP 服务** — 使用底层框架创建服务器并监听端口
+2. **请求转换** — 将底层框架的原生请求对象转换为 `VextRequest`
+3. **响应转换** — 将 `VextResponse` 的操作映射到底层框架的响应对象
+4. **路由注册** — 将框架收集到的路由注册到底层路由系统
+5. **中间件执行** — 收集全局中间件，在路由执行时按 VextJS 约定组合执行链
 
 ## VextAdapter 接口
 
@@ -247,6 +297,16 @@ Koa 是 Express 团队打造的下一代 Web 框架，以轻量和优雅著称�
 
 ```typescript
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type {
+  VextAdapter as PublicAdapter,
+  VextMiddleware,
+  VextErrorMiddleware,
+  VextServerHandle,
+  RouteOptions,
+} from "vextjs";
+
+// 从公开接口提取 listen 选项类型，不依赖内部文件路径。
+type VextAdapterListenOptions = Parameters<PublicAdapter["listen"]>[2];
 
 interface VextAdapter {
   /** adapter 名称标识 */
@@ -285,82 +345,56 @@ OpenAPI / Docs 路由由框架通过 `registerRoute()` 注册，Adapter 不再�
 
 ### 自定义 Adapter
 
-如果内置的 5 种 Adapter 不能满足需求，你可以实现自定义 Adapter：
+配置支持内置名称、同步工厂 `(app: VextApp) => VextAdapter`，或已构造的 `VextAdapter` 对象。工厂会在应用初始化时获得当前 app；解析器只检查名称和必需方法是否存在，不会替你证明中间件、错误处理或关闭语义正确。
+
+如果只需在现有实现外增加逻辑，可以先组合内置 Adapter。下面是可运行的委托示例，保留 Native 的全部行为，只增加名称标识；它不代表已经实现另一套 HTTP 框架：
+
+```typescript
+// src/adapters/custom.ts
+import { nativeAdapter } from "vextjs/adapters/native";
+import type { VextAdapter, VextApp } from "vextjs";
+
+export function myCustomAdapter(): (app: VextApp) => VextAdapter {
+  return (app) => {
+    const base = nativeAdapter()(app);
+    return {
+      name: "my-custom",
+      registerMiddleware: (middleware) => base.registerMiddleware(middleware),
+      registerRoute: (method, path, chain, options) =>
+        base.registerRoute(method, path, chain, options),
+      registerErrorHandler: (handler) => base.registerErrorHandler(handler),
+      registerNotFound: (handler) => base.registerNotFound(handler),
+      buildHandler: () => base.buildHandler(),
+      listen: (port, host, options) => base.listen(port, host, options),
+    };
+  };
+}
+```
+
+将原配置的 adapter 字段改为该工厂，保留其他字段：
 
 ```typescript
 // src/config/default.ts
-import { createServer } from "node:http";
-import type { VextAdapter, VextApp } from "vextjs";
-
-function myCustomAdapter(): (app: VextApp) => VextAdapter {
-  return (app) => {
-    const adapter: VextAdapter = {
-      name: "my-custom",
-
-      registerMiddleware(middleware) {
-        // 注册全局中间件
-      },
-
-      registerRoute(method, path, chain, options) {
-        // 注册路由
-      },
-
-      registerErrorHandler(handler) {
-        // 注册错误处理
-      },
-
-      registerNotFound(handler) {
-        // 注册 404 处理
-      },
-
-      buildHandler() {
-        return (req, res) => {
-          // 将 Node.js req/res 转换为底层框架请求，并执行中间件链
-          res.statusCode = 501;
-          res.end("custom adapter bridge not implemented");
-        };
-      },
-
-      async listen(port, host = "0.0.0.0") {
-        const server = createServer(adapter.buildHandler());
-
-        await new Promise<void>((resolve) => {
-          server.listen(port, host, resolve);
-        });
-
-        const address = server.address();
-        const actualPort =
-          typeof address === "object" && address ? address.port : port;
-
-        return {
-          port: actualPort,
-          host,
-          close: () =>
-            new Promise<void>((resolve, reject) => {
-              server.close((error) => {
-                if (error) reject(error);
-                else resolve();
-              });
-            }),
-        };
-      },
-    };
-
-    return adapter;
-  };
-}
+import { myCustomAdapter } from "../adapters/custom.js";
 
 export default {
-  adapter: myCustomAdapter(),
   port: 3000,
+  host: "127.0.0.1",
+  adapter: myCustomAdapter(),
+  frontend: { enabled: false },
 };
 ```
 
-实现自定义 Adapter 时，核心工作是将 `VextRequest` / `VextResponse` 与底层框架的原生对象进行双向转换，并正确执行中间件链。
+重复上方 dev/build/start 与四个请求，成功响应中的 `data.adapter` 应为 `my-custom`。真正接入另一种 HTTP 实现时，需要自行实现以下契约，不能把注册方法留空或让所有请求固定返回 501：
+
+- 将请求转换为 `VextRequest`，补齐路由模板、参数、原始正文读取与生命周期信号；将响应转换为框架需要的 `VextResponse`。
+- 保留全局中间件与路由 chain 的顺序、`await next()` 回程、错误和 404 处理，以及传入的 `RouteOptions`。
+- `buildHandler()` 返回 Node.js 请求处理函数且不监听端口，供 dev handler 替换使用；`listen()` 处理监听失败、server 选项并返回实际端口与可等待的 `close()`。
+- 以真实 HTTP 验证正常/错误/校验、头与 Cookie、上传/流/断连以及关闭；测试开发和生产两条启动路径。前端渲染由框架安装，不能凭接口形状就宣布支持所有前端能力。
 
 ## 请求/响应转换
 
-无论使用哪种 Adapter，用户代码始终操作统一的 `VextRequest` 和 `VextResponse` 接口。
+无论使用哪种 Adapter，业务代码优先操作统一接口。下面是主要成员摘要，省略了完整泛型及内部响应钩子；准确的公共调用签名和行为见[请求与响应](/zh/api/context)。不要把摘要复制成自定义 Adapter 的完整实现。
 
 ### VextRequest（统一请求对象）
 
@@ -375,7 +409,7 @@ import type {
 
 interface VextRequest {
   method: string; // HTTP 方法
-  url: string; // 完整 URL
+  url: string; // 原始请求 URL（通常为含查询串的相对路径）
   path: string; // 路径部分
   route: string; // 当前匹配的路由模板，404 时为空字符串
   query: Record<string, string>; // 查询参数
@@ -384,15 +418,16 @@ interface VextRequest {
   headers: Record<string, string | undefined>; // 请求头（小写 key）
   cookies: VextCookieJar; // 已解析 Cookie
   cookie(name: string): string | undefined; // 读取单个 Cookie
-  csrfToken(): string; // 当前请求的 CSRF token
+  csrfToken(): string; // CSRF 中间件生效后可用
   auth: VextAuthContext; // 认证上下文
-  requestId: string; // 请求唯一标识
+  requestId: string; // requestId 中间件填充；禁用时不保证非空
+  signal: AbortSignal; // 请求超时或提前断连时取消
   ip: string; // 客户端 IP
   protocol: "http" | "https"; // 协议
   app: VextApp; // 应用实例
   valid<T>(location: "query" | "body" | "param" | "header" | "cookie"): T;
-  onClose(handler: () => void): void; // 连接关闭钩子
-  files?: ParsedFile[]; // 已解析上传文件（由 multipart 插件填充）
+  onClose(handler: () => void): void; // 正常响应结束或提前断连时清理
+  files?: ParsedFile[]; // 内置 multipart 或自定义上传插件填充
   session?: VextSession; // Session 启用后可用
   _getRawBody(maxBytes?: number): Promise<string>; // 原始请求体文本
   _getRawBodyBuffer(maxBytes?: number): Promise<Buffer>; // 原始请求体字节
@@ -443,13 +478,13 @@ interface VextResponse {
 
 这种设计意味着：
 
-- **切换 Adapter 不影响任何业务代码**
-- **中间件在所有 Adapter 下行为一致**
-- **测试代码与 Adapter 无关**
+- 公共接口为路由与中间件提供复用基础。
+- 每个 Adapter 都要实现框架的请求、响应与中间件契约；原生框架的对象和接口不属于该契约。
+- 纯业务单元测试通常可复用，HTTP 集成测试仍应在实际选用的 Adapter 上执行。
 
 ## 按环境切换 Adapter
 
-你可以在不同环境使用不同的 Adapter：
+配置加载器支持按环境覆盖 Adapter。只有明确需要并分别验证过两种实现时才这样设置；通常开发与生产保持同一 Adapter 更便于复现问题。下面仅展示覆盖机制，需提前安装 Hono：
 
 ```typescript
 // src/config/default.ts — 默认使用 Native
@@ -460,7 +495,7 @@ export default {
 ```
 
 ```typescript
-// src/config/development.ts — 开发环境使用 Hono（利用其 DevTools）
+// src/config/development.ts — 开发环境使用 Hono
 import { honoAdapter } from "vextjs/adapters/hono";
 
 export default {
@@ -479,7 +514,7 @@ export default {
 
 ### 切换 Adapter 后需要修改代码吗？
 
-不需要。所有业务代码（路由、中间件、服务、插件）操作的都是 `VextRequest` / `VextResponse` 接口，与底层 Adapter 完全解耦。
+只使用公共接口的代码通常可以复用。读取原生对象、依赖框架专属插件或路由细节的代码需要调整，并在目标 Adapter 上回归；不能承诺所有业务代码都无需修改。
 
 ### 可以在运行时动态切换 Adapter 吗？
 
@@ -487,21 +522,32 @@ export default {
 
 ### 性能差异主要来自哪里？
 
-性能差异同时来自底层框架的 HTTP 解析、路由匹配、序列化，以及 Vext 与各 adapter 的集成路径。当前实测中，各 adapter 相对 Raw 基线的差距并不相同，也没有一个实现对所有场景恒定领先。请结合[性能基准](/benchmark)的口径，并用你的实际中间件和 I/O 负载复测。
+性能差异同时来自底层框架的 HTTP 解析、路由匹配、序列化，以及 Vext 与各 adapter 的集成路径。当前实测中，各 adapter 相对 Raw 基线的差距并不相同，也没有一个实现对所有场景恒定领先。请结合[性能基准](/zh/benchmark)的口径，并用你的实际中间件和 I/O 负载复测。
 
 ### 底层框架的原生中间件能用吗？
 
-不建议直接使用。VextJS 有自己的中间件系统（`defineMiddleware` / `defineMiddlewareFactory`），底层框架的原生中间件签名不同，无法直接兼容。如果需要使用某个底层框架的中间件功能，建议封装为 VextJS 中间件或插件。
+不能直接作为 VextJS 中间件传入。`defineMiddleware` / `defineMiddlewareFactory` 使用统一请求、响应与 next，签名及生命周期与原生框架不同。可独立于 HTTP 对象的逻辑可以封装进 VextJS 中间件或插件；依赖原生实例的扩展需要实现桥接或自定义 Adapter，仅套一层函数不能保证兼容。
 
 ### peer dependencies 报警告怎么办？
 
-VextJS 将所有底层框架声明为可选的 `peerDependencies`。你只需安装实际使用的 Adapter 对应的框架包。例如 Hono Adapter 只需要 `hono`，其他未使用框架的 peer dependency 警告可以安全忽略。
+这里的可选表示未选用该 Adapter 时无需安装；选用后相应 peer 必须存在且兼容。Hono 需要 `hono`，Koa 同时需要 `koa` 与 `@koa/router`。请区分未使用的可选包、实际选中包缺失和版本不兼容，不要统一忽略安装警告。
 
 当前 Hono Adapter 是 Node.js 运行时能力：它通过 Node.js HTTP server 接收请求，并把请求桥接给 Hono 的 Web `Request` / `Response` 处理流程。Edge / Serverless 运行时不应使用这组 Node adapter 安装说明作为支持声明。
 
+### 启动或切换失败如何定位？
+
+| 现象                                     | 检查与修复                                                    | 复验                                 |
+| ---------------------------------------- | ------------------------------------------------------------- | ------------------------------------ |
+| 提示 unknown adapter                     | 使用依赖表中的小写名称，或同步工厂/完整对象                   | 重启后检查成功响应中的 adapter 名称  |
+| 提示 requires package                    | 在应用 package.json 所在目录安装对应 peer；Koa 检查两个包     | `npm ls` 检查相应依赖，再启动        |
+| 提示 incompatible / failed while loading | 查看原始 cause、peer 范围及包入口；后者也可能是适配器内部错误 | 修复具体原因，不能用重复安装代替诊断 |
+| 自定义适配器提示缺少成员                 | 按 `VextAdapter` 补齐名称和六个方法                           | 类型检查、dev 和生产 HTTP 测试       |
+| 修改后响应仍显示旧名称                   | 核对环境配置覆盖、运行目录和旧进程，重新 build/start          | 检查四个请求及实际端口               |
+| EADDRINUSE                               | 停止自己先前启动的实例，或调整端口和请求 URL                  | 确认新实例成功监听后重试             |
+
 ## 下一步
 
-- 了解 [配置](/guide/configuration) 中 Adapter 相关的配置项
-- 查看 [OpenAPI 文档](/guide/openapi) 在不同 Adapter 下的表现
-- 探索 [Cluster 多进程](/guide/cluster) 与 Adapter 的配合
-- 阅读 [性能基准](/benchmark) 相关的基准测试数据
+- 了解 [配置](/zh/guide/configuration) 中 Adapter 相关的配置项
+- 查看 [OpenAPI 文档](/zh/guide/openapi) 在不同 Adapter 下的表现
+- 探索 [Cluster 多进程](/zh/guide/cluster) 与 Adapter 的配合
+- 阅读 [性能基准](/zh/benchmark) 相关的基准测试数据

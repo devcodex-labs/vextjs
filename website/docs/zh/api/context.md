@@ -2,16 +2,18 @@
 
 本页详细介绍 VextJS 的请求对象 `VextRequest` 和响应对象 `VextResponse` 的完整 API。
 
+初次编写接口可先阅读[路由指南](/zh/guide/routing)；本页按成员查阅。未标注文件路径的 `app.get/post/...` 示例均放在 `defineRoutes((app) => { ... })` 内，`req`/`res` 片段放在相应 handler 或中间件中；它们不是独立入口文件。下方[标准 CRUD 响应](#标准-crud-响应)提供完整路由与配置，用于验证组合用法。
+
 ## VextRequest
 
-`VextRequest` 是框架统一的请求对象接口。由各 Adapter 负责将底层框架的原始请求转换为此接口，确保切换 Adapter 时业务代码无需改动。
+`VextRequest` 是框架统一的请求对象接口，由各 Adapter 将底层请求转换而来。公共成员便于复用业务代码；依赖底层 TLS、原始请求或扩展字段时，仍需核对对应 Adapter 的行为。
 
 ### 公开成员一览
 
 | 属性          | 类型                                    | 说明                                                                                                  |
 | ------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `method`      | `string`                                | HTTP 方法（大写，如 `'GET'`、`'POST'`）                                                               |
-| `url`         | `string`                                | 完整请求 URL                                                                                          |
+| `url`         | `string`                                | 请求路径与查询字符串，不保证包含协议和主机                                                            |
 | `path`        | `string`                                | 路径部分（不含 query string）                                                                         |
 | `route`       | `string`                                | 当前请求匹配的路由模板（如 `/users/:id`）；静态路由与 `path` 相同；未匹配路由（404）时为空字符串 `''` |
 | `params`      | `Record<string, string>`                | 路径动态参数                                                                                          |
@@ -30,6 +32,8 @@
 | `session`     | `VextSession \| undefined`              | 启用 session 中间件后的 Session 状态                                                                  |
 | `t`           | `Function \| undefined`                 | i18n 翻译函数（插件注入）                                                                             |
 | `files`       | `ParsedFile[] \| undefined`             | 文件上传列表（由内置 multipart 解析或自定义上传插件填充）                                             |
+| `valid()`     | 按位置/Schema推导                       | 读取已执行校验的位置；未声明或未执行时为undefined                                                     |
+| `onClose()`   | `(handler: () => void) => void`         | 响应完成或连接提前断开时清理资源                                                                      |
 
 ---
 
@@ -47,7 +51,7 @@ app.get("/info", async (req, res) => {
 
 ### `url`
 
-完整的请求 URL，包含路径和查询字符串。
+请求路径与查询字符串，例如 `/users?page=1`；不要将它当作带协议、主机名的绝对 URL。
 
 ```typescript
 // 请求: GET /users?page=1&limit=10
@@ -113,7 +117,7 @@ app.get("/users/:id/posts/:postId", async (req, res) => {
 
 ### `query`
 
-URL 查询参数，已解析为键值对。
+URL 查询参数，已解析为键值对。重复键取第一个值，例如 `?tag=a&tag=b` 得到 `{ tag: "a" }`，不会自动得到数组；需要重复值时可基于 `req.url` 的查询部分显式解析。
 
 ```typescript
 // 请求: GET /search?keyword=hello&page=2
@@ -136,6 +140,8 @@ app.get("/search", async (req, res) => {
 - `body-parser` 中间件执行前，`body` 为 `undefined`
 - 支持 `application/json` 和 `application/x-www-form-urlencoded` 格式
 - 可通过 `config.bodyParser.maxBodySize` 限制请求体大小
+
+JSON 解析成功不代表字段已通过 Schema 校验，业务处理应声明 `validate.body` 并读取 `req.valid("body")`。multipart 的文件通过 `req.files` 读取，启用条件及限制见下方[`files`](#files)和[上传指南](/zh/guide/uploads)。
 
 ```typescript
 app.post("/users", async (req, res) => {
@@ -163,7 +169,7 @@ app.get("/info", async (req, res) => {
 
 当前请求所属的 `VextApp` 应用实例。
 
-路由 handler 通常通过 `defineRoutes` 的闭包直接访问 `app`。但**路由级中间件**没有闭包，必须通过 `req.app` 访问框架能力：
+路由 handler 通常通过 `defineRoutes` 的闭包直接访问 `app`。独立定义的中间件可以通过 `req.app` 访问当前应用的框架能力：
 
 ```typescript
 // 在中间件中通过 req.app 访问
@@ -215,9 +221,11 @@ app.get("/report", async (req, res) => {
 
 生成规则：
 
-1. 优先从请求头 `x-request-id`（可配置）透传（适用于网关/代理已生成 ID 的场景）
-2. 请求头不存在时，框架自动生成 UUID v4
-3. 可通过 `config.requestId.generate` 或 `app.setRequestIdGenerator()` 自定义生成算法
+1. 默认启用；优先读取 `config.requestId.header` 指定的请求头（默认 `x-request-id`）。非空入站值优先于自定义生成器。
+2. 无入站值时，依次使用 `app.setRequestIdGenerator()` 设置的生成器、`config.requestId.generate`、默认 UUID v4。
+3. 最终值必须为1–512字符且不含控制字符，否则抛错；禁用 `requestId.enabled` 时为 `""`，不写入请求ID响应头。
+
+默认响应头也是 `x-request-id`，可用 `requestId.responseHeader` 调整。入站ID是关联标记，框架不保证客户端提供的值全局唯一。
 
 ```typescript
 app.get("/info", async (req, res) => {
@@ -247,7 +255,7 @@ app.get("/info", async (req, res) => {
 ```
 
 :::warning
-部署在反向代理（Nginx / 云负载均衡器）之后时，必须设置 `trustProxy: true`，否则 `req.ip` 始终是代理服务器的 IP。
+只有入口代理可信并正确覆盖转发头时才启用 `trustProxy: true`；否则客户端可影响这些值。关闭时读取直接连接端的地址。Hono 在无法取得 Node socket 地址时回退到 `127.0.0.1`；其他 Node Adapter 也对缺失地址使用该回退值。
 :::
 
 ---
@@ -256,10 +264,10 @@ app.get("/info", async (req, res) => {
 
 请求协议。
 
-| `config.trustProxy` | 行为                              |
-| ------------------- | --------------------------------- |
-| `false`（默认）     | 始终返回 `'http'`                 |
-| `true`              | 从 `X-Forwarded-Proto` 请求头读取 |
+| `config.trustProxy` | 行为                                                                                                      |
+| ------------------- | --------------------------------------------------------------------------------------------------------- |
+| `false`（默认）     | Native/Express/Fastify/Koa 检查 socket TLS 状态；加密连接为 `https`，否则为 `http`。当前 Hono 返回 `http` |
+| `true`              | `X-Forwarded-Proto` 的值恰为 `https` 时返回 `https`，否则为 `http`                                        |
 
 ```typescript
 app.get("/info", async (req, res) => {
@@ -359,7 +367,7 @@ app.put(
 ```
 
 :::warning
-必须在 `options.validate` 中配置了对应位置后才能调用 `req.valid()`。未配置的位置调用 `req.valid()` 返回 `undefined`。
+只有在 `options.validate` 中配置并已执行校验的位置才有结果；未配置或前置路由中间件尚未经过校验时返回 `undefined`。显式泛型只覆盖类型提示，不增加运行时校验。`header` 结果仅保留声明字段并使用小写键，其他位置的转换和额外字段行为取决于引擎。详见[参数校验](/zh/guide/validation)。
 :::
 
 ---
@@ -372,15 +380,19 @@ app.put(
 function onClose(handler: () => void): void;
 ```
 
-主要用于 SSE / WebSocket 等长连接场景，客户端断开时清理资源：
+主要用于 SSE 等流式响应场景，在响应完成或连接断开时清理资源：
 
 ```typescript
+import { Readable } from "node:stream";
+
 app.get("/sse", async (req, res) => {
-  const stream = createSSEStream();
+  const stream = new Readable({ read() {} });
+  const timer = setInterval(() => stream.push("data: ping\n\n"), 1000);
 
   req.onClose(() => {
-    stream.close();
-    console.log("客户端断开");
+    clearInterval(timer);
+    stream.destroy();
+    console.log("请求结束，已清理流资源");
   });
 
   res.stream(stream, "text/event-stream");
@@ -388,14 +400,14 @@ app.get("/sse", async (req, res) => {
 ```
 
 :::tip
-框架在 hooks 执行完毕后会自动清空 hooks 数组，无需手动移除，不会因闭包引用造成内存泄漏。
+回调类型是同步 `() => void`，框架不等待异步清理。框架在执行后释放已注册回调的引用；业务仍须在回调中清除自己创建的定时器、监听器等资源。
 :::
 
 ---
 
 ### `t(key, params?)`
 
-i18n 翻译函数，由 i18n 插件注入。未启用 i18n 时为 `undefined`。
+可选的请求翻译函数扩展。当前内置语言包加载及请求语言协商不会自动给 `req` 注入 `t`；只有应用插件明确设置后才能使用。不要仅凭配置了 `locale` 或存在 `src/locales` 就假定它可用，内置国际化流程见[国际化](/zh/guide/i18n)。
 
 ```typescript
 function t(key: string, params?: Record<string, unknown>): string;
@@ -405,11 +417,8 @@ function t(key: string, params?: Record<string, unknown>): string;
 
 ```typescript
 app.get("/greeting", async (req, res) => {
-  if (req.t) {
-    const message = req.t("welcome", { name: "Alice" });
-    // → '欢迎, Alice'（中文）或 'Welcome, Alice'（英文）
-    res.json({ message });
-  }
+  const message = req.t?.("welcome", { name: "Alice" }) ?? "Welcome, Alice";
+  res.json({ message });
 });
 ```
 
@@ -450,38 +459,67 @@ app.post(
 
 `multipart.files` 同时用于生成 OpenAPI `multipart/form-data` requestBody，并在运行时校验 required 文件字段。上传仍受 `maxFiles`、`maxFileSize` 和 `allowedMimeTypes` 限制。
 
+单文件上限不扩大整个请求体上限；例如允许10MB文件时，还须合理设置 `bodyParser.maxBodySize`，并考虑 multipart 边界的额外字节。
+
 ---
 
-### `_getRawBodyBuffer()`
+### `cookies` 与 `cookie(name)`
 
-> ℹ️ 此为框架内部方法，主要供插件开发者使用。
-
-```typescript
-_getRawBodyBuffer(): Promise<Buffer>
-```
-
-返回原始请求体的 `Buffer`。每个 adapter 保证只消费一次数据流，结果内部缓存。内置 multipart 会在框架内部使用它；插件作者也可以用它实现自定义上传解析器：
+`cookies` 是只读的 `Readonly<Record<string, string>>`，来自请求 Cookie 头，不需要启用 Session。重复名称取第一个值；值默认使用 `decodeURIComponent` 解码，解码失败保留原值；保留名称 `__proto__`、`constructor`、`prototype` 被丢弃。`cookie(name)` 返回单个值，缺失时为 `undefined`。
 
 ```typescript
-// 插件示例（使用 busboy 解析 multipart/form-data）
-import { createBusboy } from "busboy";
-import type { ParsedFile } from "vextjs";
-
-export default definePlugin(async (app) => {
-  app.use(async (req, _res, next) => {
-    const ct = req.headers["content-type"] ?? "";
-    if (!ct.startsWith("multipart/form-data")) {
-      await next();
-      return;
-    }
-
-    const rawBuffer = await req._getRawBodyBuffer();
-    const files: ParsedFile[] = await parseMultipart(rawBuffer, ct);
-    req.files = files;
-    await next();
-  });
+app.get("/preferences", async (req, res) => {
+  res.json({ theme: req.cookie("theme") ?? "system" });
 });
 ```
+
+这是输入读取，不执行身份认证。写入或清除浏览器Cookie使用响应侧的 `res.cookie()` / `res.clearCookie()`；完整流程见[Cookies与Session](/zh/guide/cookies-session)。
+
+### `csrfToken()`
+
+返回当前请求的CSRF token。只有启用 `config.csrf.enabled` 或已执行手动注册的 `csrf()` 中间件时可用，否则调用抛错。当前请求中重复读取使用同一token；生成时会设置 `Cache-Control: no-store`。自动模式会根据是否存在Session选择存储方式，签名Cookie模式需要配置secret；仅调用此函数不替代受保护请求的token提交与校验。
+
+```typescript
+// 已完成CSRF中间件及其存储/secret配置的路由片段
+app.get("/csrf-token", async (req, res) => {
+  res.json({ token: req.csrfToken() });
+});
+```
+
+启用、提交头和失败语义见[认证与安全](/zh/guide/security)。
+
+### `auth`
+
+每个请求默认具有匿名 `VextAuthContext`：`isAuthenticated: false`、空 `roles` / `scopes` / `claims`。认证中间件调用应用提供的验证函数后填充身份，路由 `auth` Guard 再执行访问限制；声明 `docs.security` 不会建立身份。
+
+| 字段                  | 类型/含义                                                    |
+| --------------------- | ------------------------------------------------------------ |
+| `isAuthenticated`     | `boolean`，是否已建立认证身份                                |
+| `subject` / `userId`  | 可选字符串，由认证结果提供                                   |
+| `roles` / `scopes`    | `string[]`                                                   |
+| `claims`              | `Record<string, unknown>`                                    |
+| `scheme` / `provider` | 可选来源 `bearer / apiKey / session / custom` 与provider名称 |
+| `can` / `assert`      | 可选同步或异步权限函数；调用时需检查存在并 `await`           |
+| `error`               | 可选 `VextAuthErrorCode`，身份处理的错误码                   |
+
+完整认证与Guard组合见[认证与安全](/zh/guide/security)。`req.auth` 的存在不等于请求已登录。
+
+### `session`
+
+Session中间件生效后提供 `VextSession`，否则为 `undefined`。除业务字段外，公开只读 `id`、`isNew`、`isDestroyed`；`save()`、`regenerate()`、`destroy()` 都返回 `Promise<void>`。
+
+```typescript
+// 已启用Session的路由片段
+app.post("/visit", async (req, res) => {
+  const session = req.session;
+  if (!session) return app.throw(500, "Session未启用");
+  session.visits = typeof session.visits === "number" ? session.visits + 1 : 1;
+  await session.save();
+  res.json({ visits: session.visits });
+});
+```
+
+自动提交及存储配置见[Cookies与Session](/zh/guide/cookies-session)。修改Session后发送流或下载前，应先 `await session.save()`，使持久化及Cookie提交满足响应时序要求；不能等流已开始发送再补存储。
 
 ---
 
@@ -491,6 +529,8 @@ export default definePlugin(async (app) => {
 
 ```typescript
 // types/vext.d.ts
+import "vextjs";
+
 declare module "vextjs" {
   interface VextRequest {
     user?: {
@@ -500,6 +540,8 @@ declare module "vextjs" {
   }
 }
 ```
+
+该声明文件须被项目TypeScript配置包含；手动配置可参考[项目结构](/zh/guide/project-structure)。类型声明不负责运行时赋值。下面的 `verifyToken` 是应用自己的认证函数，须导入其实现；`load-user` 还须进入中间件白名单。
 
 ```typescript
 // 中间件中设置
@@ -511,7 +553,7 @@ export default defineMiddleware(async (req, _res, next) => {
 
 // handler 中使用
 app.get("/profile", { middlewares: ["load-user"] }, async (req, res) => {
-  res.json(req.user); // IDE 知道类型是 { id: string; role: 'admin' | 'user' }
+  res.json(req.user ?? null); // 类型为已声明的用户对象或undefined，运行时仍须处理匿名情况
 });
 ```
 
@@ -537,7 +579,7 @@ app.get("/profile", { middlewares: ["load-user"] }, async (req, res) => {
 | `cookie(name, value, options?)`              | `this`    | 追加 `Set-Cookie` 响应头       |
 | `clearCookie(name, options?)`                | `this`    | 让一个响应 Cookie 过期         |
 | `statusCode`                                 | `number`  | 当前状态码（只读）             |
-| `headersSent`                                | `boolean` | 响应头是否已经发送（只读）     |
+| `headersSent`                                | `boolean` | 是否已进入终态响应流程（只读） |
 | `sse()`                                      | `unknown` | 可选 SSE 插件扩展              |
 | `upgrade()`                                  | `unknown` | 可选 WebSocket/upgrade 扩展    |
 
@@ -555,10 +597,10 @@ function json(data: unknown, status?: number): void;
 
 **参数**：
 
-| 参数     | 类型      | 默认值 | 说明                |
-| -------- | --------- | ------ | ------------------- |
-| `data`   | `unknown` | —      | 业务数据            |
-| `status` | `number`  | `200`  | HTTP 状态码（可选） |
+| 参数     | 类型      | 默认值                            | 说明                |
+| -------- | --------- | --------------------------------- | ------------------- |
+| `data`   | `unknown` | —                                 | 业务数据            |
+| `status` | `number`  | 当前 `res.statusCode`，初始 `200` | HTTP 状态码（可选） |
 
 **出口包装**：
 
@@ -601,6 +643,8 @@ res.status(204).json(null);
 // 响应: 204 No Content（无 body）
 ```
 
+HEAD也不发送消息体。若路由配置了 `responses`，JSON序列化按精确状态码→状态码族→`default`选择Schema；Schema描述业务数据，出口包装由框架处理。未匹配Schema时保留普通JSON序列化行为，`docs.responses`只提供文档信息；详见[响应合同](/zh/api/route-definition#运行时响应-schema)。
+
 **错误响应**（通常由框架 error-handler 自动处理）：
 
 ```json
@@ -633,11 +677,51 @@ app.get("/version", async (_req, res) => {
 
 自动设置 `Content-Type: text/plain; charset=utf-8`。
 
+省略status时沿用 `res.statusCode`，初始为200。
+
+---
+
+### `render(page, props?, options?)`
+
+渲染内置前端页面，需要启用 `config.frontend.enabled` 并具备对应前端页面与构建/开发产物。`page` 是 `src/frontend/pages` 下的page id，例如 `dashboard`，不是URL或绝对文件路径；URL仍由路由文件定义。关闭前端时调用会抛错。
+
+```typescript
+import type { VextRenderOptions } from "vextjs";
+// 签名
+// render(page: string, props?: Record<string, unknown>, options?: VextRenderOptions): void
+
+// 已创建dashboard页面的路由片段
+app.get("/dashboard", async (_req, res) => {
+  res.render(
+    "dashboard",
+    { greeting: "Hello" },
+    { head: { title: "Dashboard" } },
+  );
+});
+```
+
+`VextRenderOptions` 包含 `status`、`headers`、`head`、`seo`、`nonce`、`locale`、`messages`、`ssr`、`layout` 和 `layoutData`。状态默认沿用当前响应状态；props、layoutData、messages必须可安全转换为JSON。页面结构、渲染模式与完整流程见[页面与渲染](/zh/frontend/pages-and-rendering)，head/seo选项见[SEO、Sitemap与Robots](/zh/frontend/seo-sitemap)。该出口不使用JSON的 `{ code, data, requestId }` 包装。
+
+### `renderError(errorOrStatus?, pageOrOptions?, options?)`
+
+通过前端renderer生成错误页面。第一个参数可为 `Error`、HTTP状态码或错误码字符串；第二个参数可为page id或 `VextRenderErrorOptions`，第三个参数用于补充选项。没有匹配的自定义错误页时使用内置错误文档；同样需要前端已启用。
+
+```typescript
+// 已启用前端的路由片段
+app.get("/missing-page", async (_req, res) => {
+  res.renderError(404, { message: "页面不存在" });
+});
+```
+
+`VextRenderErrorOptions` 在渲染选项上增加 `page`、`props`、`code`、`message`、`details`、`expose`。兼容签名也接受普通对象或数组作为第二参数；没有渲染选项键的对象及数组被作为错误details，避免把普通业务对象误作props。错误页选择与信息暴露规则见[错误页与Document](/zh/frontend/errors-and-document)。
+
 ---
 
 ### `stream(readable, contentType?)`
 
 流式响应，用于大文件传输或实时数据流。
+
+流和下载会立即进入发送流程；应先设置状态、响应头并完成必须先于发送的Session保存。异步读取失败发生在发送开始后时，不能假设还能改写为普通JSON错误。`await next()`返回也不表示整个流已传输完毕，清理使用 `req.onClose()`。
 
 ```typescript
 function stream(readable: NodeJS.ReadableStream, contentType?: string): void;
@@ -662,18 +746,17 @@ app.get("/large-file", async (_req, res) => {
 **SSE（Server-Sent Events）**：
 
 ```typescript
-app.get("/events", async (req, res) => {
-  const stream = new ReadableStream({
-    start(controller) {
-      const interval = setInterval(() => {
-        controller.enqueue(`data: ${JSON.stringify({ time: Date.now() })}\n\n`);
-      }, 1000);
+import { Readable } from "node:stream";
 
-      req.onClose(() => {
-        clearInterval(interval);
-        controller.close();
-      });
-    },
+app.get("/events", async (req, res) => {
+  const stream = new Readable({ read() {} });
+  const interval = setInterval(() => {
+    stream.push(`data: ${JSON.stringify({ time: Date.now() })}\n\n`);
+  }, 1000);
+
+  req.onClose(() => {
+    clearInterval(interval);
+    stream.destroy();
   });
 
   res.stream(stream, "text/event-stream");
@@ -715,7 +798,7 @@ app.get("/export", async (_req, res) => {
 });
 ```
 
-浏览器收到响应后会弹出文件下载对话框。
+浏览器按自身下载设置处理该响应，不保证一定弹出对话框。
 
 ---
 
@@ -724,15 +807,15 @@ app.get("/export", async (_req, res) => {
 HTTP 重定向。
 
 ```typescript
-function redirect(url: string, status?: 301 | 302 | 307 | 308): void;
+function redirect(url: string, status?: 301 | 302 | 303 | 307 | 308): void;
 ```
 
 **参数**：
 
-| 参数     | 类型                       | 默认值 | 说明         |
-| -------- | -------------------------- | ------ | ------------ |
-| `url`    | `string`                   | —      | 目标 URL     |
-| `status` | `301 \| 302 \| 307 \| 308` | `302`  | 重定向状态码 |
+| 参数     | 类型                              | 默认值 | 说明         |
+| -------- | --------------------------------- | ------ | ------------ |
+| `url`    | `string`                          | —      | 目标 URL     |
+| `status` | `301 \| 302 \| 303 \| 307 \| 308` | `302`  | 重定向状态码 |
 
 ```typescript
 // 临时重定向（302）
@@ -740,6 +823,9 @@ res.redirect("/new-page");
 
 // 永久重定向（301）
 res.redirect("/new-permanent-page", 301);
+
+// 提交后跳转到查询页面（303）
+res.redirect("/result", 303);
 
 // 临时重定向保持方法（307）
 res.redirect("/api/v2/users", 307);
@@ -750,12 +836,15 @@ res.redirect("/api/v2/users", 308);
 
 **重定向状态码说明**：
 
-| 状态码 | 说明               | 是否保持 HTTP 方法 |
-| ------ | ------------------ | ------------------ |
-| `301`  | 永久重定向         | 否（可能变为 GET） |
-| `302`  | 临时重定向（默认） | 否（可能变为 GET） |
-| `307`  | 临时重定向         | 是                 |
-| `308`  | 永久重定向         | 是                 |
+| 状态码 | 说明                    | 是否保持 HTTP 方法                  |
+| ------ | ----------------------- | ----------------------------------- |
+| `301`  | 永久重定向              | 否（可能变为 GET）                  |
+| `302`  | 临时重定向（默认）      | 否（可能变为 GET）                  |
+| `303`  | See Other，转向查询页面 | 否，通常使用GET（HEAD仍可使用HEAD） |
+| `307`  | 临时重定向              | 是                                  |
+| `308`  | 永久重定向              | 是                                  |
+
+Location中的非ASCII字节会编码；CR/LF/NUL被拒绝。JavaScript绕过类型传入其他状态值时会回退为302。
 
 ---
 
@@ -783,7 +872,7 @@ res.status(404).json({ message: "未找到" });
 设置响应头，支持链式调用。
 
 ```typescript
-function setHeader(name: string, value: string): this;
+function setHeader(name: string, value: string | string[]): this;
 ```
 
 ```typescript
@@ -810,6 +899,30 @@ res.setHeader("X-Request-Scope", "public");
 // 自定义业务头
 res.setHeader("X-RateLimit-Remaining", "95");
 ```
+
+数组值可用于多个 `Set-Cookie`，不能将它们用逗号拼成一个Cookie值；常规Cookie操作优先使用下方专用方法。
+
+### `cookie(name, value, options?)` 与 `clearCookie(name, options?)`
+
+均返回 `this`，分别追加有效或过期的 `Set-Cookie`。多个调用保留为多个响应头；它们不会直接修改本次请求的 `req.cookies`。
+
+```typescript
+res.cookie("theme", "dark", { path: "/", maxAge: 3600, sameSite: "lax" });
+res.clearCookie("old-theme", { path: "/" });
+res.json({ saved: true });
+```
+
+`CookieSerializeOptions` 包含 `domain`、`path`、`expires: Date`、`maxAge`（秒）、`httpOnly`、`secure`、`sameSite`（boolean或lax/strict/none）、`priority`、`partitioned`、`encode`。不传options时不会自动设置path或安全属性；默认值编码为 `encodeURIComponent`。清除时指定与原Cookie一致的path/domain，方法会将expires设为Unix起点、maxAge设为0。更完整的浏览器往返示例见[Cookies与Session](/zh/guide/cookies-session)。
+
+### `headersSent`（只读）
+
+表示框架响应对象已进入终态发送，适合避免重复选择响应出口。JSON、文本等缓冲响应可能尚未写入socket就已为true；流式响应立即发送。它不等价于“客户端已接收完毕”。
+
+缓冲响应在洋葱链退栈后统一提交，after中间件仍能通过 `setHeader()`补充头；流已开始发送后不能依赖这种行为。应在调用响应出口前确定状态码及业务内容。`statusCode`用于读取框架当前状态，完成事件使用 `req.onClose()`。
+
+### `sse()` 与 `upgrade()`
+
+两者是可选扩展点，签名分别为 `sse?(): unknown` 与 `upgrade?(): unknown`；核心不默认提供实现或额外返回类型。使用前确认插件已安装并完成注入，连接和返回值合同由该插件定义。基础SSE可直接使用上文 `stream()` 示例，无需假定存在扩展方法。
 
 ---
 
@@ -856,9 +969,33 @@ type VextPublicResponse = Omit<
 
 ## 内部方法（不建议直接使用）
 
+<a id="_getrawbodybuffer"></a>
+
+### `_getRawBodyBuffer()` 与 `_getRawBody()`
+
+内部请求读取接口，供框架与解析插件使用。公开签名包含可选的字节上限：
+
+```typescript
+_getRawBodyBuffer(maxBytes?: number): Promise<Buffer>;
+_getRawBody(maxBytes?: number): Promise<string>;
+```
+
+读取结果带缓存，原始流只消费一次；GET/HEAD/OPTIONS返回空结果。传入 `maxBytes` 会检查上限，超过时产生413错误；重复读取缓存时也检查本次上限。Buffer方法保留原始字节，字符串方法按UTF-8解码。
+
+```typescript
+// 插件工具片段：读取原始字节；此函数不负责解析multipart
+import type { VextRequest } from "vextjs";
+
+async function readUploadBytes(req: VextRequest): Promise<Buffer> {
+  return req._getRawBodyBuffer(1024 * 1024);
+}
+```
+
+需要自定义multipart解析器时，应用须实现解析、文件/字段限制和持久化，并明确与内置解析的先后关系；该Buffer接口本身会将数据读入内存，不是流式落盘方案。标准上传优先使用[`files`](#files)对应的内置能力。
+
 ### `rawJson(data, status?)`
 
-返回原始 JSON，不经过出口包装。仅供框架内部 `error-handler` 使用。
+返回原始 JSON，不经过出口包装。供框架内部的错误处理、限流和其他响应流程使用。
 
 ```typescript
 function rawJson(data: unknown, status?: number): void;
@@ -896,43 +1033,94 @@ function _enableWrap(): void;
 
 ### 标准 CRUD 响应
 
+以下是两文件完整示例，沿用[快速开始](/zh/guide/quick-start)的 `package.json`、TypeScript配置以及dev/build/start脚本。数据保存在进程内存，重启后重置，用于观察响应与校验。
+
 ```typescript
+// src/config/default.ts
+export default {
+  port: 3000,
+  host: "127.0.0.1",
+  adapter: "native",
+  frontend: { enabled: false },
+};
+```
+
+```typescript
+// src/routes/items.ts
+import { randomUUID } from "node:crypto";
+import { defineRoutes } from "vextjs";
+
 export default defineRoutes((app) => {
-  // 列表查询
-  app.get("/list", async (req, res) => {
-    const items = await app.services.item.findAll();
-    res.json(items);
-    // → { code: 0, data: [...], requestId: '...' }
+  const items = new Map<string, { id: string; name: string }>();
+
+  app.get("/", async (_req, res) => {
+    res.json([...items.values()]);
   });
 
-  // 创建
-  app.post("/", async (req, res) => {
-    const item = await app.services.item.create(req.valid("body"));
-    res.json(item, 201);
-    // → 201 { code: 0, data: { id: '...' }, requestId: '...' }
-  });
+  app.post(
+    "/",
+    { validate: { body: { name: "string:1-50!" } } },
+    async (req, res) => {
+      const item = { id: randomUUID(), name: req.valid("body").name };
+      items.set(item.id, item);
+      res.setHeader("Location", `/items/${item.id}`).json(item, 201);
+    },
+  );
 
-  // 更新
-  app.put("/:id", async (req, res) => {
-    const item = await app.services.item.update(
-      req.valid("param").id,
-      req.valid("body"),
-    );
-    res.json(item);
-  });
+  app.get(
+    "/:id",
+    { validate: { param: { id: "uuid!" } } },
+    async (req, res) => {
+      const item = items.get(req.valid("param").id);
+      if (!item) return app.throw(404, "条目不存在");
+      res.json(item);
+    },
+  );
 
-  // 删除
-  app.delete("/:id", async (req, res) => {
-    await app.services.item.delete(req.valid("param").id);
-    res.status(204).json(null);
-    // → 204 No Content
-  });
+  app.put(
+    "/:id",
+    { validate: { param: { id: "uuid!" }, body: { name: "string:1-50!" } } },
+    async (req, res) => {
+      const { id } = req.valid("param");
+      if (!items.has(id)) return app.throw(404, "条目不存在");
+      const item = { id, name: req.valid("body").name };
+      items.set(id, item);
+      res.json(item);
+    },
+  );
+
+  app.delete(
+    "/:id",
+    { validate: { param: { id: "uuid!" } } },
+    async (req, res) => {
+      if (!items.delete(req.valid("param").id)) {
+        return app.throw(404, "条目不存在");
+      }
+      res.status(204).json(null);
+    },
+  );
 });
 ```
 
+运行 `npm run dev`，按顺序验证：
+
+```powershell
+$createdItem = Invoke-RestMethod http://127.0.0.1:3000/items -Method Post -ContentType 'application/json' -Body '{"name":"First"}'
+$itemId = $createdItem.data.id
+Invoke-RestMethod "http://127.0.0.1:3000/items/$itemId"
+Invoke-RestMethod "http://127.0.0.1:3000/items/$itemId" -Method Put -ContentType 'application/json' -Body '{"name":"Updated"}'
+Invoke-WebRequest "http://127.0.0.1:3000/items/$itemId" -Method Delete
+```
+
+预期创建201且有Location，读取/更新200，删除204且无body；随后读取同一id应404。缺失name应422，非UUID路径参数应400。基础配置默认启用JSON包装，所以从 `data.id` 读取id。停止dev后执行 `npm run build -- --typecheck`、`npm start`，从创建开始复验一次。持久化及服务层拆分见[服务](/zh/guide/services)和[数据库](/zh/guide/database)。
+
 ### 错误处理
 
+下列是已有 `user` 服务时的路由片段，服务需实现 `findById`；完整内存404流程已包含在上例中。
+
 ```typescript
+import { defineRoutes } from "vextjs";
+
 export default defineRoutes((app) => {
   app.get("/:id", async (req, res) => {
     const user = await app.services.user.findById(req.params.id);
@@ -962,56 +1150,65 @@ export default defineRoutes((app) => {
 ### 自定义响应头 + 状态码
 
 ```typescript
-app.post("/upload", async (req, res) => {
-  const result = await processUpload(req.body);
-
-  res
-    .status(201)
-    .setHeader("Location", `/files/${result.id}`)
-    .setHeader("X-File-Size", String(result.size))
-    .json(result);
-});
+app.post(
+  "/inspect-upload",
+  { multipart: { enabled: true, files: { file: { required: true } } } },
+  async (req, res) => {
+    const file = req.files?.find((entry) => entry.fieldname === "file");
+    if (!file) return app.throw(422, "缺少文件");
+    res.setHeader("X-File-Size", String(file.size)).json({ size: file.size });
+  },
+);
 ```
+
+这个片段只检查上传文件，不持久化，因此返回200；创建资源后返回201与Location的方式见完整CRUD示例。
 
 ### 流式文件下载
 
 ```typescript
-import { createReadStream, statSync } from "node:fs";
-import { join } from "node:path";
+import { open } from "node:fs/promises";
+import type { FileHandle } from "node:fs/promises";
+import { resolve } from "node:path";
 
-app.get("/download/:filename", async (req, res) => {
-  const filepath = join("/data/files", req.params.filename);
+// 应用准备好的允许下载目录；文件需存在且对运行进程可读。
+const downloads = new Map([["report", resolve("public/report.csv")]]);
 
+app.get("/download/:key", async (req, res) => {
+  const filepath = downloads.get(req.params.key ?? "");
+  if (!filepath) return app.throw(404, "文件不存在");
+  let file: FileHandle;
   try {
-    const stat = statSync(filepath);
-    const stream = createReadStream(filepath);
-
-    res
-      .setHeader("Content-Length", String(stat.size))
-      .download(stream, req.params.filename);
+    file = await open(filepath, "r");
   } catch {
-    app.throw(404, "文件不存在");
+    return app.throw(404, "文件不存在或不可读");
   }
+  const stream = file.createReadStream();
+  req.onClose(() => stream.destroy());
+  res.download(stream, "report.csv", "text/csv");
 });
 ```
 
+通过应用控制的key到文件映射选择资源，不把用户路径直接拼入目录。FileHandle创建的流在结束/销毁时关闭文件；流开始后的磁盘错误由响应出口处理，不能由已完成的open捕获逻辑改成404。
+
 ### 条件响应
 
+下面的片段可放进前述CRUD的 `defineRoutes` 回调，复用其中的 `items`。这里演示精确匹配 `Accept: text/plain`，没有实现完整HTTP内容协商。
+
 ```typescript
-app.get("/users/:id", async (req, res) => {
-  const user = await app.services.user.findById(req.valid("param").id);
-
-  if (!user) {
-    app.throw(404, "用户不存在");
-  }
-
-  // 根据请求头决定响应格式
-  if (req.headers.accept === "text/plain") {
-    res.text(`User: ${user.name} <${user.email}>`);
-  } else {
-    res.json(user);
-  }
-});
+app.get(
+  "/:id/summary",
+  { validate: { param: { id: "uuid!" } } },
+  async (req, res) => {
+    const item = items.get(req.valid("param").id);
+    if (!item) return app.throw(404, "条目不存在");
+    res.setHeader("Vary", "Accept");
+    if (req.headers.accept === "text/plain") {
+      res.text(`Item: ${item.name}`);
+    } else {
+      res.json(item);
+    }
+  },
+);
 ```
 
 ---
@@ -1021,6 +1218,8 @@ app.get("/users/:id", async (req, res) => {
 ### 洋葱模型
 
 中间件通过 `await next()` 实现洋葱模型，可以在 handler 执行前后分别处理请求和响应：
+
+下游抛错会中断常规after代码，需要无论成功失败都执行的逻辑应放进 `finally`；耗时到退栈为止，不等于流式传输完成时间。注册、白名单和完整组合见[中间件](/zh/guide/middleware)。
 
 ```typescript
 import { defineMiddleware } from "vextjs";
@@ -1050,6 +1249,8 @@ export default defineMiddleware(async (req, res, next) => {
 
 中间件可以在 `next()` 之前修改请求对象：
 
+下例中的 `verifyJWT` 需由应用实现并导入，`req.user` 类型沿用上方声明合并示例；真正的身份与Guard组合见[认证与安全](/zh/guide/security)。
+
 ```typescript
 export default defineMiddleware(async (req, _res, next) => {
   // 解析 JWT，注入用户信息
@@ -1066,14 +1267,16 @@ export default defineMiddleware(async (req, _res, next) => {
 中间件可以不调用 `next()`，直接返回响应（短路）：
 
 ```typescript
+import { defineMiddleware } from "vextjs";
+
+const blockedIps = new Set(["192.0.2.10"]); // 替换为应用自己的名单
 export default defineMiddleware(async (req, res, next) => {
-  if (isBlacklisted(req.ip)) {
-    res.status(403).json({ message: "访问被拒绝" });
-    return; // 不调用 next()，handler 不会执行
-  }
+  if (blockedIps.has(req.ip)) return req.app.throw(403, "访问被拒绝");
   await next();
 });
 ```
+
+也可发送响应后立即return来结束请求。标准错误体使用 `app.throw()`；`res.status(403).json(...)` 仍经过普通业务JSON包装，设置状态码不会自动把它转换为错误合同。
 
 ---
 

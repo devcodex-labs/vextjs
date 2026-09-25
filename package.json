@@ -107,6 +107,8 @@
     "verify:pack-install": "node scripts/validation/verify-packed-install.mjs",
     "verify:external-evidence": "node scripts/validation/verify-external-evidence.mjs",
     "verify:docs-contract": "node scripts/validation/verify-documentation-contract.mjs",
+    "verify:docs-routing-pilot": "node scripts/validation/verify-docs-routing-pilot.mjs",
+    "verify:docs-rendered": "node website/scripts/run-docs.mjs verify-rendered",
     "verify:public-surface": "node scripts/validation/verify-public-surface.mjs",
     "verify:ci-contract": "node scripts/validation/verify-ci-contract.mjs",
     "verify:release-ancestry": "node scripts/verify-release-ancestry.mjs",

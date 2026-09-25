@@ -4,8 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "rspress dev",
-    "build": "rspress build && node scripts/generate-machine-artifacts.mjs",
+    "dev": "node scripts/run-docs.mjs dev",
+    "dev:pilot": "node scripts/run-docs.mjs dev --rollout=zh-routing-pilot",
+    "build": "node scripts/run-docs.mjs build",
+    "build:publish": "node scripts/run-docs.mjs publish",
     "preview": "rspress preview"
   },
   "dependencies": {

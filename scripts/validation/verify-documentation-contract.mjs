@@ -1,7 +1,26 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { parseSpecificationRules } from "../../website/scripts/specification-rules.mjs";
+import {
+  resolveDocsRollout,
+  resolveDocsVerification,
+  allowedMirrorGaps,
+  validateRequiredInventory,
+  requiredPages,
+} from "../../website/scripts/docs-rollout.mjs";
+import {
+  loadDocumentationParser,
+  documentationRouteForSource,
+  documentationRevision,
+  documentationSnapshotInputs,
+  validateDocumentationRelations,
+  validateGoldQuestionMirrors,
+  documentationMetadata,
+  documentationText,
+} from "../../website/scripts/documentation-contract.mjs";
 import {
   collectPublicSurface,
   validatePublicSurface,
@@ -13,7 +32,24 @@ const docsRoot = path.join(root, "website", "docs");
 const renderedRoot = path.join(root, "website", "dist");
 const renderedBasePath = "/vextjs";
 const renderedOnly = process.argv.includes("--rendered");
+const rollout = resolveDocsRollout();
+const verification = resolveDocsVerification();
+const stageVerification = verification.scope === "stage";
+const targetNeutralPath = verification.sourcePath?.replace(
+  /^website\/docs\/(?:en|zh)\//,
+  "",
+);
+const documentRoles = new Set([
+  "specification",
+  "guide",
+  "reference",
+  "example",
+  "troubleshooting",
+  "resource",
+]);
+const docIdPattern = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/;
 const failures = [];
+
 const packageVersion = JSON.parse(
   readFileSync(path.join(root, "package.json"), "utf8"),
 ).version;
@@ -89,6 +125,145 @@ function listFiles(directory, extension) {
     if (entry.isDirectory()) return listFiles(absolute, extension);
     return entry.name.endsWith(extension) ? [absolute] : [];
   });
+}
+
+function localeNeutralSourcePath(relativePath) {
+  return relativePath.replace(/^(?:en|zh)\//, "");
+}
+
+function documentationSourceEntries() {
+  return ["en", "zh"].flatMap((locale) =>
+    [".md", ".mdx"].flatMap((extension) =>
+      listFiles(path.join(docsRoot, locale), extension).map((absolutePath) => {
+        const relativePath = path
+          .relative(docsRoot, absolutePath)
+          .replaceAll("\\", "/");
+        const metadata = documentationMetadata(
+          relativePath,
+          readFileSync(absolutePath, "utf8"),
+        );
+        return {
+          locale,
+          relativePath,
+          neutralPath: localeNeutralSourcePath(relativePath),
+          sourcePath: `website/docs/${relativePath}`,
+          ...metadata,
+        };
+      }),
+    ),
+  );
+}
+
+function verifyDocumentationSourceRollout() {
+  const entries = documentationSourceEntries();
+  const keyOwners = new Map();
+  const byNeutralPath = new Map();
+  for (const entry of entries) {
+    if (!docIdPattern.test(entry.docId)) {
+      fail(`invalid documentation docId ${entry.docId}: ${entry.sourcePath}`);
+    }
+    if (!documentRoles.has(entry.role)) {
+      fail(`invalid documentation role ${entry.role}: ${entry.sourcePath}`);
+    }
+    const key = `${entry.locale}:${entry.docId}`;
+    if (keyOwners.has(key)) {
+      fail(
+        `duplicate documentation docId ${entry.docId} for ${entry.locale}: ${keyOwners.get(key)} and ${entry.sourcePath}`,
+      );
+    }
+    keyOwners.set(key, entry.sourcePath);
+    const pair = byNeutralPath.get(entry.neutralPath) ?? {};
+    pair[entry.locale] = entry;
+    byNeutralPath.set(entry.neutralPath, pair);
+  }
+
+  const permittedZhOnly = allowedMirrorGaps(
+    !stageVerification && rollout === "final" ? "zh-complete" : rollout,
+  );
+  for (const [neutralPath, pair] of byNeutralPath) {
+    if (!pair.en || !pair.zh) {
+      if (!pair.en && pair.zh && permittedZhOnly.has(neutralPath)) continue;
+      fail(`unpaired documentation source for ${rollout}: ${neutralPath}`);
+      continue;
+    }
+    if (
+      rollout === "final" &&
+      (stageVerification || neutralPath === targetNeutralPath) &&
+      (pair.en.docId !== pair.zh.docId || pair.en.role !== pair.zh.role)
+    ) {
+      fail(
+        `EN/ZH metadata differs for ${neutralPath}: ${pair.en.docId}/${pair.en.role} vs ${pair.zh.docId}/${pair.zh.role}`,
+      );
+    }
+  }
+  for (const neutralPath of stageVerification ? permittedZhOnly : []) {
+    const pair = byNeutralPath.get(neutralPath);
+    if (!pair?.zh || pair.en) {
+      fail(`rollout ${rollout} requires zh-only source: ${neutralPath}`);
+    }
+  }
+  const navigationRoutes = new Set(
+    [
+      ...read("website/rspress.config.ts").matchAll(
+        /\blink:\s*["']([^"']+)["']/g,
+      ),
+    ].map((match) => normalizeTargetPath(match[1])),
+  );
+  const rules = sourceRuleRecords(entries);
+  failures.push(
+    ...validateRequiredInventory(
+      rollout,
+      entries,
+      rules,
+      // Rspress generates the localized home link from its logo, not a
+      // literal nav item. Verify that link in rendered HTML below.
+      verification.scope === "page" && targetNeutralPath === "index.mdx"
+        ? undefined
+        : navigationRoutes,
+      verification,
+    ),
+  );
+  const ruleKeys = new Set();
+  for (const rule of rules) {
+    const key = `${rule.locale}:${rule.id}`;
+    if (ruleKeys.has(key))
+      fail(`duplicate source Rule ${key}: ${rule.sourcePath}`);
+    ruleKeys.add(key);
+    if (
+      rollout === "final" &&
+      (stageVerification ||
+        rule.sourcePath.endsWith(`/${targetNeutralPath}`)) &&
+      !rules.some(
+        (other) =>
+          other.id === rule.id &&
+          other.locale !== rule.locale &&
+          other.docId === rule.docId &&
+          other.level === rule.level,
+      )
+    )
+      fail(`EN/ZH source Rule metadata differs: ${key}`);
+  }
+  return entries;
+}
+
+function sourceRuleRecords(sourceEntries) {
+  const records = [];
+  for (const entry of sourceEntries.filter(
+    (candidate) => candidate.role === "specification",
+  )) {
+    for (const rule of parseSpecificationRules(
+      read(entry.sourcePath),
+      entry.sourcePath,
+    )) {
+      records.push({
+        ...rule,
+        locale: entry.locale,
+        docId: entry.docId,
+        sourcePath: entry.sourcePath,
+      });
+    }
+  }
+  return records;
 }
 
 function splitTableRow(line) {
@@ -239,7 +414,9 @@ function documentationSourceForRoute(route) {
     normalized === "/zh" || normalized.startsWith("/zh/") ? "zh" : "en";
   const localePrefix = locale === "zh" ? "/zh" : "";
   const suffix = normalized.slice(localePrefix.length).replace(/^\//, "");
-  const stem = suffix || "index";
+  const stem = suffix
+    ? `${suffix}${route.endsWith("/") ? "/index" : ""}`
+    : "index";
   const base = `website/docs/${locale}/${stem}`;
   for (const extension of [".md", ".mdx"]) {
     if (existsSync(path.join(root, `${base}${extension}`))) {
@@ -317,7 +494,14 @@ function verifyDocumentationGrowthContract() {
     ]);
   }
 
-  requireTokens("website/package.json", ["generate-machine-artifacts.mjs"]);
+  requireTokens("website/package.json", [
+    "scripts/run-docs.mjs build",
+    "scripts/run-docs.mjs publish",
+  ]);
+  requireTokens("website/scripts/run-docs.mjs", [
+    "scripts/generate-machine-artifacts.mjs",
+    "assertPublishable(rollout, verification)",
+  ]);
   requireTokens("website/scripts/generate-machine-artifacts.mjs", [
     '"version-channels.json"',
     "channel: docsVersions.channel",
@@ -387,12 +571,57 @@ function verifyDocumentationGrowthContract() {
     const questionIds = new Set(
       (questions.questions ?? []).map((question) => question.id),
     );
+    failures.push(
+      ...validateGoldQuestionMirrors(
+        questions.questions ?? [],
+        rollout,
+        verification,
+      ),
+    );
+    const sourceByKey = new Map(
+      documentationSourceEntries().map((entry) => [
+        `${entry.locale}:${entry.docId}`,
+        entry,
+      ]),
+    );
     for (const id of requiredGoldQuestionIds) {
       if (!questionIds.has(id)) {
         fail(`ai-gold-questions.json is missing required v2 question: ${id}`);
       }
     }
     for (const question of questions.questions ?? []) {
+      if (
+        (rollout === "final" && stageVerification) ||
+        question.id === "routing-specification-zh" ||
+        question.requiredDocIds !== undefined
+      ) {
+        if (!Array.isArray(question.requiredDocIds))
+          fail(`AI gold question is missing requiredDocIds: ${question.id}`);
+        else {
+          const ids = question.requiredDocIds;
+          const routes = ids
+            .map((id) => sourceByKey.get(`${question.locale}:${id}`))
+            .map((entry) =>
+              entry
+                ? normalizeTargetPath(
+                    documentationRouteForSource(entry.relativePath),
+                  )
+                : null,
+            );
+          const expected = new Set(
+            (question.requiredRoutes ?? []).map(normalizeTargetPath),
+          );
+          if (
+            new Set(ids).size !== ids.length ||
+            routes.includes(null) ||
+            new Set(routes).size !== expected.size ||
+            routes.some((route) => !expected.has(route))
+          )
+            fail(
+              `AI gold question source routes differ from requiredDocIds: ${question.id}`,
+            );
+        }
+      }
       if (
         !question.id ||
         !question.question ||
@@ -646,6 +875,12 @@ function verifyDocumentedFixture(
   endMarker,
   fixturePath,
 ) {
+  // Shared executable fixtures can advance during the Chinese-only rollout.
+  // Require both translations again at final stage, without forcing early English edits.
+  if (rollout !== "final" && relativeDocsPath.startsWith("website/docs/en/"))
+    return;
+  if (!stageVerification && relativeDocsPath !== verification.sourcePath)
+    return;
   const documented = documentedCodeBlock(
     relativeDocsPath,
     startMarker,
@@ -1843,8 +2078,9 @@ function verifyRenderedAnchors() {
       const href = decodeHtml(match[1]);
       if (!href.includes("#")) continue;
       if (/^(?:https?:|mailto:|tel:|javascript:)/i.test(href)) continue;
-      const basePath =
-        page.route === "/" ? "/" : `${normalizeTargetPath(page.route)}.html`;
+      const basePath = page.route.endsWith("/")
+        ? page.route
+        : `${normalizeTargetPath(page.route)}.html`;
       let target;
       try {
         target = new URL(href, `https://docs.local${basePath}`);
@@ -1898,14 +2134,121 @@ function readRenderedJson(name) {
   }
 }
 
+function verifyRenderedSpecRules(
+  sourceEntries,
+  entriesByDocumentKey,
+  revision,
+) {
+  const artifact = readRenderedJson("spec-rules.json");
+  if (!artifact) return;
+  if (
+    artifact.rollout !== rollout ||
+    JSON.stringify(artifact.verification) !== JSON.stringify(verification) ||
+    artifact.documentationRevision !== revision
+  )
+    fail(
+      "spec-rules.json rollout or documentationRevision differs from current source snapshot",
+    );
+  if (artifact.schemaVersion !== "vext.spec-rules/v1") {
+    fail("website/dist/spec-rules.json must declare vext.spec-rules/v1");
+  }
+  if (artifact.frameworkVersion !== packageVersion) {
+    fail(
+      `website/dist/spec-rules.json must declare framework version ${packageVersion}`,
+    );
+  }
+  if (!Array.isArray(artifact.rules)) {
+    fail("website/dist/spec-rules.json must contain a rules array");
+    return;
+  }
+
+  const sourceRules = sourceRuleRecords(sourceEntries);
+  const sourceRulesByKey = new Map(
+    sourceRules.map((rule) => [`${rule.id}:${rule.locale}`, rule]),
+  );
+  const artifactKeys = new Set();
+  for (const rule of artifact.rules) {
+    const key = `${rule.id}:${rule.locale}`;
+    if (artifactKeys.has(key)) {
+      fail(`spec-rules.json duplicates rule key: ${key}`);
+    }
+    artifactKeys.add(key);
+    const sourceRule = sourceRulesByKey.get(key);
+    const document = entriesByDocumentKey.get(`${rule.locale}:${rule.docId}`);
+    if (
+      !sourceRule ||
+      !document ||
+      sourceRule.docId !== rule.docId ||
+      sourceRule.level !== rule.level ||
+      sourceRule.anchor !== rule.anchor ||
+      sourceRule.contentHash !== rule.contentHash ||
+      documentationText(sourceRule.title) !== rule.title ||
+      document.canonicalUrl !== rule.canonicalUrl ||
+      rule.ruleUrl !== `${rule.canonicalUrl}#${rule.anchor}`
+    ) {
+      fail(`spec-rules.json rule differs from source: ${key}`);
+      continue;
+    }
+    const htmlFile = renderedHtmlForManifestRoute(document.route);
+    if (
+      !existsSync(htmlFile) ||
+      !readFileSync(htmlFile, "utf8").includes(`id="${rule.anchor}"`)
+    ) {
+      fail(`rendered Rule anchor is missing: ${key}`);
+    }
+  }
+  if (artifact.rules.length !== sourceRules.length) {
+    fail(
+      `spec-rules.json has ${artifact.rules.length} rules; expected ${sourceRules.length}`,
+    );
+  }
+  const stableKeys = [...artifactKeys].sort((left, right) =>
+    left.localeCompare(right),
+  );
+  if (JSON.stringify(stableKeys) !== JSON.stringify([...artifactKeys])) {
+    fail("spec-rules.json rules are not stably sorted by ruleId and locale");
+  }
+
+  failures.push(
+    ...validateRequiredInventory(
+      rollout,
+      sourceEntries,
+      artifact.rules,
+      undefined,
+      verification,
+    ),
+  );
+
+  if (rollout === "final" && stageVerification) {
+    const rulesById = new Map();
+    for (const rule of artifact.rules) {
+      const pair = rulesById.get(rule.id) ?? {};
+      pair[rule.locale] = rule;
+      rulesById.set(rule.id, pair);
+    }
+    for (const [id, pair] of rulesById) {
+      if (
+        !pair.en ||
+        !pair.zh ||
+        pair.en.docId !== pair.zh.docId ||
+        pair.en.level !== pair.zh.level
+      ) {
+        fail(`EN/ZH Rule metadata differs for ${id}`);
+      }
+    }
+  }
+}
+
 function verifyRenderedMachineArtifacts() {
   if (!existsSync(renderedRoot)) {
     fail("website/dist does not exist; run the website build first");
     return;
   }
 
+  const sourceEntries = verifyDocumentationSourceRollout();
   for (const name of [
     "docs-manifest.json",
+    "spec-rules.json",
     "capabilities.json",
     "ai-gold-questions.json",
     "docs-events.schema.json",
@@ -1923,8 +2266,8 @@ function verifyRenderedMachineArtifacts() {
 
   const manifest = readRenderedJson("docs-manifest.json");
   if (!manifest) return;
-  if (manifest.schemaVersion !== "vext.docs-manifest/v1") {
-    fail("website/dist/docs-manifest.json must declare vext.docs-manifest/v1");
+  if (manifest.schemaVersion !== "vext.docs-manifest/v2") {
+    fail("website/dist/docs-manifest.json must declare vext.docs-manifest/v2");
   }
   if (manifest.frameworkVersion !== packageVersion) {
     fail(
@@ -1955,20 +2298,44 @@ function verifyRenderedMachineArtifacts() {
       "website/dist/docs-manifest.json must declare English as defaultLocale",
     );
   }
-
-  const sourceFiles = [
-    ...listFiles(path.join(docsRoot, "en"), ".md"),
-    ...listFiles(path.join(docsRoot, "en"), ".mdx"),
-    ...listFiles(path.join(docsRoot, "zh"), ".md"),
-    ...listFiles(path.join(docsRoot, "zh"), ".mdx"),
-  ];
-  if (manifest.entries.length !== sourceFiles.length) {
+  const siteUrl = (
+    process.env.VEXT_DOCS_SITE_URL || "https://devcodex-labs.github.io/vextjs"
+  ).replace(/\/+$/, "");
+  const relationSources = sourceEntries.map((entry) => {
+    const source = read(entry.sourcePath);
+    const route = documentationRouteForSource(entry.relativePath);
+    return {
+      ...entry,
+      route,
+      source,
+      canonicalUrl: `${siteUrl}${route}`,
+      contentHash: createHash("sha256").update(source).digest("hex"),
+    };
+  });
+  const revision = documentationRevision(
+    relationSources,
+    documentationSnapshotInputs(root, siteUrl, rollout, verification),
+  );
+  if (
+    manifest.rollout !== rollout ||
+    JSON.stringify(manifest.verification) !== JSON.stringify(verification) ||
+    manifest.documentationRevision !== revision
+  )
     fail(
-      `docs manifest has ${manifest.entries.length} entries; expected ${sourceFiles.length}`,
+      "docs-manifest.json rollout or documentationRevision differs from current source snapshot",
+    );
+
+  if (manifest.entries.length !== sourceEntries.length) {
+    fail(
+      `docs manifest has ${manifest.entries.length} entries; expected ${sourceEntries.length}`,
     );
   }
 
   const entriesByRoute = new Map();
+  const entriesByDocumentKey = new Map();
+  const sourcesByPath = new Map(
+    sourceEntries.map((entry) => [entry.sourcePath, entry]),
+  );
   for (const entry of manifest.entries) {
     const routeKey = normalizeTargetPath(entry.route ?? "");
     if (entriesByRoute.has(routeKey)) {
@@ -1976,6 +2343,11 @@ function verifyRenderedMachineArtifacts() {
       continue;
     }
     entriesByRoute.set(routeKey, entry);
+    const documentKey = `${entry.locale}:${entry.docId}`;
+    if (entriesByDocumentKey.has(documentKey)) {
+      fail(`docs manifest duplicates document key: ${documentKey}`);
+    }
+    entriesByDocumentKey.set(documentKey, entry);
     const expectedLocale =
       routeKey === "/zh" || routeKey.startsWith("/zh/") ? "zh" : "en";
     if (entry.locale !== expectedLocale) {
@@ -2001,13 +2373,31 @@ function verifyRenderedMachineArtifacts() {
       );
     }
     const expectedSource = documentationSourceForRoute(entry.route ?? "");
-    if (!expectedSource || entry.sourcePath !== expectedSource) {
+    const sourceEntry = sourcesByPath.get(entry.sourcePath);
+    if (
+      !expectedSource ||
+      entry.sourcePath !== expectedSource ||
+      !sourceEntry
+    ) {
       fail(
         `docs manifest has invalid source mapping for route: ${entry.route}`,
       );
     }
+    if (
+      entry.docId !== sourceEntry?.docId ||
+      entry.role !== sourceEntry?.role
+    ) {
+      fail(`docs manifest metadata differs from source: ${entry.sourcePath}`);
+    }
     if (!/^[a-f0-9]{64}$/.test(entry.contentHash ?? "")) {
       fail(`docs manifest has invalid source hash for route: ${entry.route}`);
+    }
+    if (
+      sourceEntry &&
+      entry.contentHash !==
+        createHash("sha256").update(read(entry.sourcePath)).digest("hex")
+    ) {
+      fail(`docs manifest source hash differs from source: ${entry.route}`);
     }
     if (!Array.isArray(entry.audience) || !Array.isArray(entry.appliesTo)) {
       fail(
@@ -2016,10 +2406,10 @@ function verifyRenderedMachineArtifacts() {
     }
     if (
       entry.stability !== versionChannels.channel ||
-      !Array.isArray(entry.related)
+      !Array.isArray(entry.relatedDocuments)
     ) {
       fail(
-        `docs manifest has invalid stability or related metadata for route: ${entry.route}`,
+        `docs manifest has invalid stability or relatedDocuments metadata for route: ${entry.route}`,
       );
     }
     const htmlFile = renderedHtmlForManifestRoute(entry.route);
@@ -2039,6 +2429,83 @@ function verifyRenderedMachineArtifacts() {
       );
     }
   }
+
+  for (const entry of manifest.entries) {
+    const relatedKeys = new Set();
+    for (const related of entry.relatedDocuments ?? []) {
+      const relatedEntry = entriesByDocumentKey.get(
+        `${related.locale}:${related.docId}`,
+      );
+      const relatedKey = `${related.locale}:${related.docId}:${related.canonicalUrl}`;
+      if (
+        !relatedEntry ||
+        relatedEntry.canonicalUrl !== related.canonicalUrl ||
+        relatedEntry.route === entry.route
+      ) {
+        fail(
+          `docs manifest has invalid related document for route: ${entry.route}`,
+        );
+      }
+      if (relatedKeys.has(relatedKey)) {
+        fail(
+          `docs manifest has duplicate related document for route: ${entry.route}`,
+        );
+      }
+      relatedKeys.add(relatedKey);
+    }
+    const sorted = [...relatedKeys].sort((left, right) =>
+      left.localeCompare(right),
+    );
+    if (JSON.stringify(sorted) !== JSON.stringify([...relatedKeys])) {
+      fail(
+        `docs manifest relatedDocuments are not stably sorted: ${entry.route}`,
+      );
+    }
+  }
+
+  try {
+    failures.push(
+      ...validateDocumentationRelations(manifest.entries, relationSources),
+    );
+  } catch (error) {
+    fail(error.message);
+  }
+  verifyRenderedSpecRules(sourceEntries, entriesByDocumentKey, revision);
+
+  // Check links rendered inside real navigation, not prose links to the same page.
+  const renderedNavigation = new Set();
+  for (const entry of manifest.entries) {
+    const file = renderedHtmlForManifestRoute(entry.route);
+    if (!existsSync(file)) continue;
+    const html = readFileSync(file, "utf8");
+    // Rspress renders its logo in div.rp-nav__title, outside semantic nav.
+    for (const logo of html.matchAll(
+      /<a\b[^>]*\bclass="[^"]*\brp-nav__title__link\b[^"]*"[^>]*>/g,
+    )) {
+      const href = logo[0].match(/\bhref="([^"]+)"/);
+      if (href) renderedNavigation.add(normalizeTargetPath(href[1]));
+    }
+    for (const nav of html.matchAll(/<(nav|aside)\b[^>]*>[\s\S]*?<\/\1>/g)) {
+      for (const link of nav[0].matchAll(/href="([^"]+)"/g))
+        renderedNavigation.add(normalizeTargetPath(link[1]));
+    }
+  }
+  for (const entry of sourceEntries.filter(
+    (entry) => entry.neutralPath === "index.mdx",
+  )) {
+    const home = entry.locale === "zh" ? "/zh" : "/";
+    if (!renderedNavigation.has(home))
+      fail(`rendered documentation navigation is missing home: ${home}`);
+  }
+  failures.push(
+    ...validateRequiredInventory(
+      rollout,
+      sourceEntries,
+      sourceRuleRecords(sourceEntries),
+      renderedNavigation,
+      verification,
+    ),
+  );
 
   const sitemap = readFileSync(path.join(renderedRoot, "sitemap.xml"), "utf8");
   const sitemapUrls = new Set(
@@ -2068,6 +2535,13 @@ function verifyRenderedMachineArtifacts() {
   }
 
   const questions = readRenderedJson("ai-gold-questions.json");
+  failures.push(
+    ...validateGoldQuestionMirrors(
+      questions?.questions ?? [],
+      rollout,
+      verification,
+    ),
+  );
   const renderedQuestionIds = new Set(
     (questions?.questions ?? []).map((question) => question.id),
   );
@@ -2078,6 +2552,7 @@ function verifyRenderedMachineArtifacts() {
       );
     }
   }
+  let pilotQuestionFound = false;
   for (const question of questions?.questions ?? []) {
     for (const route of question.requiredRoutes ?? []) {
       if (!entriesByRoute.has(normalizeTargetPath(route))) {
@@ -2086,6 +2561,47 @@ function verifyRenderedMachineArtifacts() {
         );
       }
     }
+    const requiredDocIds = question.requiredDocIds;
+    if (
+      rollout === "final" &&
+      stageVerification &&
+      !Array.isArray(requiredDocIds)
+    ) {
+      fail(`AI gold question is missing requiredDocIds: ${question.id}`);
+      continue;
+    }
+    if (!Array.isArray(requiredDocIds)) continue;
+    if (new Set(requiredDocIds).size !== requiredDocIds.length) {
+      fail(`AI gold question has duplicate requiredDocIds: ${question.id}`);
+    }
+    const resolvedRoutes = new Set();
+    for (const docId of requiredDocIds) {
+      const entry = entriesByDocumentKey.get(`${question.locale}:${docId}`);
+      if (!entry) {
+        fail(
+          `AI gold question has unresolved requiredDocId ${docId}: ${question.id}`,
+        );
+        continue;
+      }
+      resolvedRoutes.add(normalizeTargetPath(entry.route));
+    }
+    const requiredRoutes = new Set(
+      (question.requiredRoutes ?? []).map((route) =>
+        normalizeTargetPath(route),
+      ),
+    );
+    if (
+      resolvedRoutes.size !== requiredRoutes.size ||
+      [...resolvedRoutes].some((route) => !requiredRoutes.has(route))
+    ) {
+      fail(
+        `AI gold question routes differ from requiredDocIds: ${question.id}`,
+      );
+    }
+    if (question.id === "routing-specification-zh") pilotQuestionFound = true;
+  }
+  if (rollout === "zh-routing-pilot" && !pilotQuestionFound) {
+    fail("zh-routing-pilot is missing routing-specification-zh Gold Question");
   }
 
   const entriesByCanonicalUrl = new Map(
@@ -2506,9 +3022,21 @@ function verifyRepairLifecycleDocumentationContract() {
 runTokenizerSelfTest();
 
 if (renderedOnly) {
+  await loadDocumentationParser();
   verifyRenderedMachineArtifacts();
   verifyRenderedAnchors();
 } else {
+  sourceRuleRecords(verifyDocumentationSourceRollout());
+  const parserTests = spawnSync(
+    process.execPath,
+    ["--test", path.join(root, "test/specification-rules.test.mjs")],
+    { cwd: root, encoding: "utf8" },
+  );
+  if (parserTests.status !== 0) {
+    fail(
+      `Specification parser regression failed: ${parserTests.stderr || parserTests.stdout}`,
+    );
+  }
   failures.push(
     ...validatePublicSurface(
       collectPublicSurface(),
@@ -2544,6 +3072,6 @@ if (failures.length > 0) {
 
 console.log(
   renderedOnly
-    ? "Rendered documentation contract verified."
-    : "Documentation source contract verified.",
+    ? `Rendered documentation contract verified (${rollout}, ${verification.scope}${targetNeutralPath ? `: ${targetNeutralPath}` : ""}).`
+    : `Documentation source contract verified (${rollout}, ${verification.scope}${targetNeutralPath ? `: ${targetNeutralPath}` : ""}).`,
 );

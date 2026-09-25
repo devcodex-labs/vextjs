@@ -34,7 +34,7 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
           </div>
           <div className="vext-trust-item">
             <strong>按需起步</strong>
-            <span>默认全栈，同时支持 API-only</span>
+            <span>脚手架默认全栈，支持 API-only</span>
           </div>
           <div className="vext-trust-item">
             <strong>Native</strong>
@@ -43,7 +43,7 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
         </div>
       </div>
 
-      <aside className="vext-console" aria-label="Vext project creation console">
+      <aside className="vext-console" aria-label="Vext 项目创建示意">
         <div className="vext-console__bar">
           <div className="vext-console__dots"><span></span><span></span><span></span></div>
           <span>create</span>
@@ -52,13 +52,13 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
           <div className="vext-console__line vext-console__line--typing"><span className="vext-console__prompt">$</span><span className="vext-console__typed" data-vext-typewriter="npx vextjs create my-app">npx vextjs create my-app</span></div>
           <div className="vext-console__line"><span className="vext-console__ok">create</span><span>vext project "my-app"</span></div>
           <div className="vext-console__line"><span className="vext-console__muted">preset</span><span>TypeScript / React / native adapter</span></div>
-          <div className="vext-console__line"><span className="vext-console__muted">write</span><span>client / routes / services / config</span></div>
+          <div className="vext-console__line"><span className="vext-console__muted">write</span><span>frontend / routes / services / config</span></div>
           <div className="vext-console__line"><span className="vext-console__route">deps</span><span>install vextjs and dev scripts</span></div>
           <div className="vext-console__line"><span className="vext-console__ok">done</span><span>Project created successfully</span></div>
           <div className="vext-console__line"><span className="vext-console__muted">next</span><span>cd my-app && npm run dev</span></div>
           <div className="vext-console__metrics">
             <div className="vext-console__metric"><strong>Full-stack</strong><span>默认脚手架</span></div>
-            <div className="vext-console__metric"><strong>5 adapters</strong><span>native default</span></div>
+            <div className="vext-console__metric"><strong>5 个适配器</strong><span>native default</span></div>
             <div className="vext-console__metric"><strong>React</strong><span>typed client</span></div>
           </div>
         </div>
@@ -67,7 +67,7 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
 
   </section>
 
-<nav className="vext-path-strip" aria-label="Vext documentation paths">
+<nav className="vext-path-strip" aria-label="Vext 文档阅读路径">
   <a href={docsHref("/guide/quick-start.html")}>
     <strong>Start</strong>
     <span>从脚手架到第一个全栈应用</span>
@@ -78,7 +78,7 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
   </a>
   <a href={docsHref("/benchmark.html")}>
     <strong>Perf</strong>
-    <span>理解当前性能、测试口径与 Adapter 取舍</span>
+    <span>阅读历史样本、测试口径与 Adapter 取舍</span>
   </a>
   <a href={docsHref("/guide/deployment.html")}>
     <strong>Ship</strong>
@@ -103,20 +103,22 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
   <div className="vext-reload">
     <article className="vext-tier-card vext-tier-card--active">
       <span className="vext-capability__mark">T1 / code</span>
-      <h3>路由代码热替换</h3>
+      <h3>修改已有后端文件</h3>
       <p>
         {"命中 "}
         <code>src/routes/</code>
-        {" 等业务代码时走定向替换路径，保留开发服务进程和连接状态。"}
+        {
+          " 等 soft 范围内的已有文件修改时，通常定向编译并重载受影响模块；失败可能升级为冷重启。"
+        }
       </p>
-      <strong>保留开发进程</strong>
+      <strong>正常路径保留应用 worker</strong>
     </article>
     <article className="vext-tier-card">
       <span className="vext-capability__mark">T2 / struct</span>
-      <h3>服务与模型结构重载</h3>
+      <h3>新增、删除或全量重载</h3>
       <p>
         {
-          "服务层、模型、语言资源等结构变更触发局部重载，不把每次改动都推向冷启动。"
+          "soft 范围中的路由、服务、中间件、Model 和语言资源发生增删时，重新扫描编译入口并更新运行态。"
         }
       </p>
       <strong>重载受影响依赖图</strong>
@@ -126,7 +128,7 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
       <h3>运行时边界冷启动</h3>
       <p>
         {
-          "配置、插件和中间件改变时执行冷启动，保证运行边界正确重建，不牺牲安全性。"
+          "配置、插件、预加载和启动依赖等边界改变时冷重启应用 worker；中间件通常仍属于 soft 范围。"
         }
       </p>
       <strong>重建运行时边界</strong>
@@ -137,12 +139,10 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
 <section className="vext-section">
   <div className="vext-section__header">
     <p className="vext-kicker">Performance Stack</p>
-    <h2 className="vext-title">
-      {"性能不是包装词，而是从 HTTP 路径到生产护栏的一组工程选择。"}
-    </h2>
+    <h2 className="vext-title">{"从 HTTP 处理到构建部署的框架能力。"}</h2>
     <p className="vext-copy">
       {
-        "首页保留框架真实工程面：Native fast path、route-core、schema/OpenAPI、CLI 与生产交付能力。"
+        "从路由、校验和类型契约开始，按应用需要启用前端、文档及运行功能，具体前提和限制见对应指南。"
       }
     </p>
   </div>
@@ -187,7 +187,7 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
     <article className="vext-capability">
       <span className="vext-capability__mark">safe ship</span>
       <h3>生产安全能力</h3>
-      <p>限流、结构化错误、优雅关闭、心跳监控和多进程部署组成交付闭环。</p>
+      <p>按需启用限流、结构化错误、优雅关闭和多进程监控，并在目标环境验证。</p>
     </article>
   </div>
 </section>
@@ -196,7 +196,7 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
   <div className="vext-matrix">
     <div className="vext-matrix__panel">
       <p className="vext-kicker">Runtime Flexibility</p>
-      <h2 className="vext-title">Adapter 是弹性，不是首页主角。</h2>
+      <h2 className="vext-title">按集成需求选择 HTTP Adapter。</h2>
       <p>
         {
           "Vext 的主线是框架自身的 API 性能与开发体验。Adapter 负责在需要时连接不同 HTTP 生态，让迁移和集成更稳。"
@@ -220,17 +220,17 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
       </div>
       <div className="vext-adapter-row">
         <strong>Fastify</strong>
-        <span>成熟高性能生态，适合复杂插件场景。</span>
+        <span>成熟高性能生态，集成原生插件前需核对 Vext 的适配器边界。</span>
         <em>plugin</em>
       </div>
       <div className="vext-adapter-row">
         <strong>Express</strong>
-        <span>兼容传统 Node.js 项目迁移。</span>
+        <span>迁移 Express 项目时需适配 Vext 请求与中间件合同。</span>
         <em>classic</em>
       </div>
       <div className="vext-adapter-row">
         <strong>Koa</strong>
-        <span>适合洋葱模型和既有 Koa 代码复用。</span>
+        <span>支持洋葱模型；既有 Koa 中间件需核对接入方式。</span>
         <em>flow</em>
       </div>
     </div>
@@ -240,22 +240,22 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
 <section className="vext-section">
   <div className="vext-production">
     <div>
-      <p className="vext-kicker">Production Ready</p>
-      <h2 className="vext-title">安全、稳定、可发布，不停在 demo 层。</h2>
+      <p className="vext-kicker">Production Operations</p>
+      <h2 className="vext-title">按目标环境验证运行与部署能力。</h2>
       <p className="vext-copy">
         {
-          "Vext 的文档入口应该让团队快速判断它能否进入真实服务端项目：限流、优雅关闭、Rolling Restart、Cluster、国际化、结构化错误和 OpenAPI 都要被看见。"
+          "部署前核对功能开关、平台与超时预算，验证限流故障、关闭流程和 Worker 替换。配置支持不等于应用已经完成生产验收。"
         }
       </p>
     </div>
     <div className="vext-production__signals">
       <div className="vext-signal">
         <strong>Rate Limit</strong>
-        <span>内置限流能力降低滥用风险。</span>
+        <span>默认关闭，显式启用后验证额度与存储故障。</span>
       </div>
       <div className="vext-signal">
         <strong>Graceful</strong>
-        <span>关闭流程保护连接与请求。</span>
+        <span>在关闭期限内等待请求与资源清理。</span>
       </div>
       <div className="vext-signal">
         <strong>Cluster</strong>
@@ -289,7 +289,7 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
     </a>
     <a href={docsHref("/benchmark.html")}>
       <strong>了解性能基准</strong>
-      <span>查看当前实测、对比边界、Adapter 选择与复现方法。</span>
+      <span>查看版本明确的历史样本、Adapter 对比与新基线测量方法。</span>
     </a>
   </div>
 </section>
@@ -317,6 +317,7 @@ export const docsHref = (path) => `${basePath}/zh${path}`;
         <div>
           <h2>资源</h2>
           <a href={docsHref("/api/config.html")}>API 参考</a>
+          <a href={docsHref("/specification/")}>开发规范</a>
           <a href={docsHref("/examples/hello-world.html")}>示例</a>
           <a href={docsHref("/benchmark.html")}>Benchmark</a>
           <a href={docsHref("/resources/support-and-services.html")}>支持与服务</a>

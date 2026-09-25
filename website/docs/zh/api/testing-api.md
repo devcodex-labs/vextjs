@@ -1,29 +1,41 @@
 # 测试工具
 
-本页详细介绍 VextJS 的测试工具 API，包括 `createTestApp`、`TestApp`、`TestRequest`、`TestRequestBuilder` 和 `TestResponse`。
+本页详细介绍 VextJS 的测试工具 API，包括 `createTestApp`、`TestApp`、`TestRequest`、`TestRequestBuilder`、`TestResponse` 和 `createTestJobRunner`。完整业务夹具与执行步骤见[测试指南](/zh/guide/testing)，本页用于查询签名、默认值和执行边界。
 
 ## 概述
 
-VextJS 提供零配置的测试工具，通过 `vextjs/testing` 子路径导入：
+通过测试子路径导入运行时值和类型：
 
 ```typescript
-import { createTestApp } from "vextjs/testing";
+import {
+  createTestApp,
+  createTestJobRunner,
+  type CreateTestAppOptions,
+  type TestApp,
+  type TestRequest,
+  type TestRequestBuilder,
+  type TestResponse,
+  type TestResponseHeaderValue,
+  type CreateTestJobRunnerOptions,
+  type TestJobRunner,
+} from "vextjs/testing";
 ```
 
-**核心设计**：
+ESM `import` 与 CommonJS `require()` 均支持，根入口与子路径共享运行时身份；例如错误可用 `require("vextjs").HttpError` 检查。根入口只额外导出其中五个 HTTP 测试类型，详见[类型导入](#类型导入)。
 
-- **零网络 I/O**：`TestRequest` 内部不启动 HTTP 服务器，直接通过 `adapter.buildHandler()` 构造 `(req, res)` handler，用内存中的 Mock 对象模拟请求。比 `supertest` 更快，CI 中可并行运行无端口冲突。
-- **零配置**：默认禁用限流并使用静默日志。`TestRequest` 不会打开 HTTP listener；`port: 0` 只是隔离测试的配置默认值。
-- **链式 API**：类似 `supertest` 风格的链式请求构造器，支持 `await` 直接获取响应。
-- **安全退出**：`config._testMode = true` 阻止 `shutdown()` 调用 `process.exit(0)`。
+- **内存请求**：构造 adapter handler 并模拟 Node 请求/响应，不监听 TCP。插件、语言脚本、Service 和出站 fetch 仍可发生真实 I/O。
+- **测试默认值**：静默日志、关闭限流与访问日志、1 秒关闭预算；具体值可覆盖。
+- **执行时机**：builder 是 PromiseLike，`await` / `.then()` 才发请求。
+- **清理责任**：`_testMode` 强制为 true，关闭不调用 process.exit；创建成功后仍需显式 close。
+- **适用边界**：不等同于 CLI bootstrap、真实 HTTP、前端 renderer/hydration 或数据库集成。
 
 ---
 
 ## createTestApp
 
-`createTestApp` 是测试用 App 工厂函数，创建一个完整的测试应用实例。
+`createTestApp` 是测试用 App 工厂函数，创建测试 app 与请求处理器。没有自动附送的 /health、业务路由或数据库。
 
-在插件、服务、路由之前加载应用字典，默认目录为 `rootDir/src/locales`，支持通过 `config.locale.directory` 覆盖、模块子目录、JSON 和脚本字典。缺目录使用空字典，格式错误使初始化失败，脚本按模块执行。它不读取项目配置文件或执行配置 provider，也不自动连接数据库。需要显式重载时，调用根入口 `loadI18n(testApp.app, directory)`；详见 [国际化](/guide/i18n)。
+在插件、服务、路由之前加载应用字典，默认目录为 `rootDir/src/locales`，支持通过 `config.locale.directory` 覆盖、模块子目录、JSON 和脚本字典。缺目录使用空字典，格式错误使初始化失败，脚本按模块执行。它不读取项目配置文件或执行配置 provider，也不自动连接数据库。需要显式重载时，调用根入口 `loadI18n(testApp.app, directory)`；详见 [国际化](/zh/guide/i18n)。
 
 ### 函数签名
 
@@ -33,30 +45,30 @@ async function createTestApp(options?: CreateTestAppOptions): Promise<TestApp>;
 
 ### 基本用法
 
-```typescript
-import { describe, it, expect, afterEach } from "vitest";
+以下完整例子不依赖业务路由，可保存为 `test/testing-api.mjs`，在已安装 vextjs 的项目根执行 `node test/testing-api.mjs`：
+
+```javascript
+// test/testing-api.mjs
+import assert from "node:assert/strict";
 import { createTestApp } from "vextjs/testing";
 
-describe("用户接口", () => {
-  let testApp;
-
-  afterEach(async () => {
-    await testApp?.close();
-  });
-
-  it("GET /users/list 应返回用户列表", async () => {
-    testApp = await createTestApp();
-
-    const res = await testApp.request
-      .get("/users/list")
-      .query({ page: "1", limit: "10" });
-
-    expect(res.status).toBe(200);
-    expect(res.body.code).toBe(0);
-    expect(Array.isArray(res.body.data)).toBe(true);
-  });
+const testApp = await createTestApp({
+  routes: false,
+  services: false,
+  middlewares: false,
+  config: { adapter: "native" },
 });
+try {
+  const res = await testApp.request.get("/missing");
+  assert.equal(res.status, 404);
+  assert.equal(res.body.code, 404);
+  assert.equal(typeof res.body.requestId, "string");
+} finally {
+  await testApp.close();
+}
 ```
+
+预期无断言失败并正常退出。以下选项及请求片段各自独立，假定已导入所需类型、断言工具并准备对应路由；示意的 `/users` 不是框架内置路径。创建的每个 testApp 都须关闭，不要连续覆盖变量而遗失前一个实例。
 
 ### 返回值
 
@@ -104,19 +116,19 @@ interface CreateTestAppOptions {
 这些默认值中已经存在的嵌套 plain object 可以局部提供；adapter、store、callback
 与数组等原子值仍保持完整。`createTestApp()` 不加载项目的
 `src/config/default.ts`，其内置默认值也不包含 `database`；若新增该可选 section，
-必须提供完整 database 配置，不能只写半截 patch。
+必须提供完整 database 配置，不能只写半截 patch。这个 helper 不会因此运行内置 MonSQLize 插件，`plugins: true` 只加载用户 plugins 目录；真实数据库验证见[数据库指南](/zh/guide/database)。
 
 ```typescript
 testApp = await createTestApp({
   config: {
-    adapter: "fastify", // 测试特定 adapter
+    adapter: "fastify", // 已安装该适配器要求的 fastify peer
     response: { wrap: false }, // 禁用出口包装
     cors: { enabled: false }, // 禁用 CORS
   },
 });
 ```
 
-**测试默认配置**（自动应用，无需手动设置）：
+**有效测试默认值摘要**（未列出字段继续继承框架默认值；session.enabled=false 来自框架层）：
 
 ```typescript
 {
@@ -137,7 +149,7 @@ testApp = await createTestApp({
 }
 ```
 
-配置合并优先级从低到高为：`DEFAULT_CONFIG` → `测试默认值` → `config 参数`。显式设置 `rateLimit.enabled`、`accessLog.enabled` 或 `session.enabled` 为 `true` 时，会注册与生产、开发环境相同的内置运行时。
+`_testMode` 在合并后强制设为 true，不能用参数关闭。其余配置合并优先级从低到高为：`DEFAULT_CONFIG` → `测试默认值` → `config 参数`。显式设置 `rateLimit.enabled`、`accessLog.enabled` 或 `session.enabled` 为 `true` 时，会注册与生产、开发环境相同的内置运行时。
 
 `TestRequest` 直接调用已构建的 handler，因此其请求不会绑定或连接到这个端口。
 
@@ -159,14 +171,17 @@ testApp = await createTestApp({ plugins: true });
 
 ### `setupPlugins`
 
-手动注册插件，替代自动扫描。适用于需要精确控制测试依赖的场景。
+手动执行插件 setup，替代自动扫描。回调期间可 extend/use/注册生命周期 hook；不会自动为注入资源生成 close。
 
 ```typescript
 testApp = await createTestApp({
   setupPlugins: async (app) => {
     // 只注册测试需要的插件
-    app.extend("testCache", new MockCache());
-    app.extend("db", new MockDatabase());
+    const cache = new Map<string, unknown>();
+    app.extend("testCache", cache);
+    app.onClose(() => {
+      cache.clear();
+    });
   },
 });
 ```
@@ -199,22 +214,11 @@ testApp = await createTestApp({
 
 #### TypeScript 服务文件加载机制
 
-当 `services: true` 时，`service-loader` 扫描 `src/services/` 目录并自动加载 `.ts` 源文件。由于 Node.js 原生 ESM 存在两个限制，框架内部使用 **esbuild** 自动处理：
+Service 与用户中间件的 TS 模块由共享模块加载器编译后导入，支持本地依赖及 `.js` import 对应 `.ts` 源文件；npm 依赖仍按项目解析。临时产物受项目 owner 管理，完成后清理。工作目录须允许工具写入，缺失模块、导出不合法等会使初始化失败。
 
-| 限制                              | 说明                                                                                       |
-| --------------------------------- | ------------------------------------------------------------------------------------------ |
-| `ERR_UNKNOWN_FILE_EXTENSION: .ts` | Node.js 原生 ESM 不支持直接 `import()` `.ts` 文件                                          |
-| `.js → .ts` 重映射缺失            | TypeScript ESM 约定在 import 中写 `.js` 扩展名，Node.js/Vite resolver 均不自动回退到 `.ts` |
+路由文件则直接由 Node `import(fileURL)` 加载，不能把 Service 编译能力推断为路由也自动编译。Node20 下普通已安装包 + Vitest 环境可能报 `Unknown file extension ".ts"`；可使用纯 JS 路由、兼容的测试 loader，或按[测试指南](/zh/guide/testing#快速开始)使用满足原生 TS 类型擦除限制的 Node 环境。真实 CLI dev/build 有自己的编译链路。
 
-`service-loader` 对每个 `.ts` 服务文件执行以下流程：
-
-1. 调用 `esbuild.build({ bundle: true, packages: 'external' })` 将 `.ts` 及其本地相对依赖打包为 `.mjs`
-2. 将编译产物写到源文件同目录的临时文件（命名含 `.__vext_compiled__`，不会被重复扫描）
-3. `import()` 临时 `.mjs` 文件，完成后自动清理
-
-:::tip 单元测试推荐：优先使用 mockServices
-`services: false` + `mockServices` 方案无需 esbuild 编译，速度更快且隔离性更好，是**单元测试**的推荐方式。`services: true` 适用于需要真实服务行为的**集成测试**。
-:::
+同一或重叠 rootDir 的多个测试进程可能争用 owner 并报 `VEXT_OWNER_BUSY`。共享夹具应串行执行，或使用不重叠的独立项目。没有 TCP 端口冲突不代表可以无条件并行。
 
 ---
 
@@ -229,7 +233,7 @@ const mockUserService = {
     { id: "2", name: "Bob" },
   ]),
   findById: vi.fn().mockResolvedValue({ id: "1", name: "Alice" }),
-  create: vi.fn().mockImplementation(async (data) => ({
+  create: vi.fn().mockImplementation(async (data: { name: string }) => ({
     id: "3",
     ...data,
   })),
@@ -244,6 +248,8 @@ testApp = await createTestApp({
 });
 ```
 
+该例仍保持 services 默认 true；只想运行 mock 时加 `services: false`，避免真实 Service 先执行构造。mock 不自动补齐业务方法，应满足实际 Service 契约。
+
 **合并逻辑**：
 
 | `services` | `mockServices` | 行为                                             |
@@ -251,13 +257,13 @@ testApp = await createTestApp({
 |   `true`   |      有值      | 先加载真实服务，再用 `mockServices` 覆盖同名服务 |
 |   `true`   |      无值      | 仅使用真实服务                                   |
 |  `false`   |      有值      | 仅使用 `mockServices`                            |
-|  `false`   |      无值      | `app.services` 为空对象 `{}`                     |
+|  `false`   |      无值      | 无自动加载/注入；插件仍可能显式提供服务          |
 
 ---
 
 ### `routes`
 
-控制是否自动加载 `src/routes/` 目录的路由文件。
+控制是否自动加载 `rootDir/src/routes/`。加载前会使用最终配置和中间件白名单构造请求链；路径仍有文件名前缀。`routes: false` 不自动注册测试路由。
 
 ```typescript
 // 加载真实路由（默认，集成测试）
@@ -271,7 +277,7 @@ testApp = await createTestApp({ routes: false });
 
 ### `middlewares`
 
-控制是否自动加载 `src/middlewares/` 目录的用户中间件。
+控制是否按 `config.middlewares` 白名单加载 `rootDir/src/middlewares/` 的用户中间件。默认 true 不等于全目录启用；白名单为空时不加载，路由引用未注册名称会报错。
 
 ```typescript
 // 加载用户中间件（默认）
@@ -282,7 +288,7 @@ testApp = await createTestApp({ middlewares: false });
 ```
 
 :::tip
-无论 `middlewares` 设置如何，**内置中间件**（requestId / cors / bodyParser / responseWrapper / errorHandler）始终会注册。此选项只控制 `src/middlewares/` 目录下的用户自定义中间件。
+`middlewares` 只控制用户中间件目录扫描。requestId、CORS、bodyParser、responseWrapper、Session、CSRF、限流等内置能力仍按各自配置决定是否启用；不能写成它们无条件全部注册。
 :::
 
 ---
@@ -292,14 +298,26 @@ testApp = await createTestApp({ middlewares: false });
 项目根目录，用于定位 `src/routes`、`src/services`、`src/plugins` 等目录。
 
 ```typescript
-import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-testApp = await createTestApp({
-  rootDir: join(__dirname, "../../"), // 自定义项目根目录
-});
+// 例如本文件位于 test/http.test.ts
+const rootDir = fileURLToPath(new URL("./fixtures/http/", import.meta.url));
+testApp = await createTestApp({ rootDir });
 ```
 
 ---
+
+### `devOverlay`
+
+可传入 `(error: unknown) => string`。当错误请求 Accept 包含 `text/html` 时，用返回 HTML 展示错误；回调抛错会回退普通错误处理。它不启动前端构建、Fast Refresh 或浏览器，也不影响普通 JSON 请求。测试错误隐藏时应明确 Accept 和 `response.hideInternalErrors`。
+
+### 初始化与资源边界
+
+顺序为配置合并 → app / i18n / Session / rateLimit runtime / adapter / fetch → 插件 → 用户中间件 → Service → mock 覆盖 → 路由 → 内置请求链与错误处理 → onReady → handler / TestRequest。
+
+onReady 会被等待；单个 hook 抛错由应用记录后继续，不代表初始化一定 reject。需要验证就绪副作用时应直接断言结果。helper 没有完整生产 bootstrap 的配置文件、provider、preload、内置 DB、前端产物检查和进程信号流程。
+
+初始化失败时尚未返回 close；自定义 setup 在部分分配资源后失败，需要在失败分支清理自己已取得的资源，不能假设所有失败路径已整体回滚。
 
 ## TestApp
 
@@ -318,8 +336,7 @@ interface TestApp {
 底层 `VextApp` 实例，可用于直接访问应用能力：
 
 ```typescript
-const testApp = await createTestApp();
-
+// 假定已创建 testApp，并在 finally/teardown 关闭
 // 访问配置
 console.log(testApp.app.config.port);
 
@@ -349,12 +366,17 @@ close(): Promise<void>;
 ```typescript
 import { afterEach } from "vitest";
 
-let testApp;
+import type { TestApp } from "vextjs/testing";
+
+let testApp: TestApp | undefined;
 
 afterEach(async () => {
   await testApp?.close();
+  testApp = undefined;
 });
 ```
+
+close 会等待应用 shutdown；默认总预算 1 秒，而不是每个 hook 各 1 秒。重复关闭成功完成的实例不会重复执行资源清理。close 不重置所有进程级模块缓存，也不自动删除外部测试数据。
 
 ---
 
@@ -396,24 +418,24 @@ interface TestRequest {
 
 ```typescript
 // GET 请求
-const res = await testApp.request.get("/users/list");
+const res1 = await testApp.request.get("/users/list");
 
 // POST 请求
-const res = await testApp.request.post("/users").send({
+const res2 = await testApp.request.post("/users").send({
   name: "Alice",
   email: "alice@example.com",
 });
 
 // PUT 请求
-const res = await testApp.request.put("/users/1").send({
+const res3 = await testApp.request.put("/users/1").send({
   name: "Alice Updated",
 });
 
 // DELETE 请求
-const res = await testApp.request.delete("/users/1");
+const res4 = await testApp.request.delete("/users/1");
 
-// OPTIONS 请求（CORS 预检）
-const res = await testApp.request.options("/users");
+// OPTIONS 请求；真正预检还要提供 Origin 与 Access-Control-Request-Method
+const res5 = await testApp.request.options("/users");
 ```
 
 ---
@@ -433,14 +455,14 @@ interface TestRequestBuilder extends PromiseLike<TestResponse> {
 ```
 
 :::tip
-`TestRequestBuilder` 实现了 `PromiseLike` 接口，因此可以直接使用 `await` 执行请求，无需调用额外的 `.execute()` 方法。
+`TestRequestBuilder` 实现了 `PromiseLike` 接口，因此可以直接使用 `await` 执行请求，无需调用额外的 `.execute()` 方法。每次 await/then 都执行一次新请求，同一 builder 没有 Promise 结果缓存；也不提供 Promise 的完整 catch/finally 方法集合。
 :::
 
 ---
 
 ### `set(key, value)`
 
-设置单个请求头。
+设置单个请求头，名称转小写；同名再次设置覆盖旧值。
 
 ```typescript
 set(key: string, value: string): this;
@@ -499,21 +521,23 @@ expect(res.status).toBe(200);
 expect(res.body.data).toHaveLength(10);
 ```
 
-多次调用 `query()` 会合并参数：
+多次调用 `query()` **替换**前一次对象：
 
 ```typescript
 const res = await testApp.request
   .get("/search")
   .query({ keyword: "hello" })
   .query({ page: 1 });
-// 等价于 GET /search?keyword=hello&page=1
+// 等价于 GET /search?page=1；keyword 已被替换
 ```
 
 ---
 
+已有 path 查询串保留，新 query 对象以 `&` 追加；已有同名 key 可能重复，最终解析按应用规则。类型不支持数组，需自己编码进 path；不能假设重复调用 query 会生成多值。
+
 ### `send(body)`
 
-设置请求体。自动序列化为 JSON 并设置 `Content-Type: application/json`。
+设置或替换请求体。字符串原样发送，其余非 undefined 值执行 JSON.stringify；未手动给 Content-Type 时默认 application/json。Buffer、Stream、FormData 不会自动编码为文件上传，应用需使用真实 HTTP 客户端测试这些传输。
 
 ```typescript
 send(body: unknown): this;
@@ -563,20 +587,20 @@ type(contentType: string): this;
 
 ```typescript
 // 发送 form-urlencoded
-const res = await testApp.request
+const formRes = await testApp.request
   .post("/login")
   .type("application/x-www-form-urlencoded")
   .send("username=alice&password=secret");
 
 // 发送 XML
-const res = await testApp.request
+const xmlRes = await testApp.request
   .post("/xml-endpoint")
   .type("application/xml")
   .send("<user><name>Alice</name></user>");
 ```
 
 :::tip
-`send()` 会自动设置 `Content-Type: application/json`（如果尚未设置）。如果需要其他类型，在 `send()` 之前调用 `type()` 进行覆盖。
+`send()` 会自动设置 `Content-Type: application/json`（如果尚未设置）。`type()` 在 send 前后都可调用，执行请求时其值优先于 set/headers 设置的 Content-Type。若 send 已产生默认 application/json，再用 set 修改 Content-Type 也不会覆盖这个独立的 type 值；此时应使用 type。Content-Type 只声明格式，不会把对象编码成 form-urlencoded/XML。
 :::
 
 ---
@@ -662,11 +686,10 @@ expect(res.header("content-type")).toContain("application/json");
 // 检查自定义响应头
 expect(res.headers["x-request-id"]).toBeDefined();
 
-// 检查 CORS 头
-expect(res.headers["access-control-allow-origin"]).toBeDefined();
+// 若要检查 CORS，请启用它并发送实际允许的 Origin，核对期望头值。
 ```
 
-`Set-Cookie` 会保留为数组。断言 cookie 时优先使用 `res.cookies` 或 `res.headerValues("set-cookie")`：
+`Set-Cookie` 多值会保留，helper 不把它们按逗号拆分。以下“2个cookie”断言要求路由实际设置两个 Cookie；优先使用 `res.cookies` 或 `res.headerValues("set-cookie")`：
 
 ```typescript
 expect(res.cookies).toHaveLength(2);
@@ -676,9 +699,19 @@ expect(res.header("content-type")).toContain("application/json");
 
 ---
 
+### `cookies` / `header(name)` / `headerValues(name)`
+
+| 成员                                | 返回值                               | 缺失时      |
+| ----------------------------------- | ------------------------------------ | ----------- |
+| `cookies: string[]`                 | Set-Cookie 的全部值                  | `[]`        |
+| `header(name): string \| undefined` | 指定响应头第一个值；名称不区分大小写 | `undefined` |
+| `headerValues(name): string[]`      | 指定响应头的全部值，单值也转为数组   | `[]`        |
+
+读取 helpers 不自动替你保存会话。需要延续 Cookie 时，将相关 Set-Cookie 的 name=value 部分作为后续 Cookie 请求头发送，保留各测试会话隔离。
+
 ### `body`
 
-自动解析的 JSON 响应体。如果响应的 `Content-Type` 为 `application/json`，`body` 为解析后的 JavaScript 对象/数组；否则为 `undefined`。
+自动解析的 JSON 响应体。当响应 Content-Type 包含 `application/json` 或 `+json` 时尝试 JSON.parse（结果也可能是原始类型或 null）；其他类型及解析失败时，`body` 保留与 `text` 相同的字符串，不是 undefined。HEAD / 204 空正文通常为 `""`。
 
 ```typescript
 body: any;
@@ -699,19 +732,19 @@ expect(res.body.data).toHaveLength(2);
 expect(res.body.data[0].name).toBe("Alice");
 ```
 
-**错误响应**：
+**错误响应**（假定对应 handler 调用 `app.throw(404, "用户不存在")`）：
 
 ```typescript
 const res = await testApp.request.get("/users/nonexistent-id");
 
 expect(res.body).toEqual({
-  code: -1,
+  code: 404,
   message: "用户不存在",
   requestId: expect.any(String),
 });
 ```
 
-**带业务错误码**：
+**带业务错误码**（假定业务显式抛出 code=10001、message="邮箱已注册"；不是测试工具自动添加）：
 
 ```typescript
 const res = await testApp.request.post("/users").send({
@@ -738,474 +771,109 @@ const res = await testApp.request.get("/users/list");
 console.log(res.text);
 // '{"code":0,"data":[...],"requestId":"..."}'
 
-// 文本响应
-const res2 = await testApp.request.get("/health");
+// 文本响应：前置为 /plain 的 handler 调用 res.text("OK")
+const res2 = await testApp.request.get("/plain");
 expect(res2.text).toBe("OK");
 ```
 
 ---
 
+## createTestJobRunner
+
+```typescript
+function createTestJobRunner(
+  options: CreateTestJobRunnerOptions,
+): Promise<TestJobRunner>;
+
+interface CreateTestJobRunnerOptions extends Omit<
+  CreateTestAppOptions,
+  "routes"
+> {
+  jobs: Record<string, VextJobDefinition> | VextJobDefinition[];
+}
+
+interface TestJobRunner {
+  app: VextApp;
+  registry: VextJobRegistry;
+  run(jobName: string, options?: VextJobRunOptions): Promise<VextJobRunResult>;
+  close(): Promise<void>;
+}
+```
+
+| 成员/规则          | 行为                                                                       |
+| ------------------ | -------------------------------------------------------------------------- |
+| `jobs`             | 必填，使用传入定义；不扫描 src/jobs                                        |
+| 名称               | 对象优先 definition.name，再用对象 key；数组无 name 时用 job1/job2…        |
+| 重名               | 创建 registry 时抛出重复名称错误                                           |
+| 其他选项           | 沿用 CreateTestAppOptions，但强制 routes=false；Service/插件仍有相同副作用 |
+| `app` / `registry` | 测试 app 和所注册任务；registry 提供 list/get/has/toJSON                   |
+| `run()`            | 执行任务、校验 payload、应用重试和超时；不是启动 scheduler/worker          |
+| `close()`          | 关闭测试 app；调用者应先等待在途 run 结束并处理取消                        |
+
+`run` options 包含 payload、signal、runId、trigger、scheduledAt、idempotencyKey；结果包含 jobName、runId、status、attempts、durationMs 及可选 result/error。status 为 success/failed/cancelled/timeout。应检查结果状态；未知任务等错误仍可能直接 reject。取消/超时通过 AbortSignal 协作，不强行中断忽略 signal 的 handler；close 也不是取消所有在途任务的快捷方式。具体签名与边界见 [Jobs API](/zh/api/jobs#runjobapp-registry-name-options)。
+
+下面可另存为 `test/job-api.mjs` 后用 Node 执行：
+
+```javascript
+// test/job-api.mjs
+import assert from "node:assert/strict";
+import { defineJob } from "vextjs";
+import { createTestJobRunner } from "vextjs/testing";
+
+const runner = await createTestJobRunner({
+  services: false,
+  middlewares: false,
+  config: { adapter: "native" },
+  jobs: { ping: defineJob({ handler: () => ({ ok: true }) }) },
+});
+try {
+  const result = await runner.run("ping");
+  assert.equal(result.status, "success");
+  assert.deepEqual(result.result, { ok: true });
+} finally {
+  await runner.close();
+}
+```
+
+此 helper 不创建真实调度进程、不写持久运行记录、不验证 Store 租约。调度、分布式领取和故障恢复按 [Jobs 指南](/zh/guide/jobs)运行独立验证。
+
 ## 使用模式
 
-### 集成测试
-
-加载真实的路由、服务、中间件，验证完整的请求-响应流程：
-
-```typescript
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { createTestApp } from "vextjs/testing";
-import type { TestApp } from "vextjs";
-
-describe("用户 CRUD", () => {
-  let testApp: TestApp;
-
-  beforeEach(async () => {
-    testApp = await createTestApp({
-      plugins: true, // 加载真实插件（如数据库）
-    });
-  });
-
-  afterEach(async () => {
-    await testApp.close();
-  });
-
-  it("创建用户", async () => {
-    const res = await testApp.request
-      .post("/users")
-      .set("Authorization", "Bearer test-admin-token")
-      .send({
-        name: "Alice",
-        email: "alice@example.com",
-      });
-
-    expect(res.status).toBe(201);
-    expect(res.body.code).toBe(0);
-    expect(res.body.data).toMatchObject({
-      name: "Alice",
-      email: "alice@example.com",
-    });
-    expect(res.body.data.id).toBeDefined();
-  });
-
-  it("查询用户列表", async () => {
-    const res = await testApp.request
-      .get("/users/list")
-      .query({ page: 1, limit: 10 });
-
-    expect(res.status).toBe(200);
-    expect(res.body.code).toBe(0);
-    expect(Array.isArray(res.body.data)).toBe(true);
-  });
-
-  it("用户不存在应返回 404", async () => {
-    const res = await testApp.request.get("/users/nonexistent");
-
-    expect(res.status).toBe(404);
-    expect(res.body.message).toBe("用户不存在");
-  });
-
-  it("参数校验失败应返回 422", async () => {
-    const res = await testApp.request
-      .post("/users")
-      .set("Authorization", "Bearer test-admin-token")
-      .send({
-        name: "", // 不满足 string:1-50
-        email: "invalid-email", // 不满足 email 格式
-      });
-
-    expect(res.status).toBe(422);
-    expect(res.body.errors).toBeDefined();
-    expect(res.body.errors.length).toBeGreaterThan(0);
-  });
-});
-```
-
----
-
-### 单元测试（Mock Services）
-
-不加载真实服务，使用 mock 替代，专注测试路由逻辑：
-
-```typescript
-import { describe, it, expect, afterEach, vi } from "vitest";
-import { createTestApp } from "vextjs/testing";
-
-describe("用户路由（mock 服务）", () => {
-  let testApp;
-
-  const mockUserService = {
-    findAll: vi.fn().mockResolvedValue([
-      { id: "1", name: "Alice" },
-      { id: "2", name: "Bob" },
-    ]),
-    findById: vi.fn().mockImplementation(async (id) => {
-      if (id === "1") return { id: "1", name: "Alice" };
-      return null;
-    }),
-    create: vi.fn().mockImplementation(async (data) => ({
-      id: "3",
-      ...data,
-      createdAt: new Date().toISOString(),
-    })),
-  };
-
-  afterEach(async () => {
-    await testApp?.close();
-    vi.clearAllMocks();
-  });
-
-  it("GET /users/list 调用 findAll", async () => {
-    testApp = await createTestApp({
-      mockServices: { user: mockUserService },
-    });
-
-    const res = await testApp.request
-      .get("/users/list")
-      .query({ page: "1", limit: "10" });
-
-    expect(res.status).toBe(200);
-    expect(mockUserService.findAll).toHaveBeenCalledOnce();
-  });
-
-  it("GET /users/:id 存在时返回用户", async () => {
-    testApp = await createTestApp({
-      mockServices: { user: mockUserService },
-    });
-
-    const res = await testApp.request.get("/users/1");
-
-    expect(res.status).toBe(200);
-    expect(res.body.data.name).toBe("Alice");
-    expect(mockUserService.findById).toHaveBeenCalledWith("1");
-  });
-
-  it("GET /users/:id 不存在时返回 404", async () => {
-    testApp = await createTestApp({
-      mockServices: { user: mockUserService },
-    });
-
-    const res = await testApp.request.get("/users/999");
-
-    expect(res.status).toBe(404);
-  });
-});
-```
-
----
-
-### 测试中间件
-
-验证认证、权限等中间件的行为：
-
-```typescript
-import { describe, it, expect, afterEach } from "vitest";
-import { createTestApp } from "vextjs/testing";
-
-describe("认证中间件", () => {
-  let testApp;
-
-  afterEach(async () => {
-    await testApp?.close();
-  });
-
-  it("无 token 应返回 401", async () => {
-    testApp = await createTestApp();
-
-    const res = await testApp.request.post("/users").send({
-      name: "Alice",
-      email: "alice@example.com",
-    });
-
-    expect(res.status).toBe(401);
-    expect(res.body.message).toContain("认证");
-  });
-
-  it("无效 token 应返回 401", async () => {
-    testApp = await createTestApp();
-
-    const res = await testApp.request
-      .post("/users")
-      .set("Authorization", "Bearer invalid-token")
-      .send({
-        name: "Alice",
-        email: "alice@example.com",
-      });
-
-    expect(res.status).toBe(401);
-  });
-
-  it("有效 token 应正常通过", async () => {
-    testApp = await createTestApp();
-
-    const res = await testApp.request
-      .post("/users")
-      .set("Authorization", "Bearer valid-admin-token")
-      .send({
-        name: "Alice",
-        email: "alice@example.com",
-      });
-
-    expect(res.status).not.toBe(401);
-  });
-});
-```
-
----
-
-### 测试不同 Adapter
-
-验证 Adapter 切换后行为一致：
-
-```typescript
-import { describe, it, expect, afterEach } from "vitest";
-import { createTestApp } from "vextjs/testing";
-
-const adapters = ["native", "hono", "fastify", "express", "koa"] as const;
-
-describe.each(adapters)("Adapter: %s", (adapter) => {
-  let testApp;
-
-  afterEach(async () => {
-    await testApp?.close();
-  });
-
-  it("GET /health 应返回 200", async () => {
-    testApp = await createTestApp({
-      config: { adapter },
-    });
-
-    const res = await testApp.request.get("/health");
-    expect(res.status).toBe(200);
-  });
-
-  it("POST JSON 应正确解析 body", async () => {
-    testApp = await createTestApp({
-      config: { adapter },
-    });
-
-    const res = await testApp.request.post("/echo").send({ message: "hello" });
-
-    expect(res.status).toBe(200);
-    expect(res.body.data.message).toBe("hello");
-  });
-});
-```
-
----
-
-### 测试自定义插件
-
-使用 `setupPlugins` 注册测试专用插件：
-
-```typescript
-import { describe, it, expect, afterEach } from "vitest";
-import { createTestApp } from "vextjs/testing";
-
-describe("Redis 缓存插件", () => {
-  let testApp;
-
-  afterEach(async () => {
-    await testApp?.close();
-  });
-
-  it("缓存命中时直接返回", async () => {
-    const mockCache = new Map();
-    mockCache.set("user:1", JSON.stringify({ id: "1", name: "Cached Alice" }));
-
-    testApp = await createTestApp({
-      setupPlugins: async (app) => {
-        app.extend("userCache", {
-          get: async (key) => mockCache.get(key) ?? null,
-          set: async (key, value, ttl) => mockCache.set(key, value),
-          del: async (key) => mockCache.delete(key),
-        });
-      },
-    });
-
-    // 假设路由 handler 会读取 app.userCache，应返回缓存数据
-    const res = await testApp.request.get("/users/1");
-    expect(res.status).toBe(200);
-  });
-});
-```
-
----
-
-### 测试错误处理
-
-```typescript
-import { describe, it, expect, afterEach } from "vitest";
-import { createTestApp } from "vextjs/testing";
-
-describe("错误处理", () => {
-  let testApp;
-
-  afterEach(async () => {
-    await testApp?.close();
-  });
-
-  it("404 路由应返回标准格式", async () => {
-    testApp = await createTestApp();
-
-    const res = await testApp.request.get("/nonexistent-path");
-
-    expect(res.status).toBe(404);
-    expect(res.body).toMatchObject({
-      code: expect.any(Number),
-      message: expect.any(String),
-      requestId: expect.any(String),
-    });
-  });
-
-  it("校验失败应返回错误列表", async () => {
-    testApp = await createTestApp();
-
-    const res = await testApp.request
-      .post("/users")
-      .set("Authorization", "Bearer valid-token")
-      .send({}); // 缺少必填字段
-
-    expect(res.status).toBe(422);
-    expect(res.body.errors).toBeDefined();
-    expect(Array.isArray(res.body.errors)).toBe(true);
-
-    for (const error of res.body.errors) {
-      expect(error).toHaveProperty("field");
-      expect(error).toHaveProperty("message");
-    }
-  });
-
-  it("500 错误在生产模式隐藏详情", async () => {
-    testApp = await createTestApp({
-      config: {
-        response: { hideInternalErrors: true },
-      },
-      mockServices: {
-        user: {
-          findAll: vi.fn().mockRejectedValue(new Error("数据库连接失败")),
-        },
-      },
-    });
-
-    const res = await testApp.request.get("/users/list");
-
-    expect(res.status).toBe(500);
-    expect(res.body.message).toBe("Internal Server Error");
-    // 不应暴露内部错误信息
-    expect(res.body.message).not.toContain("数据库连接失败");
-  });
-});
-```
-
----
-
-### 测试出口包装
-
-```typescript
-describe("出口包装", () => {
-  it("wrap: true 时响应包含 code/data/requestId", async () => {
-    const testApp = await createTestApp({
-      config: { response: { wrap: true } },
-    });
-
-    const res = await testApp.request.get("/health");
-
-    expect(res.body).toHaveProperty("code", 0);
-    expect(res.body).toHaveProperty("data");
-    expect(res.body).toHaveProperty("requestId");
-
-    await testApp.close();
-  });
-
-  it("wrap: false 时响应为原始数据", async () => {
-    const testApp = await createTestApp({
-      config: { response: { wrap: false } },
-    });
-
-    const res = await testApp.request.get("/health");
-
-    // 原始数据，无 code/data 包装
-    expect(res.body).not.toHaveProperty("code");
-    expect(res.body).toHaveProperty("status", "ok");
-
-    await testApp.close();
-  });
-});
-```
-
----
+| 目的                               | 配置与断言要点                                                                           |
+| ---------------------------------- | ---------------------------------------------------------------------------------------- |
+| 真实路由/Service 组合              | 保留相应扫描，提供真实依赖；不是完整生产 bootstrap                                       |
+| Mock Service                       | services=false，再提供满足业务接口的 mock；断言调用参数与结果                            |
+| 认证/中间件                        | 加入 config.middlewares 白名单与路由引用；分别验证合法、缺失、错误凭据                   |
+| 不同 adapter                       | config.adapter 选择已安装的适配器；Koa 还需 router peer，见[适配器](/zh/guide/adapters)  |
+| 自定义插件                         | setupPlugins 注入真实满足契约的对象，用 onClose 关闭资源；Map mock 不代表 Redis 集成通过 |
+| 业务/校验/内部错误                 | 明确触发路径、HTTP 状态、code、message、errors；hideInternalErrors 与 Accept 明确设置    |
+| response.wrap                      | 同一路由分别以 wrap=true/false 创建独立应用；错误响应不因此变为成功包装                  |
+| Session/Cookie                     | 从 cookies 提取所需 name=value，下一请求显式设置 Cookie；没有自动 Cookie jar             |
+| 日志、限流、CSRF、Security Headers | 测试默认关闭的能力须显式启用，再验证正负请求与响应头                                     |
+
+可运行的 CRUD、中间件、Mock、Service 单元测试见[测试指南实战](/zh/guide/testing#实战示例)。适配器传输、SSE、WebSocket、上传、socket 断开和真实 TLS 需要独立网络验证。
 
 ## 最佳实践
 
-### 1. 始终调用 close()
+- 创建成功的 app 放在 finally 或 afterEach/afterAll 中关闭；类型声明使用 `TestApp | undefined` 以处理创建失败。
+- 有状态测试每次建立独立数据；只读用例可以复用实例，但共享 rootDir 的模块加载应串行。
+- mock 用真实公开接口约束，普通 Error 的合法 status/statusCode 也可被归一化读取；业务 code/类型身份应使用 HttpError 或 app.throw。
+- 明确断言目标分支；只写“状态不是401”可能把 500 错认作通过。测试描述写清输入条件和预期结果。
+- 对生产配置、preload、DB、前端及 build/start 使用[真实 CLI 验证](/zh/guide/testing#4-用真实-cli-补齐生产路径)。
 
-```typescript
-afterEach(async () => {
-  await testApp?.close();
-});
-```
+## 常见问题
 
-防止资源泄漏导致测试进程挂起。使用 `?.` 可选链防止 `testApp` 未初始化时报错。
-
-### 2. 每个测试独立创建 TestApp
-
-```typescript
-// ✅ 推荐：每个测试独立 app
-it("test 1", async () => {
-  testApp = await createTestApp();
-  // ...
-});
-
-it("test 2", async () => {
-  testApp = await createTestApp();
-  // ...
-});
-
-// ❌ 避免：共享 app（测试间可能互相影响）
-// beforeAll(async () => {
-//   testApp = await createTestApp();
-// });
-```
-
-### 3. Mock 外部依赖
-
-```typescript
-testApp = await createTestApp({
-  services: false,
-  mockServices: {
-    user: mockUserService,
-    email: mockEmailService,
-  },
-});
-```
-
-单元测试中 mock 掉数据库、外部 API 等依赖，只测试被测代码本身。
-
-### 4. 使用 vi.fn() 验证调用
-
-```typescript
-const mockService = {
-  create: vi.fn().mockResolvedValue({ id: "1" }),
-};
-
-testApp = await createTestApp({ mockServices: { user: mockService } });
-
-await testApp.request.post("/users").send({ name: "Alice" });
-
-expect(mockService.create).toHaveBeenCalledWith(
-  expect.objectContaining({ name: "Alice" }),
-);
-```
-
-### 5. 测试描述用中文
-
-```typescript
-describe('用户管理接口', () => {
-  it('创建用户成功应返回 201', async () => { ... });
-  it('邮箱重复应返回 409', async () => { ... });
-  it('未认证应返回 401', async () => { ... });
-});
-```
+| 现象                       | 核对方向                                                                                  |
+| -------------------------- | ----------------------------------------------------------------------------------------- |
+| 路由返回404                | rootDir/src/routes是否存在、是否关闭扫描、文件前缀是否重复；helper不自动提供health        |
+| Unknown file extension .ts | 路由原生import的TS加载前置；Service可编译不意味着路由也可                                 |
+| VEXT_OWNER_BUSY            | 同一/父子rootDir并发加载；串行或独立夹具                                                  |
+| mock前真实依赖先连接       | services仍为默认true；先加载后覆盖                                                        |
+| 数据库/项目配置没生效      | helper不加载项目配置/provider/内置DB；显式提供依赖或使用真实CLI                           |
+| query参数“丢失”            | 多次query替换；一次提供完整参数对象                                                       |
+| 文本body不是undefined      | 非JSON与解析失败保留字符串；HEAD/204为空字符串                                            |
+| 用例挂起                   | 是否忘记await/close、handler是否发送响应、外部资源是否关闭；builder没有自己的网络请求超时 |
+| 内存请求成功，线上失败     | 真实端口/代理/上传/长连接/配置/前端不在该结果覆盖范围                                     |
 
 ---
 
@@ -1226,5 +894,5 @@ import type {
 ```
 
 :::tip
-测试工具通过 `vextjs/testing` 子路径导入（运行时值），类型可从 `vextjs` 主入口导入。这样设计是为了避免测试依赖（如 mock 相关代码）污染生产代码的打包体积。
+测试工具通过 `vextjs/testing` 子路径导入（运行时值），类型可从 `vextjs` 主入口导入。`TestResponseHeaderValue`、`CreateTestJobRunnerOptions`、`TestJobRunner` 则从 `vextjs/testing` 导入。不要从根入口导入 createTestApp/createTestJobRunner 运行时值。
 :::

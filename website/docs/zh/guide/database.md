@@ -1,55 +1,292 @@
-﻿# 数据库 (MonSQLize)
+# 数据库 (MonSQLize)
 
 VextJS 内置了 [MonSQLize](https://github.com/devcodex-labs/monSQLize) 数据库插件，提供开箱即用的 MongoDB 数据库支持。只需在配置文件中添加 `database` 字段，框架会自动完成连接管理、Model 加载和资源清理。
 
 ## 快速开始
 
-### 1. 添加数据库配置
+先完成[快速开始](/zh/guide/quick-start)中的 TypeScript 项目准备，并使用以下 npm scripts：`dev: vext dev`、`build: vext build`、`start: vext start`。Vext 已包含 MonSQLize 运行时依赖；这条入门路径无需额外安装第二份。
 
-VextJS 已将 `monsqlize@3.3.0` 固定为直接运行时依赖，Vext 应用不需要再安装
-第二份。添加 `config.database` 即可启用内置生命周期。
+下面五个文件组成完整的用户 CRUD 示例。先准备可连接的 MongoDB；没有外部实例时，可按[使用内存数据库](#使用内存数据库)添加验证 profile 和依赖，以 `npm run dev -- --config database-check` 启动。示例采用独立数据库名和 UUID 字符串 `_id`，不依赖 ObjectId 转换。它只演示数据访问；实际账户管理还需业务认证和授权。
+
+### 1. 添加数据库配置
 
 ```typescript
 // src/config/default.ts
-export default {
-  port: 3000,
+import type { VextUserConfig } from "vextjs";
 
+export default {
+  host: "127.0.0.1",
+  port: 3000,
+  adapter: "native",
+  frontend: { enabled: false },
   database: {
-    config: {
-      uri: "mongodb://localhost:27017/myapp",
-    },
+    databaseName: "vext_docs_database",
+    config: { uri: "mongodb://127.0.0.1:27017/vext_docs_database" },
+    // 启动插件显式等待索引完成，再对外接收请求。
+    monsqlizeOptions: { autoIndex: false },
   },
-};
+} satisfies VextUserConfig;
 ```
 
-### 2. 在服务中使用
+### 2. 定义 Model
+
+`collection: "users"` 同时决定这里的注册键和实际集合名。接口描述查询结果类型，schema 负责运行时校验，唯一索引负责并发写入约束。索引选项 `unique` 与 `key` 同级；写成 `options: { unique: true }` 不会建立预期的唯一约束。
+
+```typescript
+// src/models/user.ts
+import type { VextModelDefinition } from "vextjs";
+
+export type UserRole = "admin" | "editor" | "viewer";
+
+export interface UserDocument {
+  _id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export default {
+  collection: "users",
+  schema: {
+    _id: "uuid!",
+    name: "string:1-50!",
+    email: "email!",
+    role: "admin|editor|viewer",
+  },
+  indexes: [{ key: { email: 1 }, unique: true }],
+  options: { timestamps: true },
+} satisfies VextModelDefinition;
+```
+
+### 3. 等待唯一索引就绪
+
+内置数据库已在用户插件之前完成连接和 Model 注册。下面在 HTTP 监听之前等待索引建立；建立失败会终止启动。仅“先查询邮箱是否存在，再插入”不能避免并发重复写入。
+
+当前 `VextPluginContext` 将扩展属性视为 `unknown`；本例依据内置初始化合同，将 `db` 明确为 `VextDatabase | undefined` 后检查是否存在。Service 中的 `VextApp.db` 已有对应类型，无需重复转换。
+
+```typescript
+// src/plugins/database-indexes.ts
+import { definePlugin, type VextDatabase } from "vextjs";
+
+export default definePlugin({
+  name: "database-indexes",
+  async setup(app) {
+    const db = app.db as VextDatabase | undefined;
+    if (!db) throw new Error("Database is not configured");
+    await db.model("users").ensureIndexes({ throwOnError: true });
+  },
+});
+```
+
+<a id="2-在服务中使用"></a>
+
+### 4. 在服务中使用
+
+Service 必须默认导出。输入按字段选取，避免把请求中的额外属性直接写入数据库；创建和更新都处理唯一约束冲突，其余错误继续传播。
 
 ```typescript
 // src/services/user.ts
-export class UserService {
-  constructor(private app: any) {}
+import { randomUUID } from "node:crypto";
+import type { VextApp } from "vextjs";
+import type { UserDocument, UserRole } from "../models/user.js";
 
-  async findById(userId: string) {
-    return this.app.db.collection("users").findOne({ _id: userId });
+type UserInput = { name: string; email: string; role?: UserRole };
+
+export default class UserService {
+  constructor(private app: VextApp) {}
+
+  private get users() {
+    if (!this.app.db) throw new Error("Database is not configured");
+    return this.app.db.model<UserDocument>("users");
   }
 
-  async create(data: { name: string; email: string }) {
-    return this.app.db.collection("users").insertOne(data);
+  private rethrowWriteError(error: unknown): never {
+    const code =
+      typeof error === "object" && error !== null && "code" in error
+        ? error.code
+        : undefined;
+    if (code === 11000 || code === "DUPLICATE_KEY") {
+      this.app.throw(409, "用户 ID 或邮箱已存在");
+    }
+    throw error;
+  }
+
+  async findById(id: string) {
+    const user = await this.users.findOne({ _id: id });
+    if (!user) this.app.throw(404, "用户不存在");
+    return user;
+  }
+
+  async findAll({
+    page = 1,
+    limit = 20,
+    role,
+  }: {
+    page?: number;
+    limit?: number;
+    role?: UserRole;
+  } = {}) {
+    const filter = role ? { role } : {};
+    const { data, total } = await this.users.findAndCount(filter, {
+      skip: (page - 1) * limit,
+      limit,
+      sort: { _id: 1 },
+    });
+    return {
+      items: data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  async create(input: UserInput) {
+    const doc = {
+      _id: randomUUID(),
+      name: input.name,
+      email: input.email,
+      role: input.role ?? "viewer",
+    };
+    try {
+      await this.users.insertOne(doc);
+    } catch (error) {
+      this.rethrowWriteError(error);
+    }
+    return this.findById(doc._id);
+  }
+
+  async update(id: string, input: Partial<UserInput>) {
+    const changes: Partial<UserInput> = {};
+    if (input.name !== undefined) changes.name = input.name;
+    if (input.email !== undefined) changes.email = input.email;
+    if (input.role !== undefined) changes.role = input.role;
+    if (Object.keys(changes).length === 0)
+      this.app.throw(400, "没有可更新字段");
+    try {
+      const result = await this.users.updateOne({ _id: id }, { $set: changes });
+      if (result.matchedCount === 0) this.app.throw(404, "用户不存在");
+    } catch (error) {
+      this.rethrowWriteError(error);
+    }
+    return this.findById(id);
+  }
+
+  async delete(id: string) {
+    const result = await this.users.deleteOne({ _id: id });
+    if (result.deletedCount === 0) this.app.throw(404, "用户不存在");
   }
 }
 ```
 
-就这么简单！框架会在启动时自动连接数据库，在关闭时自动断开连接。
+### 5. 注册路由
+
+文件 `src/routes/users.ts` 已带来 `/users` 前缀，内部注册 `"/"`、`"/:id"`。分页只接受整数并设置上限；局部更新使用 PATCH。若从后台任务或其他 Service 直接调用这些方法，也应验证对应输入。
+
+```typescript
+// src/routes/users.ts
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  app.get(
+    "/",
+    {
+      validate: {
+        query: {
+          page: "integer:1-1000",
+          limit: "integer:1-100",
+          role: "admin|editor|viewer",
+        },
+      },
+    },
+    async (req, res) => {
+      res.json(await app.services.user.findAll(req.valid("query")));
+    },
+  );
+  app.get(
+    "/:id",
+    { validate: { param: { id: "uuid!" } } },
+    async (req, res) => {
+      res.json(await app.services.user.findById(req.valid("param").id));
+    },
+  );
+  app.post(
+    "/",
+    {
+      validate: {
+        body: {
+          name: "string:1-50!",
+          email: "email!",
+          role: "admin|editor|viewer",
+        },
+      },
+    },
+    async (req, res) => {
+      const user = await app.services.user.create(req.valid("body"));
+      res.setHeader("Location", `/users/${user._id}`);
+      res.json(user, 201);
+    },
+  );
+  app.patch(
+    "/:id",
+    {
+      validate: {
+        param: { id: "uuid!" },
+        body: {
+          name: "string:1-50",
+          email: "email",
+          role: "admin|editor|viewer",
+        },
+      },
+    },
+    async (req, res) => {
+      res.json(
+        await app.services.user.update(
+          req.valid("param").id,
+          req.valid("body"),
+        ),
+      );
+    },
+  );
+  app.delete(
+    "/:id",
+    { validate: { param: { id: "uuid!" } } },
+    async (req, res) => {
+      await app.services.user.delete(req.valid("param").id);
+      res.json(null, 204);
+    },
+  );
+});
+```
+
+### 6. 启动并验证
+
+先执行 `npx vext typegen` 生成 Service 类型，再执行 `npm run dev`；使用临时数据库时按下方测试章节选择 `--config database-check`。使用新邮箱创建记录，响应为 201，正文中的 `data._id` 是后续访问所用 ID：
+
+```powershell
+$body = @{ name = "Alice"; email = "alice@example.com" } | ConvertTo-Json
+$created = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:3000/users -ContentType "application/json" -Body $body
+$userId = $created.data._id
+Invoke-RestMethod "http://127.0.0.1:3000/users/$userId"
+Invoke-RestMethod "http://127.0.0.1:3000/users?page=1&limit=20"
+$change = @{ name = "Alice Updated" } | ConvertTo-Json
+Invoke-RestMethod -Method Patch -Uri "http://127.0.0.1:3000/users/$userId" -ContentType "application/json" -Body $change
+Invoke-WebRequest -Method Delete -Uri "http://127.0.0.1:3000/users/$userId"
+```
+
+创建后先用相同邮箱再次 POST，应返回 409；非法邮箱或小数页码应返回 422，非法路径 UUID 返回 400。DELETE 成功为 204 空正文，删除后 GET 为 404。修改环境或配置后要重新启动。停止开发服务，再执行 `npm run build -- --typecheck` 和 `npm start`，复验同一流程；使用临时数据库时，两条命令均按测试章节附加 `--config database-check`，重启后的数据不保留。
 
 ## 工作原理
 
 ### 条件加载
 
-MonSQLize 插件采用**条件加载**策略：仅当 `config.database` 存在时才会启用。没有数据库配置时，Vext 会跳过插件 setup，不安装数据库运行时与相关 hook。
+MonSQLize 插件采用**条件加载**策略：仅当 `config.database` 是非空对象时才会启用。未配置或空对象会跳过 setup，不建立连接和相关 hook；包本身仍是 Vext 的运行时依赖。
 
 ```
 bootstrap()
-  → 检测 config.database 是否存在
+  → 检测 config.database 是否为非空对象
   → 是 → 创建 MonSQLize 实例 → 连接 → 加载 Model → 挂载 app.db
   → 否 → 跳过插件 setup
 ```
@@ -59,7 +296,7 @@ bootstrap()
 MonSQLize 在**用户插件之前**加载，确保用户插件的 `setup()` 中可以安全使用 `app.db`：
 
 ```
-createApp(config)
+CLI bootstrap
   → 内置 MonSQLize 插件 setup()    ← 在这里
   → 用户插件 plugin-loader          ← app.db 已可用
   → middleware-loader
@@ -82,13 +319,12 @@ createApp(config)
 
 ### 基础连接
 
+当前内置集成使用 MongoDB。连接地址写入 `config.uri`；`config.url` 是兼容别名。`databaseName` 显式值优先，否则尝试从 URI 路径提取。建议明确数据库名，特别是在测试和多节点 URI 中。
+
 ```typescript
 // src/config/default.ts
 export default {
   database: {
-    // 连接类型（默认 'url'）
-    type: "url",
-
     // 连接配置
     config: {
       uri: "mongodb://localhost:27017/myapp",
@@ -99,62 +335,59 @@ export default {
 
 ### 副本集连接
 
+将节点、认证和副本集选项写入 MongoDB URI：
+
 ```typescript
 export default {
   database: {
-    type: "replica",
-
+    databaseName: "myapp",
     config: {
-      hosts: ["mongo1:27017", "mongo2:27017", "mongo3:27017"],
-      database: "myapp",
-      replicaSet: "rs0",
-      username: "admin",
-      password: "secret",
-      authSource: "admin",
+      uri: "mongodb://admin:secret@mongo1:27017,mongo2:27017,mongo3:27017/myapp?replicaSet=rs0&authSource=admin",
     },
   },
 };
 ```
+
+用户名或密码中的 URI 保留字符应进行百分号编码。驱动选项也可通过 `config.options` 传入。
 
 ### SRV 连接（MongoDB Atlas）
 
 ```typescript
 export default {
   database: {
-    type: "srv",
-
+    databaseName: "myapp",
     config: {
-      host: "cluster0.abc123.mongodb.net",
-      database: "myapp",
-      username: "admin",
-      password: "secret",
+      uri: "mongodb+srv://admin:secret@cluster0.abc123.mongodb.net/myapp",
     },
   },
 };
 ```
 
+`database.type` 的旧 `url/replica/srv` 值仍在兼容类型中，但当前插件统一创建 MongoDB 实例，不根据该字段拼装连接地址。只写 `host`、`hosts`、`username` 等分散字段不能代替 `config.uri`。
+
 ### 完整配置项
 
-| 配置项                | 类型                          | 默认值                  | 说明                                                               |
-| --------------------- | ----------------------------- | ----------------------- | ------------------------------------------------------------------ |
-| `type`                | `'url' \| 'replica' \| 'srv'` | `'url'`                 | 连接类型                                                           |
-| `config`              | `object`                      | —                       | 连接参数（url / hosts / host 等）                                  |
-| `maxTimeMS`           | `number`                      | `2000`                  | 全局查询超时（毫秒）                                               |
-| `findLimit`           | `number`                      | `10`                    | `find` 默认返回条数                                                |
-| `findPageMaxLimit`    | `number`                      | `500`                   | 分页最大 limit                                                     |
-| `slowQueryMs`         | `number`                      | `500`                   | 慢查询阈值（毫秒）                                                 |
-| `autoConvertObjectId` | `boolean \| object`           | —                       | 自动 ObjectId 转换                                                 |
-| `namespace`           | `{ scope: string }`           | `{ scope: 'database' }` | 缓存命名空间                                                       |
-| `cursorSecret`        | `string`                      | —                       | 深分页游标加密密钥                                                 |
-| `useMemoryServer`     | `boolean`                     | `false`                 | 使用内存数据库（测试用）                                           |
-| `logger`              | `'app' \| false`              | `'app'`                 | 日志桥接（`'app'` 使用 app.logger）                                |
-| `cache`               | `object`                      | —                       | 缓存配置（见下方）                                                 |
-| `models`              | `object`                      | —                       | Model 加载配置（见下方）                                           |
-| `databaseName`        | `string`                      | URI 自动提取            | 默认数据库名（跨库路由回退值，不填时从 `config.uri` 的路径段提取） |
-| `pools`               | `array`                       | —                       | 多连接池配置                                                       |
-| `poolStrategy`        | `string`                      | `'auto'`                | 连接池选择策略                                                     |
-| `slowQueryLog`        | `object`                      | —                       | 慢查询持久化配置                                                   |
-| `monsqlizeOptions`    | `VextMonSQLizeOptions`        | —                       | 受控的 MonSQLize 高级配置；连接与 Vext 生命周期相关字段仍受保护    |
+| 配置项                | 类型                          | 默认值                  | 说明                                                            |
+| --------------------- | ----------------------------- | ----------------------- | --------------------------------------------------------------- |
+| `type`                | `'url' \| 'replica' \| 'srv'` | `'url'`                 | 兼容字段，实际连接方式由 URI 决定                               |
+| `config`              | `object`                      | —                       | `uri` 连接字符串及 `options` 驱动配置；`url` 仅兼容             |
+| `maxTimeMS`           | `number`                      | `2000`                  | 全局查询超时（毫秒）                                            |
+| `findLimit`           | `number`                      | `10`                    | `find` 默认返回条数                                             |
+| `findPageMaxLimit`    | `number`                      | `500`                   | 分页最大 limit                                                  |
+| `slowQueryMs`         | `number`                      | `500`                   | 慢查询阈值（毫秒）                                              |
+| `autoConvertObjectId` | `boolean \| object`           | 上游 MongoDB 默认开启   | 常见场景使用布尔开关；UUID 示例不依赖此转换                     |
+| `namespace`           | `{ scope: string }`           | `{ scope: 'database' }` | 缓存命名空间                                                    |
+| `cursorSecret`        | `string`                      | —                       | 深分页游标签名密钥；签名不隐藏游标内容                          |
+| `useMemoryServer`     | `boolean`                     | `false`                 | 启动临时 MongoDB 进程用于测试，需额外依赖                       |
+| `memoryServerOptions` | `object`                      | —                       | 转交 `MongoMemoryServer.create()` 的配置，例如二进制版本        |
+| `logger`              | `'app' \| false`              | `'app'`                 | 日志桥接（`'app'` 使用 app.logger）                             |
+| `cache`               | `object`                      | —                       | 缓存配置（见下方）                                              |
+| `models`              | `object`                      | —                       | Model 加载配置（见下方）                                        |
+| `databaseName`        | `string`                      | 尝试从 URI 提取         | 显式值优先；临时服务器、多节点 URI 建议始终设置                 |
+| `pools`               | `array`                       | —                       | 多连接池配置                                                    |
+| `poolStrategy`        | `string`                      | `'auto'`                | 连接池选择策略                                                  |
+| `slowQueryLog`        | `object`                      | —                       | 慢查询持久化配置                                                |
+| `monsqlizeOptions`    | `VextMonSQLizeOptions`        | —                       | 受控的 MonSQLize 高级配置；连接与 Vext 生命周期相关字段仍受保护 |
 
 ### 受控的 MonSQLize 高级配置
 
@@ -162,7 +395,7 @@ export default {
 `database.monsqlizeOptions`：
 
 ```typescript
-import type { VextConfig } from "vextjs";
+import type { VextUserConfig } from "vextjs";
 
 export default {
   database: {
@@ -176,7 +409,7 @@ export default {
       writePathPolicy: { default: "model-only" },
     },
   },
-} satisfies VextConfig;
+} satisfies VextUserConfig;
 ```
 
 公开类型 `VextMonSQLizeOptions` 直接从固定的 `monsqlize@3.3.0`
@@ -200,7 +433,7 @@ Vext 会在调用 MonSQLize 构造函数前拒绝未知字段，以及这些由 
 
 ### 缓存配置
 
-MonSQLize 支持两级缓存：L1 内存 LRU + L2 Redis（可选）。
+MonSQLize 支持 L1 内存 LRU 和可选 L2 Redis。配置缓存存储不代表每条查询自动使用缓存；按查询传入毫秒 TTL，例如 `users.findOne(filter, { cache: 5_000 })`。写入失效也不提供跨进程事务一致性。
 
 ```typescript
 export default {
@@ -229,6 +462,8 @@ export default {
 
 Redis 缓存连接字段以 `uri` 为准；`url` 仅作为旧配置兼容别名保留，新项目建议统一使用 `uri`。
 
+上例 TTL 是显式配置值。当前 Vext 在提供 `cache` 对象且未禁用 memory 分支时，会把缺省 `memory.ttl` 填为 **300 毫秒**、`maxSize` 填为 1000；因此建议明确 TTL。`memory.enabled: false` 只让 Vext 不传这一分支，上游仍可能创建默认 L1，不能据此认为内存缓存已关闭。不需要查询缓存时不要为查询设置正数 `cache`。`logger: false` 同样只关闭 Vext 日志桥接，不保证上游完全静默。
+
 ### 多环境配置
 
 运行时深度合并支持按环境 patch 数据库，但 TypeScript 文件的职责不同：`default.ts` 是完整 base，使用 `VextUserConfig`；profile 文件是后层 patch，使用 `VextConfigOverride`。
@@ -236,6 +471,8 @@ Redis 缓存连接字段以 `uri` 为准；`url` 仅作为旧配置兼容别名�
 :::warning 不要跨层拆分半截 database
 不要在 `default.ts` 里只写 `findLimit` / `models`，再把必填的 `config.uri` 留到 `development.ts`。`default.ts` 中写出的 `database` 对象必须独立满足 `MonSQLizeDatabaseConfig`；TypeScript 不会把检查推迟到运行时合并之后。应先在 base 提供完整连接，再由后层只覆盖环境差异。
 :::
+
+`MonSQLizeDatabaseConfig` 要求存在 `config` 对象，但兼容类型中的 `uri/url` 本身仍是可选字段。因此“类型通过”不能证明连接字符串已提供或可连接；当前运行时连接还必须通过真实启动验证。
 
 可以选择两种健全结构：像下面的例子一样，在 `default.ts` 中保留一份完整
 `database`，后续 profile 用 `VextConfigOverride` 只写差异；或者让 `default.ts`
@@ -293,11 +530,12 @@ export default config;
 ```
 
 ```typescript
-// src/config/test.ts — 测试环境使用内存数据库
+// src/config/database-check.ts — 验证环境使用临时数据库
 import type { VextConfigOverride } from "vextjs";
 
 const config: VextConfigOverride = {
   database: {
+    databaseName: "vext_docs_database_test",
     useMemoryServer: true, // 使用 mongodb-memory-server-core
   },
 };
@@ -335,9 +573,11 @@ Vext 不再增加 facade 或 Proxy。框架只在该对象上窄幅补充只读 
 软删除返回值兼容，因此 `withTransaction()`、`on()`、`sync()`、`pool()`、
 `scopedModel()` 等上游实例能力都从唯一入口 `app.db` 访问。
 
+以下都是数据库已配置后的参考片段，`app` 来自 Service 或插件。TypeScript 中先检查 `if (!app.db) throw new Error("Database is not configured")`。涉及 ID、金额或向量的变量需由业务输入提供；这些片段不是额外的完整项目文件。
+
 ### collection(name)
 
-获取集合操作对象，这是最常用的 API：
+获取集合操作对象。直接 collection 写入不会自动经过 Model 的 schema、hooks 和 timestamps；需要这些语义时使用 `model()`，可通过 `writePathPolicy` 约束写入路径：
 
 ```typescript
 // 获取 users 集合
@@ -396,6 +636,12 @@ TypeScript 使用 `app.db.model<PostDocument>(registeredKey)` 获得原生查询
 
 数据库缓存的查询 `cache`、`cache.memory.ttl`、`cache.redis.ttl` 均为毫秒；session store 的 `ttlSeconds` 则是秒，由适配器转换，不能混用。配置值直接交给底层，本次说明不改变运行值。
 
+<a id="mcp-消费者验证中的分页与校验边界"></a>
+
+### 分页总数与缓存
+
+在当前 MonSQLize 中，`findPage({ totals: { mode: "sync" } })` 的总数仍可能来自独立缓存，默认 `totals.ttlMs` 为 600000 毫秒。`cache: 0` 不代表强制重新统计；也不能把统计失败返回的 `null/error` 显示为 0。需要直接计数的编号分页可采用开头的 `findAndCount()`，消费 `data/total`，同时保留两次读取不是事务快照的边界。数组字段和唯一错误码的说明分别见 Model 定义和服务章节。
+
 ### use(dbName)
 
 切换到指定数据库（默认连接池），适合单连接多库的场景：
@@ -406,7 +652,7 @@ const billing = app.db.use("billing");
 const invoice = await billing.collection("invoices").findOne({ _id: id });
 
 // 也可直接链式调用
-const invoice = await app.db
+const anotherInvoice = await app.db
   .use("billing")
   .collection("invoices")
   .findOne({ _id: id });
@@ -418,7 +664,20 @@ const Invoice = app.db.use("billing").model("BillingInvoice");
 
 ### pool(poolName)
 
-切换到指定连接池，返回包含 `collection` / `model` / `use` 的访问器：
+先配置池名和实际可连接的地址，例如合并以下配置到应用的 `database`：
+
+```typescript
+// database 对象内的配置片段；先准备这两个 MongoDB 实例。
+pools: [
+  { name: "cn", config: { uri: "mongodb://127.0.0.1:27018/myapp" } },
+  { name: "billing", config: { uri: "mongodb://127.0.0.1:27019/billing" } },
+],
+poolStrategy: "auto",
+```
+
+池的驱动选项写在与 `name/config` 同级的 `options` 中。下面的 Model 访问还要求已注册对应定义或别名（见 Model 章节）；只有数据库连接配置并不会自动生成 Model。
+
+切换到指定连接池后，返回包含 `collection` / `model` / `use` 的访问器：
 
 ```typescript
 // 访问 cn 池的 orders 集合
@@ -453,7 +712,7 @@ const Order2 = app.db.pool("cn").use("billing").model("CnBillingOrder");
 
 ### client
 
-获取原始 MongoDB Client 实例（用于事务等高级场景）：
+只读 `client` getter 指向默认连接的原始 MongoDB Client。以下示例要求 MongoDB 副本集或分片集群支持事务；单节点临时实例不能据此验证事务。`fromId`、`toId`、`amount` 来自业务输入，同一个事务中的操作必须显式传入同一 `session`，不要跨不属于该 Client 的连接池使用：
 
 ```typescript
 const session = app.db.client.startSession();
@@ -490,7 +749,7 @@ monsqlize.on("slow-query", (info) => {
 });
 
 // app.db 返回上游 Collection / Model 实例。
-const hits = await app.db?.collection("products").vectorSearch({
+const hits = await monsqlize.collection("products").vectorSearch({
   index: "product_embedding",
   path: "embedding",
   queryVector: embedding,
@@ -498,9 +757,9 @@ const hits = await app.db?.collection("products").vectorSearch({
   limit: 10,
 });
 
-const Product = app.db?.model("Product");
-const usage = await Product?.checkRelationUsage({ _id: productId });
-await Product?.deleteOneWithRelations({ _id: productId });
+const Product = monsqlize.model("Product");
+const usage = await Product.checkRelationUsage({ _id: productId });
+await Product.deleteOneWithRelations({ _id: productId });
 ```
 
 :::tip
@@ -515,14 +774,13 @@ symbol。需要 MonSQLize 专属类或类型时，请直接从 `monsqlize` 导�
 ### 手动注册的类型化 descriptor（3.3.0）
 
 MonSQLize 3.3.0 可以从对象字面量 schema 推导 Model 文档类型。应用代码需要导入
-这一包级 API 时，应把 `monsqlize@3.3.0` 声明为应用的直接依赖，而不是依赖包管理器
-碰巧提升传递依赖。请先一次性注册 descriptor，再通过原始实例获取 Model：
+这一包级 API 时，应将与 Vext 所用版本兼容的 `monsqlize` 声明为应用的直接依赖，并确认解析为同一份 Model registry，而不是依赖包管理器碰巧提升传递依赖。这里的 3.3.0 是当前仓库核对的上游版本，不是要求固定 Vext 的安装版本。请先一次性注册 descriptor，再通过原始实例获取 Model：
 
 ```typescript
 import { defineModel, Model } from "monsqlize";
 import type { VextApp } from "vextjs";
 
-const UserDescriptor = defineModel("users", {
+const UserDescriptor = defineModel("manual_users", {
   schema: {
     email: "email!",
     age: "number?",
@@ -540,7 +798,7 @@ export async function findUser(app: VextApp, email: string) {
 这是显式的上游注册路径。不要把 descriptor 作为 `src/models/*` 文件的默认导出：
 Vext 自动 Model 加载器仍接收 definition object，并按下文规则推导注册键。由于
 `app.db` 是原始实例，手动代码既可以把精确字符串键传给 `app.db.model()`，也可以
-传入上游类型化 descriptor。
+传入上游类型化 descriptor。手动注册不属于 Vext 自动加载器的 ownership 和热重载计划；应用应自行安排一次性注册、冲突处理与对应清理，不要在每次请求或模块反复重载时执行 `Model.define()`。
 
 ## Model 定义
 
@@ -551,6 +809,8 @@ Model 是对集合操作的封装，提供字段校验、钩子、虚拟字段�
 > MonSQLize Model 层集成了 **schema-dsl**，schema 字段支持 DSL 简洁语法。
 
 #### 推荐写法：schema-dsl 简洁语法 + options.timestamps
+
+下面展示字段与复合索引的定义方式。它是参考片段；合并到开头的 UUID 示例时，应保留原有 `_id` schema 和结果类型。
 
 ```typescript
 // src/models/user.ts
@@ -567,7 +827,7 @@ export default {
 
   // 索引
   indexes: [
-    { key: { email: 1 }, options: { unique: true } },
+    { key: { email: 1 }, unique: true },
     { key: { role: 1, createdAt: -1 } },
   ],
 
@@ -580,46 +840,41 @@ export default {
 
 #### 对象格式（复杂场景）
 
-当字段需要 `default` 函数、嵌套 schema 等高级能力时，可使用对象格式：
+字段可使用 JSON Schema 对象。必填用字段名后缀 `!`，动态默认值使用 Model 顶层 `defaults`；唯一性由 `indexes` 保证，不要在字段内写 `unique: true` 代替索引。下面使用独立的 `members` 注册键，可以与开头的 `users` 共存。
 
 ```typescript
-// src/models/user.ts
+// src/models/member.ts
+import { randomUUID } from "node:crypto";
+import type { VextModelDefinition } from "vextjs";
+
 export default {
-  collection: "users",
-
-  // 字段定义（对象格式）
+  collection: "members",
   schema: {
-    name: { type: "string", required: true },
-    email: { type: "string", required: true, unique: true },
-    role: {
-      type: "string",
-      enum: ["admin", "editor", "viewer"],
-      default: "viewer",
-    },
-    avatar: { type: "string" },
+    "_id!": { type: "string", format: "uuid" },
+    "name!": { type: "string", minLength: 1, maxLength: 50 },
+    "email!": { type: "string", format: "email" },
+    role: { type: "string", enum: ["admin", "editor", "viewer"] },
+    tags: { type: "array", items: { type: "string" } },
+    slug: { type: "string" },
   },
-
-  // 索引
-  indexes: [
-    { key: { email: 1 }, options: { unique: true } },
-    { key: { role: 1, createdAt: -1 } },
-  ],
-
-  // 钩子（仅用于非 timestamps 的自定义逻辑）
+  defaults: { _id: () => randomUUID(), role: "viewer" },
+  indexes: [{ key: { email: 1 }, unique: true }],
   hooks: {
-    beforeInsert(context: { data?: any }) {
-      // 自定义逻辑示例
+    beforeInsert(context) {
       const doc = context.data;
-      if (!doc?.name) return;
-      doc.slug = doc.name.toLowerCase().replace(/\s+/g, "-");
+      if (typeof doc !== "object" || doc === null || !("name" in doc)) return;
+      if (typeof doc.name === "string") {
+        Object.assign(doc, {
+          slug: doc.name.toLowerCase().replace(/\s+/g, "-"),
+        });
+      }
     },
   },
-
-  options: {
-    timestamps: true,
-  },
-};
+  options: { timestamps: true },
+} satisfies VextModelDefinition;
 ```
+
+数组使用显式 `{ type: "array", items: { type: "string" } }` 或 `array<string>` DSL。当前 schema-dsl 3.0.4 不正确编译 `["string"]` 简写，静态候选检查也会要求改用显式结构。模型 schema 仍需真实写入验证；仅通过 TypeScript 不能证明校验有效。
 
 ### Model options（模型选项）
 
@@ -693,7 +948,7 @@ src/
 │   └── index.ts        → Model 名称: 'Index'（除非 collection/name 覆盖）
 ```
 
-文件名推断 Model 名称的规则：
+上图以未声明 `collection/name` 为前提。开头的 `user.ts` 声明了 `collection: "users"`，实际注册键是 `users`。文件名推断规则：
 
 - `user.ts` → `'User'`（首字母大写）
 - `order-item.ts` → `'OrderItem'`（kebab-case → PascalCase）
@@ -732,6 +987,8 @@ src/models/
 
 ```typescript
 // src/models/billing/invoice.ts
+import type { VextModelDefinition } from "vextjs";
+
 // 无需手动写 connection — 由目录路径自动推断
 export default {
   schema: {
@@ -790,6 +1047,8 @@ models: {
 }
 ```
 
+本地覆盖仅适用于同一 primary 注册键；别名和其他注册组之间的冲突仍按发现/注册规则处理。
+
 共享包必须 default export Model 定义对象，例如 `{ User: { schema: ... } }`。回调式 `registerModels()` 包会被拒绝，因为 Vext 无法预检、归属所有权或回滚不透明回调注册的 key。
 
 共享包从当前服务根目录解析，支持 monorepo 提升安装和 pnpm 链接。使用 Node 的 `node` / `import` 条件选择 `exports`，可加载 ESM default、CommonJS `module.exports` 及编译后的 `__esModule`/default 包装。开发编译目录不改变依赖归属；被 `exports` 隐藏的入口或缺少的编译文件会明确报错。共享包应先完成自己的构建，再启动消费它的服务。
@@ -798,226 +1057,21 @@ models: {
 
 ### 基础 CRUD 服务
 
-```typescript
-// src/services/user.ts
-export class UserService {
-  private logger;
+[快速开始](#快速开始)中的 `src/services/user.ts` 是本页完整服务实现：默认导出类、显式输入/结果类型、Model 校验及 timestamps、唯一索引冲突转换、带范围限制的分页和 404。通过 getter 获取 Model，避免在长期存活对象中固定旧 Model 实例。
 
-  constructor(private app: any) {
-    this.logger = app.logger.child({ service: "UserService" });
-  }
-
-  async findById(id: string) {
-    this.logger.debug({ id }, "Finding user by ID");
-    const user = await this.app.db.collection("users").findOne({ _id: id });
-
-    if (!user) {
-      this.app.throw(404, "用户不存在");
-    }
-
-    return user;
-  }
-
-  async findAll(
-    options: { page?: number; limit?: number; role?: string } = {},
-  ) {
-    const { page = 1, limit = 20, role } = options;
-    const filter: Record<string, unknown> = {};
-    if (role) filter.role = role;
-
-    const skip = (page - 1) * limit;
-    const [items, total] = await Promise.all([
-      this.app.db.collection("users").find(filter, { skip, limit }),
-      this.app.db.collection("users").countDocuments(filter),
-    ]);
-
-    return {
-      items,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
-  }
-
-  async create(data: { name: string; email: string; role?: string }) {
-    // 检查邮箱唯一性
-    const existing = await this.app.db.collection("users").findOne({
-      email: data.email,
-    });
-    if (existing) {
-      this.app.throw(409, "邮箱已注册", "EMAIL_EXISTS");
-    }
-
-    const doc = {
-      ...data,
-      role: data.role ?? "viewer",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    const result = await this.app.db.collection("users").insertOne(doc);
-    this.logger.info(
-      { id: result.insertedId, email: data.email },
-      "User created",
-    );
-
-    return { id: result.insertedId, ...doc };
-  }
-
-  async update(
-    id: string,
-    data: Partial<{ name: string; email: string; role: string }>,
-  ) {
-    const result = await this.app.db
-      .collection("users")
-      .updateOne({ _id: id }, { $set: { ...data, updatedAt: new Date() } });
-
-    if (result.matchedCount === 0) {
-      this.app.throw(404, "用户不存在");
-    }
-
-    return this.findById(id);
-  }
-
-  async delete(id: string) {
-    const result = await this.app.db.collection("users").deleteOne({ _id: id });
-
-    if (result.deletedCount === 0) {
-      this.app.throw(404, "用户不存在");
-    }
-
-    this.logger.info({ id }, "User deleted");
-  }
-}
-```
+`findAndCount(query, { skip, limit, sort })` 返回 `data/total`，不需要先读取固定条数再做数组过滤或 `slice`。两次读取不等于事务快照，并发修改仍可能产生读取时刻差异。请求校验限制 page/limit，其他调用者应保持同一约束。
 
 ### 在路由中配合使用
 
-```typescript
-// src/routes/users.ts
-import { defineRoutes } from "vextjs";
+复用开头的 `src/routes/users.ts`：GET/POST `/users`、GET/PATCH/DELETE `/users/:id`。不要在这个文件中再次注册 `"/users"`。默认 JSON 响应包装把结果放入 `data`；204 不包含正文。
 
-export default defineRoutes((app) => {
-  app.get(
-    "/users",
-    {
-      validate: {
-        query: {
-          page: "number:1-",
-          limit: "number:1-100",
-          role: "admin|editor|viewer",
-        },
-      },
-      docs: { summary: "获取用户列表" },
-    },
-    async (req, res) => {
-      const { page, limit, role } = req.valid("query");
-      const result = await app.services.user.findAll({ page, limit, role });
-      res.json(result);
-    },
-  );
-
-  app.get(
-    "/users/:id",
-    {
-      validate: { param: { id: "string!" } },
-      docs: { summary: "获取用户详情" },
-    },
-    async (req, res) => {
-      const { id } = req.valid("param");
-      const user = await app.services.user.findById(id);
-      res.json(user);
-    },
-  );
-
-  app.post(
-    "/users",
-    {
-      validate: {
-        body: {
-          name: "string:1-50!",
-          email: "email!",
-          role: "admin|editor|viewer",
-        },
-      },
-      docs: { summary: "创建用户" },
-    },
-    async (req, res) => {
-      const data = req.valid("body");
-      const user = await app.services.user.create(data);
-      res.json(user, 201);
-    },
-  );
-
-  app.put(
-    "/users/:id",
-    {
-      validate: {
-        param: { id: "string!" },
-        body: {
-          name: "string:1-50?",
-          email: "email?",
-          role: "admin|editor|viewer",
-        },
-      },
-      docs: { summary: "更新用户" },
-    },
-    async (req, res) => {
-      const { id } = req.valid("param");
-      const data = req.valid("body");
-      const user = await app.services.user.update(id, data);
-      res.json(user);
-    },
-  );
-
-  app.delete(
-    "/users/:id",
-    {
-      validate: { param: { id: "string!" } },
-      docs: { summary: "删除用户" },
-    },
-    async (req, res) => {
-      const { id } = req.valid("param");
-      await app.services.user.delete(id);
-      res.json({ success: true });
-    },
-  );
-});
-```
+MongoDB 唯一键错误可能表现为数值 `11000`，也可能被上游归一为 `"DUPLICATE_KEY"`。服务对本例用户 ID/邮箱唯一约束统一返回 409，其余错误继续传播；不要按错误文本包含某个单词来吞掉失败。请求 schema 和 Model schema 需要分别验证，TypeScript 通过不代表数据库写入校验通过。
 
 ## 在插件中使用
 
-自定义插件可以通过 `dependencies` 确保在 MonSQLize 初始化之后执行：
+内置 MonSQLize 在用户插件之前初始化，这一顺序由 bootstrap 保证，无需在用户插件 `dependencies` 中声明内置插件名。上面的 `database-indexes` 就是在 setup 中等待数据库工作的完整例子。
 
-```typescript
-// src/plugins/seed-data.ts
-import { definePlugin } from "vextjs";
-
-export default definePlugin({
-  name: "seed-data",
-
-  async setup(app) {
-    // 插件加载时 MonSQLize 已初始化，app.db 可用
-    if (!app.db) {
-      app.logger.debug("[seed-data] No database configured, skipping");
-      return;
-    }
-
-    const count = await app.db.collection("users").countDocuments({});
-    if (count === 0) {
-      app.logger.info("[seed-data] Seeding initial admin user...");
-      await app.db.collection("users").insertOne({
-        name: "Admin",
-        email: "admin@example.com",
-        role: "admin",
-        createdAt: new Date(),
-      });
-      app.logger.info("[seed-data] Admin user seeded");
-    }
-  },
-});
-```
+初始化数据也可在 setup 中操作，但每个进程都会执行。不要用“先 count 为 0，再插入管理员”作为并发安全保障；初始化账号应遵循业务认证、幂等键和唯一约束，并妥善处理多进程竞争。插件依赖字段仅用于实际存在的用户插件间排序。
 
 ## 测试中使用
 
@@ -1031,16 +1085,17 @@ npm install -D mongodb-memory-server-core
 
 Vext 使用 core 包以避免 `mongodb-memory-server` wrapper 在 `npm install` 阶段触发 binary 下载。测试首次启动时仍可能下载 MongoDB binary；建议在 CI 中设置 `MONGOMS_DOWNLOAD_DIR=.cache/mongodb-binaries` 与 `MONGOMS_PREFER_GLOBAL_PATH=false`，并缓存该目录；缓存命中后可用 `MONGOMS_RUNTIME_DOWNLOAD=false` 验证不会再次下载。
 
-下面的局部 `test.ts` 仅在前层已经拥有完整 database 配置时成立。如果
+下面的局部 `database-check.ts` 仅在前层已经拥有完整 database 配置时成立。如果
 `default.ts` 完全不声明 `database`，这个 profile 必须改为提供完整的
 `MonSQLizeDatabaseConfig`。
 
 ```typescript
-// src/config/test.ts
+// src/config/database-check.ts
 import type { VextConfigOverride } from "vextjs";
 
 const config: VextConfigOverride = {
   database: {
+    databaseName: "vext_docs_database_test",
     useMemoryServer: true,
   },
 };
@@ -1048,51 +1103,55 @@ const config: VextConfigOverride = {
 export default config;
 ```
 
+临时实例由 Vext 在启动时创建并在关闭时停止；它是真实的 mongod 子进程，会使用本地临时数据目录。内置选项会替换原 URI，应显式设置测试数据库名。在项目目录启动：
+
+```bash
+npm run dev -- --config database-check
+```
+
+验证结束按 Ctrl+C 关闭。profile 由 `--config` 或 `VEXT_CONFIG` 选择，不能用 `NODE_ENV=test` 代替。验证生产构建时执行 `npm run build -- --typecheck --config database-check`，然后 `npm start -- --config database-check`；正常应用启动则选择自己的 profile。
+
+这里有意使用自定义名字 `database-check`：构建会排除 `config/development.*`、`config/local.*`、`config/test.*`，因此不能把开发模式中的 `test.ts` 直接当成构建后可用的验证 profile。启动前确认对应配置已进入产物。
+
 ### 测试示例
 
-```typescript
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { createTestApp } from "vextjs/testing";
+数据库端到端测试应针对上面已用 `--config database-check` 启动的 CLI 应用发起请求。`createTestApp()` 不会自动读取项目配置或初始化内置 MonSQLize；其返回值是 `{ app, request, close }`，不存在 `app.inject()`。只测路由/Service 时可以显式注入 mock；不能把这种结果当成数据库集成验证。
 
-describe("UserService", () => {
-  let app;
+以下使用 Node 内置测试运行器，不需要额外测试依赖。另开终端保存并执行 `node --test test/database.test.mjs`：
 
-  beforeAll(async () => {
-    app = await createTestApp();
-  });
+```javascript
+// test/database.test.mjs
+import test from "node:test";
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 
-  afterAll(async () => {
-    await app.close();
-  });
-
-  it("should create a user", async () => {
-    const res = await app.inject({
+test("创建用户、拒绝重复邮箱并清理数据", async () => {
+  const base = "http://127.0.0.1:3000";
+  const body = { name: "Alice", email: `reader-${randomUUID()}@example.com` };
+  const create = () =>
+    fetch(`${base}/users`, {
       method: "POST",
-      url: "/users",
-      body: { name: "张三", email: "zhangsan@test.com" },
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
     });
-
-    expect(res.statusCode).toBe(201);
-    expect(res.json().name).toBe("张三");
-  });
-
-  it("should reject duplicate email", async () => {
-    await app.inject({
-      method: "POST",
-      url: "/users",
-      body: { name: "张三", email: "dup@test.com" },
+  const created = await create();
+  assert.equal(created.status, 201);
+  const { data } = await created.json();
+  try {
+    assert.equal(data.name, "Alice");
+    const duplicate = await create();
+    assert.equal(duplicate.status, 409);
+    await duplicate.text();
+  } finally {
+    const removed = await fetch(`${base}/users/${data._id}`, {
+      method: "DELETE",
     });
-
-    const res = await app.inject({
-      method: "POST",
-      url: "/users",
-      body: { name: "李四", email: "dup@test.com" },
-    });
-
-    expect(res.statusCode).toBe(409);
-  });
+    assert.equal(removed.status, 204);
+  }
 });
 ```
+
+这条测试覆盖真实 HTTP、框架加载、Model 和唯一索引。事务、副本集、多连接池及 Redis 缓存需要相应测试环境，不能由单实例 CRUD 测试推导通过。
 
 ## 慢查询监控
 
@@ -1121,33 +1180,34 @@ export default {
 
 ## Model 热重载（开发模式）
 
-在 `vext dev` 开发模式下，修改 `src/models/` 目录下的 Model 定义文件会自动触发 **Tier 2 软重载**，框架将重新加载变更的 Model 定义，无需手动重启服务器。
+在 `vext dev` 开发模式下，修改 `src/models/` 目录下的 Model 定义文件会自动触发软重载（日志标记 `T1:code`），框架将重新加载变更的 Model 定义，无需手动重启服务器。
 
 ### 工作原理
 
 ```
 修改 src/models/item.ts
   ↓
-esbuild 重新编译 → dist/models/item.js
+esbuild 重新编译 → .vext/dev/models/item.js
   ↓
 model-reloader 检测到 invalidated 文件
   ↓
 构建并校验完整替换计划
   ↓
-使用 rollback journal 原子替换本应用所有的定义
+使用 rollback journal 原子替换本应用受影响的定义
   ↓
-新请求使用新 Model 定义
+后续重新获取 Model 时使用新定义
 ```
 
 ### 重载行为说明
 
-| 场景                   | 行为                                                   |
-| ---------------------- | ------------------------------------------------------ |
-| 修改 schema 字段类型   | 下次写入使用新 schema 校验规则                         |
-| 修改 hooks             | 新的 hooks 立即对后续操作生效                          |
-| 修改 indexes           | 索引变更需要冷重启才能同步到 MongoDB                   |
-| 重载失败（如语法错误） | 自动回滚到旧定义，服务继续运行                         |
-| 并发请求               | 重载期间正在处理的请求使用旧定义完成，新请求使用新定义 |
+| 场景                   | 行为                                                                                  |
+| ---------------------- | ------------------------------------------------------------------------------------- |
+| 修改 schema / hooks    | 重新获取的 Model 使用新定义；长期持有的旧实例不会自动变成新实例                       |
+| 修改 indexes           | 定义变化不等于数据库迁移完成；自动建索引策略和显式 `ensureIndexes()` 的结果需另外验证 |
+| 重载计划校验或提交失败 | 回滚注册计划并报告错误；运行时写入才触发的校验错误不等于重载已被拒绝                  |
+| 并发请求               | 已持有旧 Model 的操作仍可能沿用旧实例；不要承诺所有在途请求一起切换                   |
+
+索引涉及存量数据和唯一约束，不应仅凭“冷重启过”判定同步成功。开头示例关闭自动建索引，在启动插件里显式等待；热重载 Model 不会重新执行该插件。修改索引后按部署流程重新执行索引检查并处理冲突，再验证写入行为。
 
 ### 日志输出示例
 
@@ -1164,7 +1224,7 @@ model-reloader 检测到 invalidated 文件
 注意日志中的 `model:3ms` 计时段，表示 Model 重载耗时。
 
 :::tip 回滚保障
-若新 Model 定义存在问题（如 schema 定义抛出异常），框架会自动将旧定义重新注册，确保服务不中断。修复代码后保存，重载会再次触发。
+发现、预检或注册提交阶段的失败会回滚。并非所有字段语义错误都会在该阶段暴露；仍须执行对应数据库写入验证。修复代码后保存，重载会再次触发。
 :::
 
 :::info 框架内部机制
@@ -1181,56 +1241,33 @@ MonSQLize 插件在 `app.onClose()` 中注册了数据库连接关闭钩子。�
 4. MonSQLize 关闭数据库连接
 5. 进程退出
 
-无需手动管理连接关闭。
+内置连接、该应用拥有的 Model 注册项和由插件启动的临时 MongoDB 会一起清理。无需手动关闭 `app.db`；自行创建的其他连接和手动注册项应自行负责。关闭等待受 shutdown 超时限制，并非无限等待。
 
-## 下一步
+<a id="迁移指南-v02x--v030"></a>
 
-- 了解 [配置](/guide/configuration) 中的三层合并机制和环境覆盖
-- 查看 [插件](/guide/plugins) 如何通过 `definePlugin()` 扩展框架
-- 学习 [测试](/guide/testing) 中如何使用 `createTestApp()` 进行集成测试
-- 探索 [app.fetch 内置 HTTP 客户端](/guide/fetch) 在微服务中调用其他服务
+## 旧代码与当前 API 的兼容边界
 
-## 迁移指南 (v0.2.x → v0.3.0)
+<a id="b1appdbdb-已移除"></a>
 
-### B1：`app.db.db()` 已移除
+### B1：`app.db.db()` 与 `use()`
 
-旧用法（v0.2.x，存在运行时 bug — monSQLize 并未提供 `db()` 方法）：
+当前原始 MonSQLize 实例公开 `db(name?)`，不能再断言它“已移除”或“一定报错”。`db()` 提供数据库集合访问器；需要集合与 Model 统一的 scope 访问时，本指南使用 `use(dbName)`：
 
 ```typescript
-// ❌ v0.2.x — 实际会在运行时报错
-const logsDb = app.db.db("logs");
-```
-
-新用法（v0.3.0）：
-
-```typescript
-// ✅ v0.3.0 — 切换数据库（默认连接池）
 const logsDb = app.db.use("logs");
-
-// 如需同时切换连接池
-const logsDb = app.db.pool("cn").use("logs");
+const logsCollection = app.db.db("logs").collection("events");
+// 需要同时指定池和库时：
+const regionalLogs = app.db.pool("cn").use("logs");
 ```
 
 ### B2：`app.db.use()` 变为单参数
 
-旧用法（如有自行扩展传入两个参数）：
+当前签名为 `use(dbName)`。不要把池名和库名作为两个参数传入；应显式组合 `app.db.pool("cn").use("billing")`。旧扩展代码迁移时，按实际使用的上游版本与返回类型核对。
 
-```typescript
-// ❌ v0.2.x 非标准用法
-app.db.use("cn", "billing");
-```
+## 下一步
 
-新用法：
-
-```typescript
-// ✅ v0.3.0 — 先切换连接池，再切换数据库
-app.db.pool("cn").use("billing");
-```
-
-## MCP 消费者验证中的分页与校验边界
-
-在 monSQLize 3.3.0 中，`findPage({ totals: { mode: "sync" } })` 的总数仍可能来自独立缓存，默认 `totals.ttlMs` 为 600000 毫秒。`cache: 0` 不代表强制重新统计；也不能把统计失败返回的 `null/error` 显示为 0。需要每次重新计数的编号分页可直接用 `findAndCount(query, { skip, limit, sort })`，消费 `data/total`。两次数据库读取不等于事务快照，并发修改仍可能产生读取时刻差异。
-
-模型数组字段使用 `{ type: "array", items: { type: "string" } }` 或 `array<string>` DSL。当前 schema-dsl 3.0.4 不正确编译 `["string"]` 简写，MCP 静态候选检查会要求改用显式结构。模型 schema 仍需真实写入验证；仅通过 TypeScript 不能证明运行时校验有效。
-
-monSQLize 可能将 MongoDB 的唯一键错误 11000 映射为 `code: "DUPLICATE_KEY"`。业务根据实际错误码和对应唯一约束转换为冲突响应，其余数据库错误继续传播；不要按错误文本包含某个单词就吞掉失败。
+- 阅读[配置](/zh/guide/configuration)，了解 base、环境 profile 和覆盖层。
+- 查看[插件](/zh/guide/plugins)，了解 setup 顺序与资源管理。
+- 阅读[测试](/zh/guide/testing)，区分 mock、HTTP 和数据库集成测试。
+- 参照[数据访问规范](/zh/specification/data-access)，理解模型、分页与写入边界。
+- 探索[app.fetch 内置 HTTP 客户端](/zh/guide/fetch)，处理服务间调用。

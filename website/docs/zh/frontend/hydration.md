@@ -2,9 +2,11 @@
 
 ## 结论摘要
 
+本页以已启用前端和 SSR 的[全栈项目](/zh/frontend/getting-started)为前提，比较浏览器交互开启与关闭后的行为。CSR 的空 shell 属于另一维度，见[渲染模式](/zh/frontend/rendering-modes)。
+
 Hydration 默认启用。`hydration: "none"` 仍会正常返回完整的 SSR HTML、CSS 和 SEO；它不会返回空页面，也不会关闭 SSR。
 
-它只阻止浏览器加载 Vext/React runtime。因此 React 事件、Vext Form、Vext fetcher 和框架管理的客户端导航不可用；原生 HTML 能力仍按浏览器行为工作。
+它移除框架生成的浏览器 runtime 与 hydration 数据。因此 React 事件、Vext Form 增强、Vext fetcher 和框架管理的客户端导航不可用；包括 Vext Form 渲染出的原生 form 在内，HTML 能力仍按浏览器行为工作。
 
 ## 默认 hydration 是什么
 
@@ -28,7 +30,7 @@ Vext 会把 render payload 写入 document，让 client entry 不需要重复执
 | CSS                | 返回并加载。                                         | 仍返回并加载。                                                  |
 | SEO                | SSR metadata 可用。                                  | SSR metadata 仍可用。                                           |
 | React 事件         | hydration 后可用。                                   | 不可用；`onClick` 等事件不会执行。                              |
-| Vext Form          | 可用。                                               | 不可用。                                                        |
+| Vext Form 增强     | 可用。                                               | 不接管事件；渲染出的原生 form 仍按其 action/method 提交。       |
 | Vext fetcher       | 可用。                                               | 不可用。                                                        |
 | Vext 客户端导航    | 可用。                                               | 不可用；需要完整 document navigation。                          |
 | 普通链接           | 可用。                                               | 仍可用，浏览器会执行普通 document navigation。                  |
@@ -58,16 +60,65 @@ Vext 会把 render payload 写入 document，让 client entry 不需要重复执
 
 ## 为一个 SSR 页面关闭 hydration
 
+创建以下两个文件。`/article/intro` 关闭 hydration，`/article/interactive/intro` 保留默认行为；两个 URL 使用相同页面，便于直接比较。内存文章无需额外 service，真实业务查询应放在 handler 调用的服务中。
+
 ```ts
-app.get(
-  "/article/:slug",
-  { frontend: { hydration: "none" } },
-  async (req, res) => {
-    const article = await app.services.articles.find(req.params.slug);
-    res.render("article", { article }, { seo: { title: article.title } });
-  },
-);
+// src/routes/article.ts
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  const article = { title: "Introduction", body: "A server-rendered article." };
+  app.get(
+    "/:slug",
+    {
+      validate: { param: { slug: "string" } },
+      frontend: { hydration: "none" },
+    },
+    (req, res) => {
+      if (req.valid("param").slug !== "intro")
+        app.throw(404, "Article not found");
+      res.render("article", { article }, { seo: { title: article.title } });
+    },
+  );
+  app.get(
+    "/interactive/:slug",
+    {
+      validate: { param: { slug: "string" } },
+    },
+    (req, res) => {
+      if (req.valid("param").slug !== "intro")
+        app.throw(404, "Article not found");
+      res.render("article", { article }, { seo: { title: article.title } });
+    },
+  );
+});
 ```
+
+```tsx
+// src/frontend/pages/article.tsx
+import { useState } from "react";
+
+export default function ArticlePage(props: {
+  article: { title: string; body: string };
+}) {
+  const [clicks, setClicks] = useState(0);
+  return (
+    <main>
+      <h1>{props.article.title}</h1>
+      <p>{props.article.body}</p>
+      <button type="button" onClick={() => setClicks((value) => value + 1)}>
+        Clicks: {clicks}
+      </button>
+      <a href="/">返回首页</a>
+      <form action="/article/intro" method="get">
+        <button type="submit">重新打开文章</button>
+      </form>
+    </main>
+  );
+}
+```
+
+计数按钮用于验证两种策略的差异，纯内容页面可以移除它。以下行为说明针对 `/article/intro`：
 
 这个路由的行为如下：
 
@@ -75,7 +126,7 @@ app.get(
 - 页面可以正常显示并加载 CSS。
 - 普通 `<a>` 链接和普通 HTML `<form>` 仍然可用。
 - React `onClick` 等事件不会执行。
-- Vext Form、fetcher 和框架管理的同 document 导航不会执行。
+- Vext Form 的增强、fetcher 和框架管理的同 document 导航不会执行。
 - 从 `none` 页面进入 hydration 页面时，需要完整 document navigation；进入目标页面后，hydration 会恢复。
 
 用户自己写入 document 的独立 script 也会保留；是否工作取决于脚本自身，不依赖 Vext runtime。
@@ -95,13 +146,15 @@ app.get(
 
 `hydration: "none"` 作用于整个 document，不能只关闭某个 React 组件的 hydration。当前不能只 hydrate 搜索框、评论区或其他局部区域。
 
+它要求 SSR 保持开启，不能与路由 `clientOnly: true`、全局 `frontend.render.ssr: false` 或单次 `ssr: false` 组合；当前 no-hydration 路径也关闭 streaming。
+
 当前公开能力也不宣称支持 Selective/Partial Hydration、Islands、React Server Components 或 Partial Prerendering（PPR）。不要把这个路由级开关理解为局部 hydration 机制。
 
 ## 为什么当前没有全局配置
 
 当前公开 API 没有全局 `hydration: "none"` 配置。同一个应用可以同时包含需要交互的页面和纯 SSR 页面；如果全局关闭，所有页面都会失去 React/Vext 客户端能力。
 
-如果整个站点都需要纯 SSR，请逐个路由声明 `hydration: "none"`，或在应用自己的路由注册层统一生成这些路由配置。后者是应用层封装，不等于 Vext 提供了全局配置 API。
+如果整个站点都需要纯 SSR，请逐个路由声明 `hydration: "none"`。应用可以生成满足静态语法的源文件，但不能使用下节所述的不透明 route options helper 调用隐藏最终策略；源码生成也不等于 Vext 提供了全局配置 API。
 
 ## Route options 的静态语法
 
@@ -115,7 +168,7 @@ app.get("/article/:slug", { frontend: { hydration: "none" } }, handler);
 
 ## 避免 Mismatch
 
-保持 SSR 与浏览器输出确定：
+保持 SSR 与浏览器输出确定。若关闭 SSR 或使用 `clientOnly: true`，还需检查 [CSR 空 shell 的当前限制](/zh/frontend/csr-and-spa-fallback#空-shell-的当前限制)：当前入口会对空 body 调用 `hydrateRoot`，该 mismatch 不能通过调整业务时间或随机数解决。
 
 | 风险                           | 更好的做法                                  |
 | ------------------------------ | ------------------------------------------- |
@@ -136,6 +189,8 @@ performance.measure("vext:hydration")
 
 `hydration: "none"` 的 document 会标记为 `data-vext-hydration="none"`，以便诊断该页面是有意不加载 browser runtime。生产环境不需要默认输出 console 性能日志；验证脚本读取 DOM 与 Performance API。
 
+`done` 由根 hydration boundary 的 effect 标记；Performance entry 依赖浏览器 Performance API 可用。这些信号说明 runtime 已到达相应阶段，不能单独证明无 mismatch、所有异步内容已完成或交互正确，仍要验证页面行为。
+
 ## Route Assets
 
 Render manifest 会记录每个 route 的 initial JS/CSS。默认 hydration 的 SSR 可以注入 route-specific `modulepreload`，避免 hydration 后才发现 page chunk；`hydration: "none"` 不输出这些 route JS preload，但不会移除 CSS。
@@ -143,6 +198,10 @@ Render manifest 会记录每个 route 的 initial JS/CSS。默认 hydration 的 
 如果生产 `vext start` 发现 manifest 过旧且缺少 route assets，会 fail fast 并提示重新构建。
 
 ## 验证
+
+在应用根目录执行 `npm run build`，通过后启动 `npm start -- --port 3000`。分别直接打开本页两个 URL：两者都应已有文章正文和标题；`/article/intro` 的按钮停留在 `Clicks: 0`，交互 URL 的按钮应能增加计数。两者的普通链接和 GET 表单都应正常工作。按[Hydration 验证](./hydration-validation)继续检查 root、数据/入口脚本、preload 与 Performance entry，结束后停止服务。
+
+### 维护本仓库文档时
 
 修改本仓库文档后，运行文档契约检查：
 

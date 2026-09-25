@@ -2,6 +2,10 @@ import * as path from "node:path";
 import { defineConfig, type Sidebar, type UserConfig } from "@rspress/core";
 import { pluginSitemap } from "@rspress/plugin-sitemap";
 import docsVersions from "./version-channels.json";
+import {
+  resolveDocsRollout,
+  resolveDocsVerification,
+} from "./scripts/docs-rollout.mjs";
 
 const DEFAULT_DOCS_BASE = "/vextjs/";
 const DEFAULT_DOCS_SITE_URL = "https://devcodex-labs.github.io/vextjs";
@@ -24,6 +28,8 @@ const docsBase = normalizeDocsBase(process.env.VEXT_DOCS_BASE);
 const docsSiteUrl = trimTrailingSlash(
   process.env.VEXT_DOCS_SITE_URL || DEFAULT_DOCS_SITE_URL,
 );
+const docsRollout = resolveDocsRollout();
+const docsVerification = resolveDocsVerification();
 const docsHomeUrl = `${docsSiteUrl}/`;
 const docsOgImage = `${docsSiteUrl}/og-card.svg`;
 
@@ -373,9 +379,49 @@ const chineseSidebar: SidebarGroup[] = [
     ],
   },
   {
+    text: "规范",
+    items: [
+      {
+        text: "开发规范概览",
+        link: "/zh/specification/",
+      },
+      {
+        text: "架构与职责规范",
+        link: "/zh/specification/architecture",
+      },
+      {
+        text: "HTTP 与路由规范",
+        link: "/zh/specification/http-and-routing",
+      },
+      {
+        text: "校验与数据契约规范",
+        link: "/zh/specification/validation-and-contracts",
+      },
+      {
+        text: "数据访问规范",
+        link: "/zh/specification/data-access",
+      },
+      {
+        text: "安全与资源规范",
+        link: "/zh/specification/security-and-resources",
+      },
+      {
+        text: "任务与调度规范",
+        link: "/zh/specification/jobs",
+      },
+      {
+        text: "构建与运行规范",
+        link: "/zh/specification/operations",
+      },
+    ],
+  },
+  {
     text: "数据与接口",
     items: [
       { text: "参数校验", link: "/zh/guide/validation" },
+      { text: "认证与安全", link: "/zh/guide/security" },
+      { text: "请求限流", link: "/zh/guide/rate-limit" },
+      { text: "文件上传", link: "/zh/guide/uploads" },
       { text: "Cookies 与 Sessions", link: "/zh/guide/cookies-session" },
       { text: "响应缓存", link: "/zh/guide/cache" },
       { text: "数据库 (MonSQLize)", link: "/zh/guide/database" },
@@ -383,6 +429,7 @@ const chineseSidebar: SidebarGroup[] = [
       { text: "OpenAPI 文档", link: "/zh/guide/openapi" },
     ],
   },
+  { text: "前端集成", link: "/zh/guide/frontend" },
   {
     text: "工具与运维",
     items: [
@@ -390,6 +437,7 @@ const chineseSidebar: SidebarGroup[] = [
       { text: "部署与生产环境", link: "/zh/guide/deployment" },
       { text: "测试", link: "/zh/guide/testing" },
       { text: "CLI 命令", link: "/zh/guide/cli" },
+      { text: "MCP 代码生成", link: "/zh/guide/mcp-generation" },
       { text: "热重载", link: "/zh/guide/hot-reload" },
       { text: "预加载 (Preload)", link: "/zh/guide/preload" },
       { text: "Cluster 多进程", link: "/zh/guide/cluster" },
@@ -430,7 +478,17 @@ const chineseSidebar: SidebarGroup[] = [
       { text: "OpenTelemetry 可观测性", link: "/zh/examples/opentelemetry" },
     ],
   },
-  { text: "基准测试", link: "/zh/benchmark" },
+  {
+    text: "资源",
+    items: [
+      { text: "基准测试", link: "/zh/benchmark" },
+      {
+        text: "文档数据与 AI",
+        link: "/zh/resources/documentation-data-and-ai",
+      },
+      { text: "支持与服务", link: "/zh/resources/support-and-services" },
+    ],
+  },
 ];
 
 const chineseFrontendSidebar: SidebarGroup[] = [
@@ -571,7 +629,7 @@ const siteConfig: UserConfig = {
     codeBlocks: true,
   },
   languageParity: {
-    enabled: true,
+    enabled: docsRollout === "final" && docsVerification.scope === "stage",
   },
   themeConfig: {
     darkMode: false,

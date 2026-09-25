@@ -132,14 +132,16 @@
       "locale": "zh",
       "question": "VextJS 当前默认的前端渲染模型是什么？",
       "requiredRoutes": ["/zh/frontend/rendering-modes"],
-      "mustNotClaim": ["React Server Components 默认已启用"]
+      "mustNotClaim": ["React Server Components 默认已启用"],
+      "requiredDocIds": ["frontend.rendering-modes"]
     },
     {
       "id": "frontend-streaming-lifecycle-zh",
       "locale": "zh",
       "question": "VextJS 何时会流式发送 Suspense fallback，headers 已发送后又如何处理？",
       "requiredRoutes": ["/zh/frontend/rendering-modes"],
-      "mustNotClaim": ["Streaming SSR 在发送字节后还能替换 status 和 headers"]
+      "mustNotClaim": ["Streaming SSR 在发送字节后还能替换 status 和 headers"],
+      "requiredDocIds": ["frontend.rendering-modes"]
     },
     {
       "id": "frontend-rsc-boundary-zh",
@@ -149,7 +151,11 @@
         "/zh/frontend/boundaries-and-roadmap",
         "/zh/frontend/rendering-modes"
       ],
-      "mustNotClaim": ["VextJS 的 SSR 或 SEO 必须依赖 RSC"]
+      "mustNotClaim": ["VextJS 的 SSR 或 SEO 必须依赖 RSC"],
+      "requiredDocIds": [
+        "frontend.boundaries-and-roadmap",
+        "frontend.rendering-modes"
+      ]
     },
     {
       "id": "frontend-navigation-boundary-zh",
@@ -159,7 +165,11 @@
         "/zh/frontend/data-flow",
         "/zh/frontend/boundaries-and-roadmap"
       ],
-      "mustNotClaim": ["VextJS 新增了 loader/action 路由 DSL"]
+      "mustNotClaim": ["VextJS 新增了 loader/action 路由 DSL"],
+      "requiredDocIds": [
+        "frontend.data-flow",
+        "frontend.boundaries-and-roadmap"
+      ]
     },
     {
       "id": "frontend-build-boundary-zh",
@@ -169,84 +179,118 @@
         "/zh/frontend/boundaries-and-roadmap",
         "/zh/frontend/performance-budgets"
       ],
-      "mustNotClaim": ["VextJS 必须依赖 Vite 或 Webpack 插件"]
+      "mustNotClaim": ["VextJS 必须依赖 Vite 或 Webpack 插件"],
+      "requiredDocIds": [
+        "frontend.boundaries-and-roadmap",
+        "frontend.performance-budgets"
+      ]
     },
     {
       "id": "frontend-freshness-zh",
       "locale": "zh",
       "question": "VextJS 的 static、revalidate 和 client-only 前端 freshness 策略在哪里配置？",
       "requiredRoutes": ["/zh/frontend/rendering-modes"],
-      "mustNotClaim": ["VextJS revalidate 必须依赖 PPR"]
+      "mustNotClaim": ["VextJS revalidate 必须依赖 PPR"],
+      "requiredDocIds": ["frontend.rendering-modes"]
     },
     {
       "id": "api-only-project-zh",
       "locale": "zh",
       "question": "VextJS 是否可以作为纯 API 项目运行？",
       "requiredRoutes": ["/zh/frontend/boundaries-and-roadmap"],
-      "mustNotClaim": ["前端是强制要求"]
+      "mustNotClaim": ["前端是强制要求"],
+      "requiredDocIds": ["frontend.boundaries-and-roadmap"]
     },
     {
       "id": "support-entry-zh",
       "locale": "zh",
       "question": "团队应从哪里发起 VextJS 支持或集成的范围沟通？",
       "requiredRoutes": ["/zh/resources/support-and-services"],
-      "mustNotClaim": ["已承诺公开价格或 SLA"]
+      "mustNotClaim": ["已承诺公开价格或 SLA"],
+      "requiredDocIds": ["resources.support-and-services"]
     },
     {
       "id": "docs-machine-assets-zh",
       "locale": "zh",
       "question": "哪些 VextJS 文档资产适合 AI 辅助分析？",
       "requiredRoutes": ["/zh/resources/documentation-data-and-ai"],
-      "mustNotClaim": ["llms.txt 用于控制或授权爬虫"]
+      "mustNotClaim": ["llms.txt 用于控制或授权爬虫"],
+      "requiredDocIds": ["resources.documentation-data-and-ai"]
     },
     {
       "id": "documentation-privacy-zh",
       "locale": "zh",
       "question": "文档站是否默认启用了第三方 tracker？",
       "requiredRoutes": ["/zh/resources/documentation-data-and-ai"],
-      "mustNotClaim": ["默认收集原始搜索内容或用户身份"]
+      "mustNotClaim": ["默认收集原始搜索内容或用户身份"],
+      "requiredDocIds": ["resources.documentation-data-and-ai"]
     },
     {
       "id": "framework-seo-zh",
       "locale": "zh",
       "question": "框架默认 SEO、路由 SEO 与单次渲染 SEO 如何合并，sitemap 和 robots 输出在哪里配置？",
       "requiredRoutes": ["/zh/frontend/seo-sitemap"],
-      "mustNotClaim": ["SEO 元数据可以绕过校验或 origin 选择"]
+      "mustNotClaim": ["SEO 元数据可以绕过校验或 origin 选择"],
+      "requiredDocIds": ["frontend.seo-sitemap"]
     },
     {
       "id": "whole-page-no-hydration-zh",
       "locale": "zh",
       "question": "VextJS 页面如何保留 SSR HTML，同时不发送 hydration runtime、payload 或路由 JavaScript？",
       "requiredRoutes": ["/zh/frontend/hydration"],
-      "mustNotClaim": ["hydration: none 等同于 clientOnly"]
+      "mustNotClaim": ["hydration: none 等同于 clientOnly"],
+      "requiredDocIds": ["frontend.hydration"]
     },
     {
       "id": "raw-app-db-zh",
       "locale": "zh",
       "question": "VextJS 应用通过哪个属性暴露原始 MonSQLize 实例及其完整上游 API？",
       "requiredRoutes": ["/zh/guide/database"],
-      "mustNotClaim": ["v2 仍保留 app.monsqlize 作为第二入口"]
+      "mustNotClaim": ["v2 仍保留 app.monsqlize 作为第二入口"],
+      "requiredDocIds": ["guide.database"]
     },
     {
       "id": "rate-limit-opt-in-zh",
       "locale": "zh",
       "question": "全局限流是否默认安装，如何显式启用并在路由级覆盖？",
       "requiredRoutes": ["/zh/guide/configuration"],
-      "mustNotClaim": ["省略 rateLimit 会启用全局限流"]
+      "mustNotClaim": ["省略 rateLimit 会启用全局限流"],
+      "requiredDocIds": ["guide.configuration"]
     },
     {
       "id": "scaffold-type-ownership-zh",
       "locale": "zh",
       "question": "哪些类型目录归 Vext 工具链所有，哪些归应用所有，TypeScript 与 JavaScript starter 有何不同？",
       "requiredRoutes": ["/zh/guide/cli"],
-      "mustNotClaim": ["JavaScript preflight 会创建 src/types/generated"]
+      "mustNotClaim": ["JavaScript preflight 会创建 src/types/generated"],
+      "requiredDocIds": ["guide.cli"]
     },
     {
       "id": "path-validation-status-zh",
       "locale": "zh",
       "question": "非法路径参数与 body、query、header、cookie 校验失败分别返回什么 HTTP 状态？",
       "requiredRoutes": ["/zh/guide/validation"],
-      "mustNotClaim": ["所有 validate 位置都返回 HTTP 422"]
+      "mustNotClaim": ["所有 validate 位置都返回 HTTP 422"],
+      "requiredDocIds": ["guide.validation"]
+    },
+    {
+      "id": "routing-specification-zh",
+      "locale": "zh",
+      "question": "VextJS 路由模块如何导出、工厂如何收集路由，以及校验与中间件应遵守哪些边界？",
+      "requiredRoutes": [
+        "/zh/guide/routing",
+        "/zh/api/route-definition",
+        "/zh/specification/http-and-routing"
+      ],
+      "requiredDocIds": [
+        "guide.routing",
+        "api.route-definition",
+        "specification.http-and-routing"
+      ],
+      "mustNotClaim": [
+        "可在创建后的 app 实例上直接注册业务 HTTP 路由",
+        "异步路由 factory 是受支持的静态路由定义形式"
+      ]
     }
   ]
 }

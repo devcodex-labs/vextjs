@@ -2070,12 +2070,15 @@ describe("OpenAPIGenerator", () => {
       const enApi = readRepoFile("website/docs/en/api/route-definition.md");
 
       expect(zhGuide).toContain(
-        "`auth: { required: false }` 且没有 roles、scopes、permissions 或 `check` 时",
+        "未显式设置 `auth.security`，且 `required: false`、没有 roles、scopes、permissions 或 `check` 时",
       );
       expect(enGuide).toContain(
         "`auth: { required: false }` without roles, scopes, permissions, or `check`",
       );
-      expect(zhApi).toContain("OpenAPI 会把该路由标记为公开");
+      expect(zhApi).toContain(
+        "没有 roles、scopes、permissions、`check` 且未显式设置 `auth.security` 时",
+      );
+      expect(zhApi).toContain("Auth 合同投影的 OpenAPI security 为 `[]`");
       expect(enApi).toContain("OpenAPI marks the route as public");
     });
 
