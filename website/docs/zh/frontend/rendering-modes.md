@@ -147,13 +147,15 @@ export default {
   frontend: {
     enabled: true,
     spaFallback: {
-      scopes: [{ basePath: "/app", page: "app/shell", ssr: false }],
+      scopes: [{ basePath: "/app", page: "app/shell", ssr: true }],
     },
   },
 };
 ```
 
 适合高度交互的产品区域、后台控制台或嵌入式工具。它不是默认页面模型。
+
+如需对照验证空 shell，可将 `ssr` 改为 `false`，但须按上文记录当前浏览器入口可能出现的 hydration mismatch；主示例保留 SSR。
 
 ## Render Data 缓存
 

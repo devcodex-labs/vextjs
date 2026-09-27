@@ -13,7 +13,7 @@ Plugins are the **only extension entry** to the VextJS framework. Through plug-i
 - Register runtime lifecycle hook (`app.hooks.on()`)
 - Replace built-in implementation (`app.setValidator()` / `app.setThrow()` / `app.setRateLimiter()`)
 
-Plug-in files are placed in the `src/plugins/` directory, and `plugin-loader` automatically scans and loads them at startup.
+Plugin files live in `src/plugins/`, where plugin-loader scans them at startup. This page follows definition → lifecycle → loading → middleware helpers → types/resources. Its local examples do not form one complete project.
 
 ---
 
@@ -32,19 +32,42 @@ Receives a `VextPlugin` object and returns it unchanged (for type annotation onl
 ### Basic usage
 
 ```typescript
-// src/plugins/redis.ts
+// src/plugins/demo-cache.ts
 import { definePlugin } from "vextjs";
-import Redis from "ioredis";
 
 export default definePlugin({
-  name: "redis",
-  async setup(app) {
-    const redis = new Redis(app.config.redis);
-    app.extend("redis", redis);
-    app.onClose(() => redis.quit());
+  name: "demo-cache",
+  setup(app) {
+    const cache = new Map<string, string>();
+    app.extend("demoCache", cache);
+    app.onClose(() => {
+      cache.clear();
+    });
   },
 });
 ```
+
+This shows definition and close registration only. The Map has no TTL, capacity limit, or persistence. See the [Plugins Guide](/guide/plugins) for external resources such as Redis.
+
+### defineAppExtensions
+
+Declare explicit generated types for values exposed through `app.extend()`:
+
+```typescript
+function defineAppExtensions<T extends Record<string, unknown>>(): T;
+```
+
+Export a top-level value named `appExtensions` from the plugin file:
+
+```typescript
+import { defineAppExtensions } from "vextjs";
+
+export const appExtensions = defineAppExtensions<{
+  demoCache: Map<string, string>;
+}>();
+```
+
+At runtime this returns an empty object. It neither creates the Map, calls `app.extend()`, nor validates the actual value. `npm exec -- vext typegen` reads the declaration and generates app types; it must agree with the value mounted in `setup()`. See [Project Structure](/guide/project-structure) for generated files and TypeScript integration.
 
 ---
 
@@ -56,11 +79,18 @@ Plug-in interface definition.
 interface VextPlugin {
   readonly name: string;
   readonly dependencies?: string[];
-  setup(app: VextApp): Promise<void> | void;
-  onReady?(app: VextApp): Promise<void> | void;
-  onClose?(app: VextApp): Promise<void> | void;
+  setup(
+    app: VextPluginContext,
+    context: VextPluginSetupContext,
+  ): Promise<void> | void;
+  onReady?(app: VextPluginContext): Promise<void> | void;
+  onClose?(app: VextPluginContext): Promise<void> | void;
 }
 ```
+
+`VextPluginContext` supplies config, logger, hooks, services, adapter, cache, fetch, and extension/replacement/lifecycle methods, according to lifecycle stage. Its type does not provide `app.get/post/...` route registration; use `defineRoutes()`. Custom values use a string index and may need explicit type declarations or narrowing.
+
+`VextPluginSetupContext` exposes `readonly signal: AbortSignal` only as the second `setup()` argument. `onReady` and `onClose` do not receive it.
 
 ### `name`
 
@@ -70,7 +100,7 @@ Plug-in name, globally unique identifier.
 readonly name: string;
 ```
 
-Used for log output, error messages and dependency declarations. Plug-ins with the same name loaded later will overwrite the ones loaded first (can be used to replace the built-in implementation).
+Used for logs, errors, and dependencies. Duplicate user plugin names fail before setup; later scanning does not overwrite earlier plugins. Use the relevant `app.set*()` API to replace framework capabilities, and avoid built-in extension names for custom resources.
 
 ```typescript
 export default definePlugin({
@@ -89,25 +119,27 @@ List of other plugin names that it depends on (optional).
 readonly dependencies?: string[];
 ```
 
-`plugin-loader` performs **topological sort** based on this field to ensure that dependent plugins execute `setup()` before the current plugin. Fail Fast reports an error when there are circular dependencies.
+`plugin-loader` topologically sorts user plugins so declared dependencies finish setup before the current plugin. Each dependency name must exist among user plugins scanned in this run; missing or cyclic dependencies fail startup.
 
 ```typescript
 export default definePlugin({
   name: "user-cache",
-  dependencies: ["redis", "database"], // Make sure redis and database are initialized first
+  dependencies: ["redis", "sql-database"],
   async setup(app) {
-    // At this time app.redis (redis plug-in mounting) and app.db (database plug-in mounting) are ready
-    const userCache = new UserCacheService(app.redis, app.db);
+    // Their setup completed; connection readiness depends on their implementations.
+    const userCache = new UserCacheService(app.redis, app.sql);
     app.extend("userCache", userCache);
   },
 });
 ```
 
+This fragment assumes two user plugins named `redis` and `sql-database` mount `app.redis` and `app.sql`, and the app provides `UserCacheService`.
+
 :::warning
 Circular dependencies can cause startup failure:
 
 ```
-[vextjs] Circular dependency detected: redis → database → redis
+[vextjs] Circular dependency detected in plugins: redis → sql-database → redis
 ```
 
 :::
@@ -133,39 +165,31 @@ setup(
 **Key Notes**:
 
 - Can be a synchronous or asynchronous function
-- `plugin-loader` sets a **hard timeout** (default 30 seconds) for each `setup()`; timeout aborts `context.signal`, rolls back setup-time framework mutations, and revokes the setup facade before throwing
-- A late asynchronous continuation cannot commit framework state; plugins must still cancel and close external resources they created
+- `plugin-loader` sets a **hard timeout** (default 30 seconds) for each `setup()`. Failure or timeout aborts `context.signal`, rolls back controlled setup-stage framework mutations, revokes the facade, then throws. Event-loop scheduling is required; synchronous blocking code cannot be forcibly interrupted.
+- The setup facade is revoked after success too. A late asynchronous continuation cannot call controlled `extend`, `use`, or lifecycle registration or assign app top-level properties. This does not stop nested object mutation or external I/O; plugins must honor cancellation and clean their own resources.
 - Execution order is determined by `dependencies` topological sorting
 - `app.services` has not been injected when `setup()` is executed (`service-loader` is executed after `plugin-loader`), and the service cannot be accessed
 - If the plugin object declares `onReady(app)` / `onClose(app)`, `plugin-loader` will automatically register these two life cycle hooks after `setup()` is successful.
 - `app.hooks.on()` can be used to register runtime hooks such as request/validation/response/fetch/service/plugin/OpenAPI. For details, see [Application instance hooks](/api/app#apphooks)
 
 ```typescript
+import { definePlugin } from "vextjs";
+
 export default definePlugin({
-  name: "database",
-  async setup(app) {
-    // ✅ Can access app.config
-    const pool = await createPool(app.config.database);
-
-    // ✅ Custom properties can be mounted
-    app.extend("db", pool);
-
-    // ✅ Global middleware can be registered
-    app.use(myMiddleware);
-
-    // ✅ Life cycle hooks can be registered
-    app.onReady(async () => {
-      await pool.query("SELECT 1");
-      app.logger.info("Database connection verification successful");
+  name: "demo-state",
+  setup(app) {
+    const state = { requests: 0 };
+    app.extend("demoState", state);
+    app.use(async (_req, _res, next) => {
+      state.requests += 1;
+      await next();
     });
-
-    app.onClose(async () => {
-      await pool.end();
-      app.logger.info("Database connection pool has been closed");
+    app.onReady(() => {
+      app.logger.info("demo-state ready");
     });
-
-    // ❌ Cannot access app.services (not yet injected at this time)
-    // app.services.user → undefined
+    app.onClose(() => {
+      app.logger.info({ requests: state.requests }, "demo-state closed");
+    });
   },
 });
 ```
@@ -189,8 +213,10 @@ export default definePlugin({
 });
 ```
 
-- `onReady(app)`: Executed after HTTP starts listening, suitable for warming up cache and checking external dependencies.
+- `onReady(app)`: In normal CLI start, runs after HTTP begins listening, useful for warming caches or reporting readiness but unable to prevent requests before listen. See [Testing Guide](/guide/testing) for test-helper trigger conditions.
 - `onClose(app)`: executed during graceful shutdown; multiple shutdown hooks are executed in LIFO order.
+
+Register a particular cleanup either on the object or through `app.onClose()`, avoiding duplicates. Setup failure/timeout rolls back setup-stage registration, so `onClose` alone cannot clean resources created before failure.
 
 ---
 
@@ -198,7 +224,7 @@ export default definePlugin({
 
 ### Automatic scanning
 
-`plugin-loader` automatically scans all `.ts` / `.js` files in the `src/plugins/` directory, and the `default export` of each file should be a `VextPlugin` object.
+`plugin-loader` recursively scans `.ts`, `.js`, `.mjs`, and `.cjs` under `src/plugins/`. It skips files/directories beginning `_` or `.`, `.test.`/`.spec.` files, and `.d.ts`. Each loaded file should default-export a `VextPlugin`. Built output loads from the actual `plugins/` build directory (normally `dist/plugins/`); JavaScript source mode loads from source.
 
 ```
 src/plugins/
@@ -226,11 +252,11 @@ definePlugin({
 })
 ```
 
-Execution order: `database` → `redis` → `auth`
+One order is `database` → `redis` → `auth`. Dependency-free candidates are name-sorted; declare dependencies for required order instead of relying on filenames or scanning accidents.
 
 ### Timeout protection
 
-Each `setup()` has a 30 second timeout limit (default). If the plugin initialization takes longer than this limit (such as a database connection timeout), `plugin-loader` will throw an error and abort startup.
+Each user `setup()` defaults to a 30-second limit, with the failure behavior described above. Current standard dev/start/testing entries do not pass `config.plugin.setupTimeout` into the loader, so setting that field does not alter the effective limit. Use timeout and cancellation supported by each slow external resource.
 
 ### Built-in plug-ins
 
@@ -240,11 +266,13 @@ VextJS has a built-in `monsqlize` plug-in (database abstraction layer), which is
 import { createMonSQLizePlugin } from "vextjs";
 ```
 
+Although public, this factory's built-in plugin is not in the scanned user-plugin dependency graph. Enabling the built-in database does not make `dependencies: ["monsqlize"]` a valid user-plugin dependency. Give custom SQL pools separate config and extension names, such as `sqlDatabase` / `sql`.
+
 ---
 
 ## defineMiddleware
 
-Helper function for creating configuration-less middleware. Ensure middleware type safety through Symbol tags.
+Creates a middleware without configuration. It returns the original function marked with a `__tag` Symbol for loader recognition; the marker does not validate business logic or input data.
 
 ### Function signature
 
@@ -253,6 +281,8 @@ function defineMiddleware(middleware: VextMiddleware): TaggedMiddleware;
 ```
 
 ### Basic usage
+
+This authentication fragment requires an app-owned `verifyJWT` implementation to verify signature and expiry and a `req.user` type extension. If also using framework `RouteOptions.auth`, populate `req.auth`; assigning a private `req.user` does not establish framework identity.
 
 ```typescript
 // src/middlewares/auth.ts
@@ -312,17 +342,21 @@ export default defineMiddleware(async (req, res, next) => {
 });
 ```
 
-Execution process:
+Call-stack order:
 
 ```
-Request → middleware A(before) → middleware B(before) → handler → middleware B(after) → middleware A(after) → response
+Request → middleware A(before) → middleware B(before) → handler → middleware B(after) → middleware A(after)
 ```
+
+This is call-stack order, not a response buffering guarantee. A handler may have sent or started sending; set headers before `await next()` if required. A throw can skip normal after code, so use `finally` for work that must run on success and failure.
 
 ### Short circuit response
 
 Not calling `next()` can short-circuit the request and the handler will not be executed:
 
 ```typescript
+const blockedIPs = new Set(["192.0.2.10"]); // Example addresses.
+
 export default defineMiddleware(async (req, res, next) => {
   // IP blacklist check
   if (blockedIPs.has(req.ip)) {
@@ -336,7 +370,7 @@ export default defineMiddleware(async (req, res, next) => {
 
 ### Error handling
 
-Errors thrown in middleware will be uniformly captured by the framework `error-handler`:
+Errors thrown or awaited within the request chain reach framework error-handler. Background Promises and timer errors outside that chain do not have this guarantee:
 
 ```typescript
 export default defineMiddleware(async (req, _res, next) => {
@@ -361,9 +395,9 @@ Create a **middleware factory with configuration**. Receive configuration parame
 ### Function signature
 
 ```typescript
-function defineMiddlewareFactory<T = unknown>(
-  factory: (options: T) => VextMiddleware,
-): TaggedMiddlewareFactory;
+function defineMiddlewareFactory<TOptions = unknown>(
+  factory: (options?: TOptions) => VextMiddleware,
+): TaggedMiddlewareFactory<TOptions>;
 ```
 
 ### Basic usage
@@ -377,19 +411,19 @@ interface RoleOptions {
 }
 
 export default defineMiddlewareFactory<RoleOptions>((options) => {
+  if (!options) throw new Error("role middleware requires a required option");
   const requiredRoles = Array.isArray(options.required)
     ? options.required
     : [options.required];
 
   return async (req, _res, next) => {
-    if (!req.user) {
-      req.app.throw(401, "Not authenticated");
-    }
+    const user = req.user;
+    if (!user) return req.app.throw(401, "Not authenticated");
 
-    if (!requiredRoles.includes(req.user.role)) {
+    if (!requiredRoles.includes(user.role)) {
       req.app.throw(403, "Insufficient permissions", {
         required: requiredRoles.join(", "),
-        current: req.user.role,
+        current: user.role,
       });
     }
 
@@ -413,7 +447,7 @@ export default {
 };
 ```
 
-The default configuration can be overridden when referenced in routing:
+Route references can override defaults. Route `options` replace the allowlist default as a whole rather than merging fields. When neither place supplies options, the factory receives `undefined` and must default or throw explicitly:
 
 ```typescript
 app.get(

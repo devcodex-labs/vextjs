@@ -92,7 +92,7 @@ Route 负责从请求获得数据、选择 HTTP 响应和声明接口合同；�
 
 创建 `src/jobs` 文件不会让普通 HTTP 启动自动执行或调度任务。任务执行、调度、队列 worker 和存储需按 [Jobs 指南](/zh/guide/jobs)选择与配置；任务 handler 的上下文不是 HTTP `req` / `res`。
 
-前端 page 文件供 renderer 发现和构建，不会独立注册后端 URL。页面路由通过 `src/routes` 中的 handler 调用 `res.render()`；特殊 SPA fallback 由其显式配置控制。SSR、浏览器 hydration 和 API 请求分别遵循各自的生命周期，见[页面与渲染](/zh/frontend/pages-and-rendering)。
+前端 page 文件供 renderer 发现和构建，不会独立注册后端 URL。页面路由通过 `src/routes` 中的 handler 调用 `res.render()`；特殊 SPA fallback 由其显式配置控制。SSR、浏览器 hydration 和 API 请求分别遵循各自的生命周期，见[路由与页面](/zh/frontend/routing-and-pages)及[渲染模式](/zh/frontend/rendering-modes)。
 
 <a id="vext-arch-007"></a>
 

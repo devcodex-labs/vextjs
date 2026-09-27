@@ -1,10 +1,103 @@
-# plugin
+# Plugins
 
-The plug-in system of VextJS is the **only extension entrance** to the framework. Through plug-ins, you can inject custom capabilities into the `app` object, register global middleware, replace built-in implementations, and manage resource life cycles.
+VextJS plugins extend application capabilities during startup. They can attach custom capabilities to `app`, register global middleware, replace selected built-in implementations and manage resource lifecycles. Routes, Services, Adapters and build tooling have their own entry points; see [Architecture](/specification/architecture) for their responsibilities.
+
+Run the complete plugin example below first; it needs no external service. Later examples explain individual interfaces. Redis, database, monitoring SDKs and business Services must be supplied by your application. Do not copy all snippets into the plugin directory at once.
 
 ## Basic concepts
 
-Plug-ins are placed in the `src/plugins/` directory and are automatically scanned and loaded by `plugin-loader`. Each plugin is defined through `definePlugin()`, including a name, dependency declaration and `setup()` initialization function.
+Plugins live under `src/plugins/` and are scanned by `plugin-loader`. Each plugin uses `definePlugin()` with a name, optional dependencies and a `setup()` initializer.
+
+Recursive scanning supports `.ts`, `.js`, `.mjs` and `.cjs`. It excludes names beginning with `_` or `.`, test/spec files and `.d.ts`. Put ordinary helper modules outside the scanned tree or at explicitly excluded paths. Installing an npm package does not automatically register it as a user plugin; export a plugin from this directory.
+
+### Complete example and verification
+
+Use these four files in a separate TypeScript practice project from [Quick Start](/guide/quick-start). Keep its npm scripts and tsconfig, merge the base config, and place only these two plugins in the plugin directory. The example verifies dependency order, extension, global middleware, ready and close without Redis or a database. If local/provider config overrides the port, check the actual listen address first.
+
+```typescript
+// src/config/default.ts
+export default { port: 3000, adapter: "native", frontend: { enabled: false } };
+```
+
+```typescript
+// src/plugins/store.ts
+import { defineAppExtensions, definePlugin } from "vextjs";
+
+export const appExtensions = defineAppExtensions<{
+  demoState: {
+    requests: number;
+    ready: boolean;
+    events: string[];
+  };
+}>();
+
+export default definePlugin({
+  name: "demo-store",
+  setup(app) {
+    const state = { requests: 0, ready: false, events: [] as string[] };
+    app.extend("demoState", state);
+    app.onClose(() => {
+      state.events.push("store");
+      app.logger.info({ events: [...state.events] }, "Demo plugin close order");
+    });
+  },
+});
+```
+
+```typescript
+// src/plugins/consumer.ts
+import { definePlugin } from "vextjs";
+
+export default definePlugin({
+  name: "demo-consumer",
+  dependencies: ["demo-store"],
+  setup(app) {
+    const state = app.demoState as {
+      requests: number;
+      ready: boolean;
+      events: string[];
+    };
+    app.use(async (_req, res, next) => {
+      state.requests += 1;
+      res.setHeader("x-demo-plugin", "active");
+      await next();
+    });
+    app.onReady(() => {
+      state.ready = true;
+    });
+    app.onClose(() => {
+      state.events.push("consumer");
+    });
+  },
+});
+```
+
+```typescript
+// src/routes/plugin-info.ts
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  app.get("/", {}, async (_req, res) => {
+    const state = app.demoState as { requests: number; ready: boolean };
+    res.json({ requests: state.requests, ready: state.ready });
+  });
+});
+```
+
+1. Run `npm run dev`. In another terminal, request `http://127.0.0.1:3000/plugin-info` twice with `curl -i` (or `curl.exe -i` in PowerShell).
+2. With no other requests, both responses should be 200 with `x-demo-plugin: active`; `data.ready=true` and `data.requests` should be 1 then 2. A browser may request a favicon, so use the command above for exact counts.
+3. Press Ctrl+C in the server terminal. Check the `Demo plugin close order` log for `events: ["consumer", "store"]`: the later registered consumer closes first. The log level must include info; forced termination does not guarantee close hooks.
+4. Run `npm run build` (the Quick Start build script includes `--typecheck`), then `npm start`. Repeat requests and graceful shutdown; a new process starts its count at zero.
+
+A test helper can retain `app.app.demoState`, call `await app.close()`, and check the same event order. That verifies application cleanup but does not replace a CLI signal test.
+
+`appExtensions` provides an explicit declaration to type generation. The `app.extend()` call in setup actually creates and attaches state; a type declaration alone creates no runtime capability.
+
+Temporarily change the consumer dependency to a missing name: startup should report the missing dependency. Restore it and retry. Duplicate plugin names also fail instead of silently overriding. Test helpers need explicit `plugins: true`; see [Testing API](/api/testing-api).
+
+### Optional Redis integration
+
+This optional integration requires an installed `ioredis` package and a reachable Redis service. Creating a client does not prove connection success; the plugin owns cleanup on setup failure or cancellation. This is separate from the four-file example above.
 
 ```typescript
 // src/plugins/redis.ts
@@ -17,10 +110,10 @@ export default definePlugin({
   async setup(app) {
     const redis = new Redis(app.config.redis?.url ?? "redis://localhost:6379");
 
-    // Mount custom capabilities to the app
+    // Attach a custom capability to app.
     app.extend("redis", redis);
 
-    //Register graceful shutdown hook
+    // Register a graceful shutdown hook.
     app.onClose(async () => {
       app.logger.info("Closing Redis connection...");
       await redis.quit();
@@ -42,23 +135,28 @@ interface VextPlugin {
   readonly dependencies?: string[];
 
   /** Plug-in initialization function */
-  setup(app: VextApp): Promise<void> | void;
+  setup(
+    app: VextPluginContext,
+    context: VextPluginSetupContext,
+  ): Promise<void> | void;
 
   /** Readiness hook executed after HTTP starts listening (optional) */
-  onReady?(app: VextApp): Promise<void> | void;
+  onReady?(app: VextPluginContext): Promise<void> | void;
 
   /** Cleanup hooks executed during graceful shutdown (optional, in LIFO order) */
-  onClose?(app: VextApp): Promise<void> | void;
+  onClose?(app: VextPluginContext): Promise<void> | void;
 }
 ```
 
+These types can be imported from `vextjs`. `VextPluginSetupContext` provides a read-only `signal: AbortSignal`. `VextPluginContext` does not expose route registration; routes belong in `defineRoutes()`.
+
 ### `name` — unique identifier
 
-The plugin name is used for log output, error messages, and dependency declarations. Plug-ins with the same name loaded later will overwrite the ones loaded first and can be used to replace the built-in implementation.
+The plugin name appears in logs, errors and dependency declarations. Duplicate user-plugin names fail before any setup runs; later files do not override earlier ones. Built-in MonSQLize initializes in a separate phase and is not a node in the user-plugin dependency graph. Do not try to replace or depend on it with a same-name file or `dependencies: ["monsqlize"]`.
 
 ### `dependencies` — dependency declaration
 
-Declare other plugins that the current plugin depends on. `plugin-loader` performs **topological sorting** based on dependencies to ensure that dependent plugins execute `setup()` before the current plugin. Fail Fast reports an error when there are circular dependencies.
+Declare other **user plugin names**, not file paths or npm package names. `plugin-loader` topologically sorts them so dependencies run `setup()` first. Missing or cyclic dependencies fail fast. A dependency whose setup returns early may still lack the expected capability; the consumer must match its enablement conditions.
 
 ```typescript
 export default definePlugin({
@@ -75,11 +173,12 @@ export default definePlugin({
 
 ### `setup()` — initialization function
 
-The core logic of the plug-in. Called by `plugin-loader` in the `bootstrap` stage, it supports asynchronous operations (such as connecting to the database). Its second argument is `{ signal: AbortSignal }`; pass `signal` to cancellable I/O. Each `setup()` has a hard timeout (default 30 seconds). On failure or timeout, the signal is aborted, framework mutations made through the setup facade are rolled back, and that facade is revoked so a late continuation cannot mutate application state.
+The core logic of a plugin runs during bootstrap and supports async work. Its second argument is `{ signal: AbortSignal }`; pass `signal` to cancellable I/O. Each setup has a hard timeout (30 seconds in current standard entry points, provided the event loop runs the timer). On failure or timeout, the signal aborts, managed framework mutations are rolled back and the controlled setup facade is revoked. A late continuation cannot use it to call managed methods or write top-level properties. This does not stop changes to captured nested objects or undo external I/O.
 
 ```typescript
 async setup(app, { signal }) {
   const response = await fetch(app.config.remotePluginUrl, { signal });
+  if (!response.ok) throw new Error(`Remote plugin configuration: HTTP ${response.status}`);
   app.extend("remotePluginData", await response.json());
 }
 ```
@@ -91,11 +190,13 @@ Plug-ins can also declare `onReady(app)` and `onClose(app)` directly. `plugin-lo
 - `onReady(app)`: Executed after HTTP starts listening, suitable for warming up cache, checking external dependencies, and printing startup information.
 - `onClose(app)`: Executed during graceful shutdown. All shutdown hooks clean up resources in last-registration-first-execution (LIFO) order.
 
+The setup mutation facade is also revoked after successful setup. Do not call setters or `extend` through a retained setup parameter in a later task. Registered callbacks can read the app or use captured clients. Rollback covers managed framework state only; it does not undo network writes or close an external resource whose hook was never registered. A timeout cannot forcibly stop arbitrary JavaScript or I/O. Application shutdown has its own overall deadline.
+
 ## Plug-in capabilities
 
 ### `app.extend()` — Mount custom properties
 
-Inject custom properties or methods into the `app` object. Only plugins can use this API.
+Attach custom properties or methods to `app` during plugin setup. Names must be valid JavaScript identifiers and cannot replace existing, reserved or inherited properties. Use the relevant setter to replace a validator or logger.
 
 ```typescript
 export default definePlugin({
@@ -125,7 +226,7 @@ await (app as any).mailer.send("user@example.com", "Welcome", "Hello!");
 If you want to automatically generate plugin extension declarations, export `appExtensions = defineAppExtensions<{ ... }>()` in the plugin file and run:
 
 ```bash
-vext typegen
+npm exec -- vext typegen
 ```
 
 Currently, lightweight scanners prioritize inline object generics:
@@ -155,6 +256,8 @@ The command will also best-effort scan `app.extend("...")` calls in the `setup` 
 
 ```typescript
 // src/types/extensions.d.ts
+import "vextjs";
+
 declare module "vextjs" {
   interface VextApp {
     mailer: {
@@ -169,7 +272,7 @@ When extended `app.mailer.send()` will get IDE auto-completion without the need 
 
 ### `app.use()` — Register global middleware
 
-Register global middleware in the plug-in and it will take effect on all routes. These middleware are executed after the built-in global middleware and before the route-level middleware.
+Plugin middleware runs after global base layers such as request metadata, parsing and response wrapping, and before explicitly enabled CSRF and route chains. It does not run if an earlier layer short-circuits or throws. See the [global middleware order](/guide/middleware#global-middleware).
 
 ```typescript
 import { definePlugin, securityHeaders } from "vextjs";
@@ -213,22 +316,25 @@ export default definePlugin({
 
 ### `app.onClose()` — Graceful closing hook
 
-Register graceful shutdown hook. When a `SIGTERM` / `SIGINT` signal is received, the framework executes all shutdown hooks in reverse order (LIFO) of registration.
-
-Suitable for: closing database connections, refreshing log buffers, canceling scheduled tasks, etc.
+Register a graceful shutdown hook. On SIGTERM or SIGINT, hooks run in reverse registration order (LIFO). Use them to close database connections, flush logs or cancel timers. Here `createDatabaseConnection` must be implemented by the application and return a client with `disconnect()`. A separate `sqlDatabase` config and `sql` extension avoid replacing built-in `app.db`.
 
 ```typescript
 export default definePlugin({
   name: "database",
 
   async setup(app) {
-    const db = await createDatabaseConnection(app.config.database);
-    app.extend("db", db);
-
-    app.onClose(async () => {
-      app.logger.info("Closing database connection...");
+    const db = await createDatabaseConnection(app.config.sqlDatabase);
+    try {
+      app.extend("sql", db);
+      app.onClose(async () => {
+        app.logger.info("Closing database connection...");
+        await db.disconnect();
+      });
+    } catch (error) {
+      // A name conflict may occur before the close hook is registered.
       await db.disconnect();
-    });
+      throw error;
+    }
   },
 });
 ```
@@ -254,108 +360,88 @@ export default definePlugin({
 
 ### `app.setValidator()` — Replacement validation engine
 
-Replace the framework's built-in parameter validation engine. schema-dsl is used by default and can be replaced by third-party verification libraries such as Zod and Yup.
+Replace the synchronous parameter validator. The default is schema-dsl. This adapter preserves its result contract. For a Zod implementation, use the DSL translation example in [Validation](/guide/validation#replace-verification-engine); do not put Zod instances directly in `RouteOptions.validate`.
 
 ```typescript
 import { definePlugin } from "vextjs";
 import type { VextValidator } from "vextjs";
-import { z } from "zod";
 
 export default definePlugin({
-  name: "zod-validator",
+  name: "validator-wrapper",
 
   setup(app) {
     const originalValidator = app.getValidator();
 
-    const zodValidator: VextValidator = {
+    const validator: VextValidator = {
       compile(schema) {
-        const toVextResult = (result: ReturnType<z.ZodType["safeParse"]>) =>
-          result.success
-            ? { valid: true, data: result.data }
-            : {
-                valid: false,
-                errors: result.error.issues.map((issue) => ({
-                  field: issue.path.join("."),
-                  message: issue.message,
-                })),
-              };
-
-        // If the entire location schema is Zod schema, execute safeParse directly
-        if (schema instanceof z.ZodType) {
-          return (data) => toVextResult(schema.safeParse(data));
-        }
-
-        // If the fields of the schema object are Zod schema, combine them into z.object
-        const zodShape: Record<string, z.ZodType> = {};
-        for (const [key, value] of Object.entries(schema)) {
-          if (value instanceof z.ZodType) {
-            zodShape[key] = value;
-          }
-        }
-
-        if (Object.keys(zodShape).length > 0) {
-          const zodSchema = z.object(zodShape);
-          return (data) => toVextResult(zodSchema.safeParse(data));
-        }
-
-        // Non-Zod schema falls back to the default schema-dsl validator
-        return originalValidator.compile(schema);
+        const validate = originalValidator.compile(schema);
+        return (input) => validate(input);
       },
     };
 
-    app.setValidator(zodValidator);
+    app.setValidator(validator);
   },
 });
 ```
 
-### `app.setThrow()` — wraps error throws
+Replace the validator before route registration and Service schema compilation. Preserve the `valid/data/errors` result contract. Replacing the runtime engine does not expand the static route syntax used by build, Doctor, OpenAPI and generated clients.
 
-Wraps or replaces the implementation of `app.throw()`. Receives the original implementation and returns the new implementation.
+### `app.setThrow()` — Wrap error throwing
+
+Wrap or replace `app.throw()`. The wrapper receives the original implementation and must preserve all overloads and its `never` return semantics, including i18n shorthand, positional arguments and object arguments. This Proxy forwards all arguments without narrowing them to four positions:
 
 ```typescript
 export default definePlugin({
   name: "error-tracker",
 
   setup(app) {
-    app.setThrow((originalThrow) => {
-      return (status, message, paramsOrCode, code) => {
-        // Log errors before throwing
-        app.logger.warn({ status, message }, "HTTP error thrown");
-        // Call the original implementation
-        originalThrow(status, message, paramsOrCode, code);
-      };
-    });
+    const logger = app.logger;
+    app.setThrow(
+      (originalThrow) =>
+        new Proxy(originalThrow, {
+          apply(target, thisArg, args) {
+            logger.warn("app.throw called");
+            return Reflect.apply(target, thisArg, args);
+          },
+        }),
+    );
   },
 });
 ```
 
-### `app.setRateLimiter()` — Replacement of current limiting implementation
+### `app.setRateLimiter()` — Replace rate limiting
 
-Replaces built-in current restrictor. By default, `flex-rate-limit` is used, which can be replaced by Redis distributed current limit, etc.
+Prefer the built-in Redis store for ordinary distributed rate limiting; see [Rate Limit](/guide/rate-limit). This fixed-window in-memory example uses global `max/window`. A custom `check` receives only a key; route-level quota overrides are not passed automatically. Enable `rateLimit` in configuration first.
 
 ```typescript
 export default definePlugin({
-  name: "redis-rate-limit",
-  dependencies: ["redis"],
+  name: "custom-rate-limit",
 
   setup(app) {
+    const counters = new Map<string, { count: number; expires: number }>();
+    const { max, window: windowSeconds } = app.config.rateLimit;
     app.setRateLimiter({
       async check(key: string) {
-        // Distributed current limiting based on Redis
-        const count = await (app as any).redis.incr(`ratelimit:${key}`);
-        if (count === 1) {
-          await (app as any).redis.expire(`ratelimit:${key}`, 60);
+        const now = Date.now();
+        let entry = counters.get(key);
+        if (!entry || entry.expires <= now) {
+          entry = { count: 0, expires: now + windowSeconds * 1000 };
+          counters.set(key, entry);
         }
+        entry.count += 1;
         return {
-          allowed: count <= app.config.rateLimit.max,
-          remaining: Math.max(0, app.config.rateLimit.max - count),
-          resetAt: Date.now() + 60000,
+          allowed: entry.count <= max,
+          remaining: Math.max(0, max - entry.count),
+          resetAt: Math.ceil(entry.expires / 1000), // Absolute Unix seconds.
         };
       },
     });
+    app.onClose(() => counters.clear());
   },
 });
 ```
+
+This Map removes an expired window only when the same key is accessed again. It has no global capacity or expiry sweep and is not shared across processes. Do not use it unchanged as a production store for an unbounded client set; production implementations must handle those resource limits.
 
 ### `app.setRequestIdGenerator()` — Custom request ID
 
@@ -384,12 +470,12 @@ In the `bootstrap` startup process, plugins are executed in the following stages
 
 ```
 1. config → load and merge configuration
-2. locales → load i18n language pack
+2. locales / built-in database / fetch and other enabled startup capabilities → initialize
 3. plugins → ⭐ topological sort + execute setup() (here)
 4. middlewares → Scan middleware definition
 5. services → instantiated services
 6. routes → Register routes
-7. HTTP monitoring → onReady hook triggered
+7. HTTP listening → onReady hook triggered
 ```
 
 This means:
@@ -423,11 +509,15 @@ If there is a circular dependency (A → B → A), the framework will report a F
 
 ### Timeout protection
 
-Each `setup()` is protected by a hard timeout (default 30 seconds). If initialization times out, the framework aborts `context.signal`, rolls back setup-time framework mutations, revokes the setup facade, and throws an explicit error. A plugin still owns external resources it created before cancellation, so it must honor the signal and close partially created clients in its own `catch`/`finally` path.
+Current standard dev, production and test entry points use a 30,000 ms Plugin Loader timeout. Although internal loader options and error messages mention `setupTimeout`, the standard entry points do not pass `config.plugin.setupTimeout`; writing that config cannot change the actual deadline.
+
+On timeout, the framework aborts `context.signal`, rolls back managed setup mutations and revokes controlled writes through that setup parameter. The plugin still owns external resources created before cancellation. Pass the signal to cancellable operations and close partially initialized clients in its own failure/cancellation path. This mechanism cannot interrupt synchronous code blocking the event loop or forcibly stop arbitrary async I/O, and does not automatically cover the separately initialized built-in database plugin.
 
 ## Practical example
 
 ### Database plug-in
+
+This only illustrates a pool interface and close hook; `createPool` is a stub and does not verify real transactions. Built-in MonSQLize uses `config.database` and `app.db`. A custom SQL plugin should use its own config and extension names to avoid conflicts.
 
 ```typescript
 // src/plugins/database.ts
@@ -438,7 +528,7 @@ export default definePlugin({
 
   async setup(app) {
     //Read database connection information from configuration
-    const dbConfig = app.config.database ?? {
+    const dbConfig = app.config.sqlDatabase ?? {
       host: "localhost",
       port: 5432,
       database: "myapp",
@@ -448,7 +538,7 @@ export default definePlugin({
     const pool = await createPool(dbConfig);
 
     //Inject into app
-    app.extend("db", {
+    app.extend("sql", {
       query: (sql: string, params?: unknown[]) => pool.query(sql, params),
       transaction: (fn: Function) => pool.transaction(fn),
     });
@@ -483,6 +573,8 @@ async function createPool(config: any) {
 ```
 
 ### Sentry error monitoring plug-in
+
+This is an integration location only: SDK calls are commented out, so no event is actually reported. Middleware `catch` covers only errors propagated from its `next()`. It does not cover startup, background work or all errors handled by inner layers; see [Hooks](/guide/hooks) for runtime observation.
 
 ```typescript
 // src/plugins/sentry.ts
@@ -524,6 +616,8 @@ export default definePlugin({
 ```
 
 ### Scheduled task plug-in
+
+This `setInterval` is a per-process illustration. Runs can overlap, multiple Workers execute duplicates, and clearing a timer does not cancel work already started. Use [Jobs](/guide/jobs) for durable scheduling, leases and concurrency limits.
 
 ```typescript
 // src/plugins/scheduler.ts
@@ -576,11 +670,13 @@ export default definePlugin({
 
 VextJS has the following built-in plugins:
 
-| Plug-in name  | Description                        | Conditional loading                                        |
-| ------------- | ---------------------------------- | ---------------------------------------------------------- |
-| **monsqlize** | MonSQLize database ORM integration | Automatically load when `monsqlize` dependency is detected |
+| Plug-in name  | Description                        | Conditional loading                                                                       |
+| ------------- | ---------------------------------- | ----------------------------------------------------------------------------------------- |
+| **monsqlize** | MonSQLize database ORM integration | Initialize when `config.database` is a nonempty object; skip absent, null or empty config |
 
-The built-in plugin uses `shouldLoadMonSQLize()` to decide whether to load. It needs no manual registration, and Vext skips loading it when the required dependency or database configuration is absent.
+The built-in plugin uses `shouldLoadMonSQLize()` to inspect database config and needs no manual registration. It skips absent config. If enabled but a runtime dependency is missing or config is invalid, fix the startup error rather than expecting a silent skip. See [Database](/guide/database).
+
+There is no `database.enabled` off switch. `database: { enabled: false }` is still a nonempty object and enters initialization, then fails without `database.config`.
 
 ## File upload
 
@@ -600,15 +696,20 @@ export default {
 };
 ```
 
-When enabled, all `multipart/form-data` request bodies will be automatically parsed by body-parser, and the results will be filled in `req.files` (type `ParsedFile[]`). Zero impact on performance when not enabled.
+When enabled, built-in parsing fills `req.files` (`ParsedFile[]`) for `multipart/form-data` requests. Plain text parts are not automatically added to `req.body`. When disabled, the built-in multipart branch is skipped.
 
 ### Used in routing
 
 ```typescript
 // src/routes/upload.ts
+import { defineRoutes } from "vextjs";
+import { mkdir, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import path from "node:path";
+
 export default defineRoutes((app) => {
   app.post(
-    "/upload",
+    "/",
     {
       multipart: {
         enabled: true,
@@ -623,7 +724,9 @@ export default defineRoutes((app) => {
       if (!avatarFile) {
         res.json({ code: 400, message: "File not uploaded" }, 400);
         return;
-      } // Verify file type
+      }
+
+      // Validate the declared file type.
       if (!avatarFile.mimetype.startsWith("image/")) {
         res.json(
           { code: 400, message: "Only image formats are supported" },
@@ -633,8 +736,10 @@ export default defineRoutes((app) => {
       }
 
       // Save the file (avatarFile.buffer ensures binary integrity)
-      const filename = `${Date.now()}-${avatarFile.filename}`;
-      await fs.writeFile(`./uploads/${filename}`, avatarFile.buffer);
+      const filename = randomUUID();
+      const uploadDir = path.resolve("uploads");
+      await mkdir(uploadDir, { recursive: true });
+      await writeFile(path.join(uploadDir, filename), avatarFile.buffer);
 
       res.json({ filename, size: avatarFile.size });
     },
@@ -643,6 +748,8 @@ export default defineRoutes((app) => {
 ```
 
 Use `multipart.enabled: true` for route-level opt-in when global parsing is disabled. When global parsing is enabled, a route can set `multipart.enabled: false` to skip built-in parsing. The `files` map also feeds OpenAPI `multipart/form-data` generation and required-file runtime checks.
+
+The filename prefix makes this route `/upload`. This snippet requires both `avatar` and `resume` multipart fields. MIME is supplied by the client, not content detection. A request rejected by global parsing cannot be restored by a route override. Non-multipart requests do not trigger `files.required`, so the handler still checks for a file. See [Uploads](/guide/uploads) for full config, curl and 413/415 checks.
 
 ### ParsedFile structure
 
@@ -660,7 +767,7 @@ Use `multipart.enabled: true` for route-level opt-in when global parsing is disa
 
 ### Custom parsing (advanced)
 
-If you need to use third-party libraries such as [busboy](https://github.com/mscdex/busboy) for more fine-grained control (such as streaming writing to disk), you can implement it through plug-ins.
+For finer control, a plugin can use a third-party parser such as [busboy](https://github.com/mscdex/busboy). The fragment below reads the entire raw buffer and collects files in memory; **it is not a streaming disk-write solution**. Install busboy and its types first.
 
 Two usage modes are supported:
 
@@ -726,7 +833,7 @@ export default definePlugin({
 ```
 
 :::tip file size limit
-Control the individual file size through `app.config.multipart.maxFileSize` (bytes); control the total request body size through `app.config.bodyParser.maxBodySize`. The two have independent semantics. Fastify adapter will not use `maxFileSize` to expand the total request body reading limit.
+`app.config.multipart.maxFileSize` is enforced only by the built-in parser. A custom parser must implement its own limits, truncated checks and error cleanup; the wiring above does not do so. Total body reading still obeys bodyParser and adapter limits. `maxFileSize` does not expand that total limit.
 :::
 
 ## Plug-ins vs middleware vs services
@@ -771,7 +878,7 @@ export default definePlugin({
 
 ### 2. Always register shutdown hooks
 
-If the plug-in opens an external connection (database, message queue, Redis, etc.), the `app.onClose()` hook must be registered to ensure graceful closing:
+If a plugin opens an external connection (database, queue or Redis), register `app.onClose()` or the plugin's `onClose` for normal shutdown without registering the same resource twice. Cleanup remains subject to the app's overall shutdown deadline. Setup failure or timeout rolls back registered hooks, so the plugin must also release resources created during that setup; normal-close hooks alone are insufficient:
 
 ```typescript
 app.extend("mq", messageQueue);
@@ -822,7 +929,7 @@ setup(app) {
 
 ### 5. Error tolerance
 
-Failure to initialize non-core plugins should not block the entire application startup:
+Only optional capabilities that can truly degrade should catch initialization failure and provide a no-op implementation. Required database or auth capabilities should fail startup. The application provides `initAnalytics` below and must also clean up a client that is only partially created:
 
 ```typescript
 export default definePlugin({
@@ -846,6 +953,17 @@ export default definePlugin({
   },
 });
 ```
+
+## Troubleshooting and verification
+
+| Symptom                                  | Fix                                                                        | Verify                                              |
+| ---------------------------------------- | -------------------------------------------------------------------------- | --------------------------------------------------- |
+| Plugin did not load                      | Check the real `src` root, extension, exclusion rules and default export   | Inspect startup logs and the `plugin-info` response |
+| Already registered or missing dependency | Make `name` unique and use user-plugin names in `dependencies`             | Restart after correction                            |
+| `setup context is closed`                | Keep framework mutations within setup; capture external clients separately | Wait for the async task and inspect logs            |
+| Connection remains after timeout         | Propagate the signal and close partial clients in `catch`/`finally`        | Confirm release after cancellation                  |
+| Services unavailable in setup            | Put later work in `onReady`; keep resource initialization in setup         | Run after ready                                     |
+| `extend` conflicts                       | Use an independent extension name or the setter for built-in capabilities  | Verify startup and a call                           |
 
 ## Next step
 

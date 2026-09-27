@@ -2,11 +2,19 @@
 
 ## Executable 2.x Reference
 
+Run the repository's minimal example first to verify the service, HTTP, and
+documentation entry points. Then read the TypeScript teaching variant if
+needed. These are separate projects; do not mix their files.
+
 The release contract for this page is the checked-in
 [`examples/hello-world`](https://github.com/devcodex-labs/vextjs/tree/main/examples/hello-world)
 project. It is a deliberately small JavaScript application with `checkJs`
 typechecking, the Native adapter, explicit `rateLimit.enabled: false`, Vext
 Docs, and exactly two routes: `GET /` and `GET /health`.
+
+From the cloned repository root, first run `npm ci` and `npm run build`.
+Then run the following contributor commands. To create a new application
+instead, use the scaffolding path below:
 
 ```bash
 cd examples/hello-world
@@ -17,13 +25,16 @@ npm test
 npm start
 ```
 
-After startup, verify `/`, `/health`, `/openapi.json`, and `/docs`. The example
+After startup, verify that `/` returns `data.message: "hello world"`,
+`/health` returns `data.status: "ok"`, `/openapi.json` contains both business
+routes, and `/docs` shows Vext Docs. An unknown path returns 404. Stop the
+service after checking. The example
 uses `"vextjs": "file:../.."` only inside this repository; generated and normal
 consumer projects install the published `vextjs` package.
 
-The source directory is authoritative: its file-tree contract, scripts,
-typecheck/build, HTTP endpoints, OpenAPI output, and Docs branding are validated
-before release.
+The repository example's source determines its files and endpoints. These
+verification commands are for the reader to run; they do not claim an
+installation, test, or publication was performed in this local session.
 
 ## Extended TypeScript Tutorial
 
@@ -41,7 +52,6 @@ hello-world/
   │ │ └── default.ts
   │ ├── routes/
   │ │ └── index.ts
-  │ └── index.ts
   ├── package.json
   └── tsconfig.json
 ```
@@ -51,7 +61,7 @@ hello-world/
 Use the `vext create` scaffolding to quickly create:
 
 ```bash
-npx vextjs create hello-world
+npx vextjs create hello-world --template api --skip-install
 cd hello-world
 pnpm install
 ```
@@ -76,6 +86,7 @@ pnpm add -D typescript @types/node
   "type": "module",
   "scripts": {
     "dev": "vext dev",
+    "typecheck": "tsc --noEmit",
     "build": "vext build",
     "start": "vext start"
   },
@@ -95,8 +106,8 @@ pnpm add -D typescript @types/node
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -115,6 +126,7 @@ pnpm add -D typescript @types/node
 export default {
   port: 3000,
   adapter: "native",
+  rateLimit: { enabled: false },
   logger: {
     level: "debug",
     pretty: true,
@@ -127,7 +139,12 @@ export default {
 ```
 
 :::tip
-`adapter: 'native'` uses the built-in Native adapter (`http.createServer` + `route-core`) and has no third-party HTTP framework dependency. You can switch to `'hono'`, `'fastify'`, `'express'`, or `'koa'` without rewriting route business logic. Review the [current benchmarks](/benchmark) and test your workload before choosing.
+`adapter: 'native'` uses the built-in Native adapter (`http.createServer` +
+`route-core`) and has no third-party HTTP framework dependency. To select
+`'hono'`, `'fastify'`, `'express'`, or `'koa'`, first install its optional
+peer dependency. Routes using the Vext public API can remain; see
+[Adapters](/guide/adapters) for differences and [benchmarks](/benchmark)
+for historical measurement methods.
 :::
 
 ## 4. Routing
@@ -191,7 +208,7 @@ export default defineRoutes((app) => {
     {
       validate: {
         body: {
-          name: "string:1-50",
+          name: "string:1-50!",
           language: "enum:zh,en,ja?",
         },
       },
@@ -202,7 +219,7 @@ export default defineRoutes((app) => {
           200: {
             description: "Greetings success",
             example: {
-              greeting: "Hello, Alice!",
+              greeting: "你好, Alice!",
               language: "zh",
             },
           },
@@ -213,7 +230,7 @@ export default defineRoutes((app) => {
       const { name, language = "zh" } = req.valid("body");
 
       const greetings: Record<string, string> = {
-        zh: `Hello, ${name}!`,
+        zh: `你好, ${name}!`,
         en: `Hello, ${name}!`,
         ja: `こんにちは, ${name}!`,
       };
@@ -227,17 +244,12 @@ export default defineRoutes((app) => {
 });
 ```
 
-## 5. Entry file
+## 5. Startup entry
 
-```typescript
-// src/index.ts
-import { bootstrap } from "vextjs";
-
-bootstrap().catch((err) => {
-  console.error("Startup failed:", err);
-  process.exit(1);
-});
-```
+This example uses the `vext dev/build/start` scripts in `package.json`.
+The CLI manages startup, so do not create `src/index.ts` or call
+`bootstrap()` again. For programmatic startup and shutdown, see
+[App lifecycle](/api/app); do not combine the two startup patterns.
 
 ## 6. Run
 
@@ -249,14 +261,15 @@ pnpm dev
 
 Development mode features:
 
-- Automatic hot reloading of file modifications (three-layer strategy: routing/service/configuration smart refresh)
-
-- Beautify log output (built-in pretty format)
-- Automatically enable OpenAPI documentation (visit `http://localhost:3000/docs`)
+- File changes trigger reload; routes/Services and config changes follow
+  different strategies. See [Hot reload](/guide/hot-reload).
+- Readable logs use the built-in pretty formatter.
+- This example explicitly enables OpenAPI docs at `http://localhost:3000/docs`.
 
 ### Production mode
 
 ```bash
+pnpm typecheck
 pnpm build
 pnpm start
 ```
@@ -270,7 +283,7 @@ After startup, you can use `curl` or browser verification:
 curl http://localhost:3000/
 # → {"code":0,"data":{"message":"Hello VextJS! 🚀"},"requestId":"..."}
 
-#HealthCheck
+# Health check
 curl http://localhost:3000/health
 # → {"code":0,"data":{"status":"ok","uptime":12.34,"timestamp":"..."},"requestId":"..."}
 
@@ -278,7 +291,7 @@ curl http://localhost:3000/health
 curl "http://localhost:3000/echo?message=hello"
 # → {"code":0,"data":{"echo":"hello","method":"GET","path":"/echo",...},"requestId":"..."}
 
-#personalized greetings
+# Personalized greeting
 curl -X POST http://localhost:3000/greet \
   -H "Content-Type: application/json" \
   -d '{"name":"Alice","language":"en"}'
@@ -293,7 +306,10 @@ curl -X POST http://localhost:3000/greet \
 
 ## 8. Response format description
 
-VextJS enables **export wrapping** by default (`config.response.wrap: true`), and all `res.json()` responses will be automatically wrapped into a unified format:
+VextJS enables **response wrapping** by default (`config.response.wrap:
+true`). Successful JSON responses in this example use the unified format.
+For bodyless status codes, explicit unwrapped responses, and the error path,
+see [Request and response](/api/context).
 
 **Successful response**:
 
@@ -316,7 +332,11 @@ VextJS enables **export wrapping** by default (`config.response.wrap: true`), an
 }
 ```
 
-If packaging is not required (e.g. inter-microservice communication), it can be disabled in the configuration:
+Validator error messages may vary by language; check HTTP status, business
+code, and `errors` structure first. A missing required `name` must also
+return 422; do not test only an empty string.
+
+If wrapping is unnecessary, merge this field into the existing config:
 
 ```typescript
 // src/config/default.ts

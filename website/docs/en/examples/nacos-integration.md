@@ -13,9 +13,18 @@ Recommended to use in layers:
 
 ## Preconditions
 
-- Nacos Server 2.x (tested nacos@2.6.1)
+- Prepare a Vext TypeScript API project with `dev`, `build`, and `start`
+  scripts from [Quick Start](/guide/quick-start).
 - The current framework requires Node.js **`^20.19.0 || >=22.12.0`**
-- VextJS >= 0.3.2
+- Prepare a reachable Nacos server and verify the namespace's actual ID,
+  group, authentication, and client network. The plugin defaults to the
+  public namespace; configure a different deployed ID explicitly.
+- The plugin checked on 2026-09-25 was `@devcodex/nacos@0.2.10`. Its Vext
+  peer range is `>=0.3.4`, and its internal JavaScript SDK is `nacos@2.6.3`.
+  The SDK version is not the Nacos Server version. This page does not claim
+  every server version has been verified. Check the
+  [plugin release information](https://github.com/devcodex-labs/nacos) and
+  your actual environment.
 
 ## 1. Recommendation: Use the `@devcodex/nacos` official plug-in
 
@@ -35,7 +44,7 @@ export default {
   nacos: {
     serverAddr: process.env.NACOS_SERVER_ADDR ?? "127.0.0.1:8848",
     namespace: process.env.NACOS_NAMESPACE ?? "public",
-    // Required to enable Nacos for authentication (enabled by default in 2.x)
+    // Supply these if authentication is enabled on your server.
     username: process.env.NACOS_USERNAME,
     password: process.env.NACOS_PASSWORD,
 
@@ -56,12 +65,6 @@ export default {
       dataId: "order-service",
       group: "DEFAULT_GROUP",
     },
-
-    //Multiple configurations are deeply merged in order (the latter takes precedence)
-    configs: [
-      { dataId: "order-service-base", group: "DEFAULT_GROUP" },
-      { dataId: "order-service-prod", group: "DEFAULT_GROUP" },
-    ],
   },
 };
 ```
@@ -70,7 +73,9 @@ Description:
 
 - `config` is suitable for single configuration scenarios
 - `configs` is suitable for basic configuration + environment coverage configuration split
-- When both exist at the same time, they will be merged in the order of `config -> configs[0] -> configs[1] ...`, with the latter taking precedence.
+- When both exist, the merge order is `config -> configs[0] -> configs[1] ...`; later objects win, while arrays replace as a whole. This first example uses only `config`.
+- Explicit plugin parameters and `app.config.nacos` merge shallowly; passing `service` replaces the entire service object.
+- The server decides whether authentication is enabled. Do not infer a default from a "2.x" label; see the [Nacos authentication docs](https://nacos.io/en-us/docs/auth.html).
 
 ### 3. Register plug-in (src/plugins/nacos.ts)
 
@@ -78,6 +83,75 @@ Description:
 import { nacosPlugin } from "@devcodex/nacos";
 export default nacosPlugin(); // Automatically read app.config.nacos
 ```
+
+### 4. Read a feature flag
+
+```typescript
+// src/routes/features.ts
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  app.get(
+    "/:key",
+    {
+      validate: { param: { key: "string!" } },
+    },
+    async (req, res) => {
+      const { key } = req.valid("param");
+      const features = (req.app.remoteConfig?.features ?? {}) as Record<
+        string,
+        boolean
+      >;
+      res.json({ feature: key, enabled: features[key] === true });
+    },
+  );
+});
+```
+
+Nacos config must be a JSON object. This route enables only a flag whose
+value is strictly `true`; a wrong type does not count as enabled. The plugin
+keeps the top-level `remoteConfig` object reference and updates its fields
+in place. The property may not yet exist when the first pull fails, so read
+it through `req.app` at request time with a default. A cached nested-object
+reference is not guaranteed to refresh after an update.
+
+### 5. Start and verify
+
+In the Nacos console, create dataId `order-service` in the selected
+namespace and `DEFAULT_GROUP` with this JSON:
+
+```json
+{ "features": { "newDashboard": true } }
+```
+
+From the application directory:
+
+```bash
+npm run dev
+curl -i http://127.0.0.1:3000/features/newDashboard
+```
+
+Expect HTTP 200 and `data.enabled: true` in the default wrapper. Change the
+remote field to `false`, wait for the subscription update log, and request
+again; expect `false`. An unknown key defaults to `false`. The console should
+show an `order-service` instance at port 3000. Stop dev and verify the
+production path:
+
+```bash
+npm run build -- --typecheck
+npm start
+```
+
+After stopping the app, confirm the instance is unregistered. A registered
+service address must be reachable by consumers; `127.0.0.1` is only for a
+local demonstration. Successful registration during startup does not mean
+the HTTP listener is ready; arrange readiness and load-balancer draining in
+deployment. Verify production config, authentication, and network access in
+the actual Nacos environment.
+
+## 2. Extended configuration and service discovery
+
+### Explicit plugin options
 
 Explicit parameter passing is also supported (overriding `app.config.nacos`):
 
@@ -89,7 +163,7 @@ export default nacosPlugin({
 });
 ```
 
-#### Dynamic port (recommended: consistent with app.config.port)
+### Dynamic port (consistent with app.config.port)
 
 `service.port` in `config/default.ts` is a static value and the final merged port number cannot be read.
 If the ports of each environment are different (such as sit: 10019 / prod: 20019), it is recommended to dynamically inject it in the plug-in:
@@ -97,13 +171,13 @@ If the ports of each environment are different (such as sit: 10019 / prod: 20019
 ```typescript
 // src/plugins/nacos.ts
 import { definePlugin } from "vextjs";
-import { nacosPlugin } from "@devcodex/nacos";
+import { nacosPlugin, type NacosPluginOptions } from "@devcodex/nacos";
 
 export default definePlugin({
   name: "nacos",
 
-  async setup(app) {
-    const nacosConfig = app.config.nacos as any;
+  async setup(app, context) {
+    const nacosConfig = app.config.nacos as NacosPluginOptions | undefined;
     if (!nacosConfig) return;
 
     const inner = nacosPlugin({
@@ -112,14 +186,13 @@ export default definePlugin({
         ? {
             service: {
               ...nacosConfig.service,
-              ip: process.env.SERVICE_IP ?? "127.0.0.1",
               port: app.config.port,
             },
           }
         : {}),
     });
 
-    await inner.setup(app);
+    await inner.setup(app, context);
   },
 });
 ```
@@ -127,17 +200,21 @@ export default definePlugin({
 In this way, `service.port` in `config/default.ts` is only a type placeholder, and the actual registered port is determined by `app.config.port`.
 Each environment only needs to set `port: 10019` in the corresponding config file, and nacos will automatically follow.
 
-### 3.1 It is recommended to use `src/config/bootstrap.ts` for remote configuration during startup
+### Use `src/config/bootstrap.ts` for startup remote config
 
 If you want to pull the database configuration from Nacos before **MonSQLize is initialized**, do not put this step in a normal plug-in; it is recommended to use `createNacosBootstrapProvider()` provided by `@devcodex/nacos` directly:
 
 ```typescript
 import { defineBootstrapConfig } from "vextjs";
-import { createNacosBootstrapProvider } from "@devcodex/nacos"; // src/config/bootstrap.ts
+import { createNacosBootstrapProvider } from "@devcodex/nacos";
+
+// src/config/bootstrap.ts
 export default defineBootstrapConfig({
   providers: [
     createNacosBootstrapProvider({
       name: "nacos-config",
+      required: true,
+      timeoutMs: 5000,
       serverAddr: process.env.NACOS_SERVER_ADDR ?? "127.0.0.1:8848",
       namespace: process.env.NACOS_NAMESPACE ?? "public",
       username: process.env.NACOS_USERNAME,
@@ -148,12 +225,20 @@ export default defineBootstrapConfig({
 });
 ```
 
-Configuring the priority in this way will enter the official link: `default < config profile < local < provider < CLI`.
+Prepare `config.json` in the `db-config` group. Its root must directly use
+the Vext config shape, such as `database`, without an extra `remoteConfig`
+wrapper. The provider closes its client after pulling and does not keep a
+subscription. With `required: true`, pull, parse, or timeout failures block
+startup; an initial pull failure in the ordinary runtime plugin only logs
+a warning. The priority is `default < config profile < local < provider <
+CLI`, with local loaded only in development/test; see
+[Configuration](/guide/configuration).
 
 :::info current boundary
 `createNacosBootstrapProvider()` is only responsible for batch pulling and deep merging of JSON object patches during the startup period, which is suitable for content such as databases, keys, and infrastructure configurations that "must take effect before the configuration is frozen."
 
-This return value will enter the provider patch merge link of \*\*`app.config` and will not automatically become `app.remoteConfig`.
+The result enters the **`app.config` provider patch merge** and does not
+automatically become `app.remoteConfig`.
 
 It is **not responsible** for:
 
@@ -173,9 +258,9 @@ If you need:
 
 All should continue to be processed using `nacosPlugin()` in `src/plugins/nacos.ts` instead of completing it in the bootstrap phase.
 
-#### 3.1.1 Can service discovery be done in `bootstrap.ts`?
+#### Service discovery boundary during bootstrap
 
-By default ** cannot be used directly ** `app.nacos!.discover()`.
+You cannot directly call `app.nacos!.discover()` there by default.
 
 The reason is that `src/config/bootstrap.ts` runs before **Vext App is created**:
 
@@ -188,37 +273,51 @@ So the recommended bounds are:
 - **Only configuration patch pulling is done during startup** → `createNacosBootstrapProvider()`
 - **Runtime service registration/service discovery/configuration subscription** → `nacosPlugin()`
 
-### 3.2 Continue to use `app.remoteConfig` for dynamic configuration during runtime
+### Use `app.remoteConfig` for runtime configuration
 
-If the configuration only affects the runtime function switch, grayscale strategy, external API address, etc., and does not need to participate in `database` / `plugins` / `middlewares` initialization, you can directly use the configuration subscription capability of `@devcodex/nacos`:
+If configuration affects only runtime feature flags, gradual rollout settings, or external API addresses, and is not needed to initialize `database`, `plugins`, or `middlewares`, use the configuration subscription provided by `@devcodex/nacos`:
 
 - After initial startup, the plug-in will pull the Nacos configuration and mount it to `app.remoteConfig`
 - Subsequent configuration changes will automatically update `app.remoteConfig`
 - No need to restart the service
 
-Done. Plugin autocomplete:
+Actual behavior depends on what is configured:
 
-- ✅ Register the current service instance to Nacos at startup
-- ✅ Pull and subscribe to the configuration center to automatically update `app.remoteConfig`
-- ✅ Follow LIFO order when closing: first `deregisterInstance` (stop traffic) → then `configClient.close()`
-- ✅ TypeScript type auto-enhancement `app.nacos` / `app.remoteConfig` / `config.nacos`
+- `enabled: false`, no `serverAddr`, or neither a config source nor a service
+  skips initialization and does not mount related extensions.
+- Configuring `service` creates the Naming Client, registers the instance,
+  and mounts `app.nacos`. A config-only subscription cannot call `discover`.
+- Configuring `config` or `configs` pulls and subscribes `app.remoteConfig`.
+  Invalid JSON or non-object changes warn and keep that source's last valid
+  version; empty content removes that source.
+- With both enabled, close in LIFO order deregisters the instance and closes
+  the Naming Client, then closes the Config Client. Deregistration failure
+  logs a warning; a completed call does not prove the server confirmed it.
+- Importing the package augments VextApp/VextConfig types but does not mean
+  runtime initialization happened. `app.config` remains frozen; dynamic
+  config does not rebuild the database or rate limit middleware.
 
-### 4. Use service discovery
+### Use service discovery
 
 ```typescript
 // src/services/user.ts
-export class UserService {
-  constructor(private app: any) {}
+import type { VextApp } from "vextjs";
+
+export default class UserService {
+  constructor(private app: VextApp) {}
 
   async getUser(userId: string) {
     // Discover user-service through Nacos (return only healthy instances + random load balancing)
-    const baseURL = await this.app.nacos!.discover("user-service");
+    if (!this.app.nacos)
+      throw new Error("Nacos service discovery is not configured");
+    const baseURL = await this.app.nacos.discover("user-service");
 
-    const response = await this.app.fetch.get(`${baseURL}/api/users/${userId}`);
+    const response = await this.app.fetch.get(
+      `${baseURL}/api/users/${encodeURIComponent(userId)}`,
+    );
 
     if (!response.ok) {
-      // ⚠️ The Service layer should not handle HTTP status codes directly (Architectural Constraint #3)
-      // Throw a business exception and uniformly convert it into an HTTP response by the routing layer/middleware
+      // Inspect the upstream response and let the caller decide this app's HTTP response.
       throw new Error(
         `Fetch user failed: ${userId} (status ${response.status})`,
       );
@@ -228,37 +327,13 @@ export class UserService {
 }
 ```
 
-For advanced load balancing strategies (weight/consistent hashing), you can directly use `app.nacos!.naming.selectInstances(...)` to call the nacos SDK native API.
+This advanced Service assumes another `user-service` is registered and
+offers `/api/users/:id`. An application route may call
+`app.services.user.getUser(id)`. `discover` throws if no healthy instance
+exists and returns an HTTP URL. `selectInstances` can return a list, but
+the caller must implement weighting or consistent-hash selection.
 
-### 5. Use remote configuration
-
-```typescript
-// src/routes/features.ts
-import { defineRoutes } from "vextjs";
-
-export default defineRoutes((app) => {
-  app.get(
-    "/features/:key",
-    {
-      validate: { param: { key: "string!" } },
-    },
-    async (req, res) => {
-      const { key } = req.valid("param");
-      const features = (req.app.remoteConfig?.features ?? {}) as Record<
-        string,
-        boolean
-      >;
-      res.json({ feature: key, enabled: features[key] ?? false });
-    },
-  );
-});
-```
-
-> Nacos configuration content must be legal JSON. When the configuration changes, `app.remoteConfig` will be automatically updated (no need to restart the service).
->
-> In the routing handler, if you want to read such fields that may be replaced by `app.extend()` during runtime, it is recommended to use `req.app.remoteConfig` instead of the closure `app.remoteConfig`. The reason is that the closure `app` passed in `defineRoutes()` comes from the collector copy; when the plugin subsequently uses `app.extend("remoteConfig", nextValue)` to replace it with a new object, the old reference captured in the closure will not be automatically refreshed.
-
-#### Multiple configuration runtime example
+### Multiple runtime configurations
 
 ```typescript
 // src/config/default.ts
@@ -279,17 +354,20 @@ export default {
 
 This approach is suitable for:
 
-- Basic switches + environment coverage
-- Common service configuration + tenant/region incremental configuration
-- Hierarchical maintenance of grayscale parameters during runtime
+- Feature flags and environment-specific overrides
+- Shared service settings with tenant or region overrides
+- Gradual rollout settings updated during runtime
 
 ---
 
-## 2. Best Practices
+## 3. Runtime boundaries and troubleshooting
 
-### Service discovery cache (high-frequency calling scenario)
+### Service discovery cache for frequent calls
 
-`discover()` queries Nacos every time. In high QPS scenarios, it is recommended to add local cache:
+`discover` calls the Naming Client's `selectInstances` each time.
+Whether that reaches the network depends on the SDK's instance cache and
+subscription state. Add an application cache only when measurement shows it
+is needed. This single-app, default-group snippet demonstrates a TTL:
 
 ```typescript
 const cache = new Map<string, { url: string; expireAt: number }>();
@@ -307,54 +385,80 @@ async function cachedDiscover(
 }
 ```
 
-> Nacos SDK's `subscribe` internally maintains a local cache of the instance list, so it is more efficient even without adding a layer cache. The main significance of local caching is to avoid the overhead of calling selectInstances every time discover is called.
+> Caching one URL pins traffic to one instance for the TTL and may keep
+> calling a removed node. Clear and rediscover after failure. With multiple
+> apps, namespaces, or groups, isolate caches and include those dimensions
+> in their keys; do not share this name-only Map.
 
-### Health check endpoint
+### Dependency diagnostic endpoint
+
+This independent route checks the Nacos dependency. It does not replace the
+framework's built-in `/health`:
 
 ```typescript
+// src/routes/nacos-status.ts
 import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  app.get("/health", { override: { rateLimit: false } }, async (req, res) => {
-    const checks: Record<string, string | number> = { status: "ok" };
-    if (app.nacos) {
-      try {
-        const instances = await app.nacos.naming.selectInstances(
-          app.config.nacos!.service!.name,
-          "DEFAULT_GROUP",
-          undefined,
-          true,
-        );
-        checks.nacos = "connected";
-        checks.instances = instances.length;
-      } catch {
-        checks.nacos = "disconnected";
-      }
+  app.get("/", { override: { rateLimit: false } }, async (req, res) => {
+    const nacos = req.app.nacos;
+    const service = req.app.config.nacos?.service;
+    if (!nacos || !service) {
+      res.json({ status: "not-configured" }, 503);
+      return;
     }
-    res.json(checks);
+    try {
+      const instances = await nacos.naming.selectInstances(
+        service.name,
+        service.group ?? "DEFAULT_GROUP",
+        undefined,
+        true,
+      );
+      res.json(
+        {
+          status: instances.length ? "ok" : "no-healthy-instance",
+          instances: instances.length,
+        },
+        instances.length ? 200 : 503,
+      );
+    } catch {
+      res.json({ status: "unavailable" }, 503);
+    }
   });
 });
 ```
 
-### Nacos configuration data format
+Request `/nacos-status`; 503 means this example's dependency check failed.
+The query may use the SDK cache, so 200 does not prove a real-time probe of
+the Nacos server.
 
-Use JSON when creating configurations in the console:
+### Nacos config data format
+
+Create JSON config in the console:
 
 ```json
 {
   "features": { "newDashboard": true, "betaMode": false },
-  "rateLimit": { "max": 100, "window": 60000 },
+  "businessLimits": { "maxOrdersPerHour": 100 },
   "externalApis": { "paymentGateway": "https://pay.example.com/v2" }
 }
 ```
 
-After modification, the vext application will automatically receive the changes through subscription without restarting.
+Subscription updates only change `app.remoteConfig`. Application code
+must read those values when used; they do not automatically change initialized
+framework settings such as `app.config.rateLimit`.
 
----
+| Problem                                      | Check and verify                                                                                          |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Not registered or no `app.nacos`             | Check `service`, `enabled`, `serverAddr`, and registration errors; restart and inspect console instances. |
+| Flag always false                            | Check namespace ID, group, dataId, and JSON object; wait for an update log and request again.             |
+| Database does not change after config update | An ordinary subscription does not rebuild infrastructure; use a bootstrap patch and restart.              |
+| Discovery address unreachable                | Check `service.ip/port` and the consumer network; request the address from a consumer.                    |
+| Instance remains after shutdown              | Inspect deregistration logs, Naming Client close, and server state; process exit alone is insufficient.   |
 
-## 3. Next step
+## 4. Next step
 
-- 📦 [`@devcodex/nacos` npm package](https://www.npmjs.com/package/@devcodex/nacos) — Complete API documentation and change log
-- 🔭 [OpenTelemetry access example](/examples/opentelemetry) — Full observability
-- 🔌 [Plugin System](/guide/plugins) — `definePlugin()` Custom plugin
-- 🌐 [app.fetch](/guide/fetch) — built-in HTTP client (timeouts/retries/requestId propagation)
+- [`@devcodex/nacos` npm package](https://www.npmjs.com/package/@devcodex/nacos) — API docs and changelog.
+- [OpenTelemetry integration example](/examples/opentelemetry) — observability.
+- [Plugin system](/guide/plugins) — custom `definePlugin()` extensions.
+- [app.fetch](/guide/fetch) — built-in HTTP client, timeouts, retries, and request ID propagation.

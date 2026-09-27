@@ -215,9 +215,34 @@ const englishSidebar: SidebarGroup[] = [
     ],
   },
   {
+    text: "Specifications",
+    items: [
+      { text: "Development Specifications", link: "/specification/" },
+      {
+        text: "Architecture and Responsibilities",
+        link: "/specification/architecture",
+      },
+      { text: "HTTP and Routing", link: "/specification/http-and-routing" },
+      {
+        text: "Validation and Data Contracts",
+        link: "/specification/validation-and-contracts",
+      },
+      { text: "Data Access", link: "/specification/data-access" },
+      {
+        text: "Security and Resources",
+        link: "/specification/security-and-resources",
+      },
+      { text: "Jobs and Scheduling", link: "/specification/jobs" },
+      { text: "Build and Operations", link: "/specification/operations" },
+    ],
+  },
+  {
     text: "Data and APIs",
     items: [
       { text: "Validation", link: "/guide/validation" },
+      { text: "Authentication and Security", link: "/guide/security" },
+      { text: "Rate Limiting", link: "/guide/rate-limit" },
+      { text: "File Uploads", link: "/guide/uploads" },
       { text: "Cookies & Sessions", link: "/guide/cookies-session" },
       { text: "Response Cache", link: "/guide/cache" },
       { text: "Database", link: "/guide/database" },
@@ -225,6 +250,7 @@ const englishSidebar: SidebarGroup[] = [
       { text: "OpenAPI", link: "/guide/openapi" },
     ],
   },
+  { text: "Frontend Integration", link: "/guide/frontend" },
   {
     text: "Tooling & Operations",
     items: [
@@ -232,6 +258,7 @@ const englishSidebar: SidebarGroup[] = [
       { text: "Deployment", link: "/guide/deployment" },
       { text: "Testing", link: "/guide/testing" },
       { text: "CLI Commands", link: "/guide/cli" },
+      { text: "MCP Code Generation", link: "/guide/mcp-generation" },
       { text: "Hot Reload", link: "/guide/hot-reload" },
       { text: "Preload", link: "/guide/preload" },
       { text: "Cluster", link: "/guide/cluster" },

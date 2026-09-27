@@ -1,25 +1,100 @@
 # Configuration
 
-## Jobs configuration
+This page explains where configuration is loaded, how layers merge, and how
+to verify the effective values. For your first project, see
+[Quick Start](/guide/quick-start). Work through the complete example below
+without external services before reading the loading mechanism and individual
+settings. See [Configuration API](/api/config) for exact signatures and all
+nested fields. Each later code block is an independent fragment to merge into
+existing configuration, not a replacement for the entire file.
 
-`config.jobs` controls how the framework discovers job files for `vext job ...`, tests, docs, and MCP tooling, and configures the built-in scheduler, worker, store, leases, and default retry policy. It does not make HTTP startup execute jobs.
+## Complete example
 
-```ts
+Start with a TypeScript project from [Quick Start](/guide/quick-start).
+It needs `dev`, `build` (including `--typecheck`), and `start` npm scripts.
+Merge the following configs into the corresponding files and add the
+diagnostic route. To reproduce these results, use an isolated practice
+project with the scaffold's empty `bootstrap.ts`, so an existing provider
+or other profile does not alter the example.
+
+Only fields needed for this verification are explicit; the rest use framework
+defaults. No external service is connected. See the sections below and
+[Configuration API](/api/config) for the full field reference.
+
+```typescript
+// src/config/default.ts
 export default {
-  jobs: {
-    enabled: true,
-    dir: "jobs",
-    runner: "inline",
-    store: { type: "file", dir: ".vext/jobs" },
-    scheduler: { enabled: true, mode: "inline" },
-    worker: { enabled: true, concurrency: 4 },
+  port: Number(process.env.PORT) || 3000,
+  host: "0.0.0.0",
+  logger: { level: "info" },
+  openapi: { enabled: true, title: "My App API", version: "1.0.0" },
+  frontend: { enabled: false },
+  // Custom field demonstrates merging; Vext does not connect to Redis.
+  redis: { url: process.env.REDIS_URL || "redis://localhost:6379" },
+};
+```
+
+```typescript
+// src/config/production.ts
+export default {
+  logger: { level: "warn" },
+  cors: { origins: ["https://myapp.com"], credentials: true },
+  openapi: { enabled: false },
+  // The logger's warn level suppresses ordinary info/debug access logs;
+  // 5xx logs are still promoted to error.
+  accessLog: { level: "info", warnOn4xx: true },
+  cluster: {
+    enabled: false, // Single process for this example; see Cluster below.
   },
 };
 ```
 
-See [Jobs](/guide/jobs) and [Jobs API](/api/jobs).
+```typescript
+// src/config/local.ts
+export default {
+  port: 8080,
+  redis: {
+    url: "redis://localhost:6380",
+  },
+};
+```
 
-VextJS uses a **multi-layer configuration merging** mechanism to support configuration overrides by environment, while providing a rich set of built-in configuration items to cover framework behaviors.
+```typescript
+// src/routes/config-info.ts
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  app.get("/", {}, async (_req, res) => {
+    res.json({
+      port: app.config.port,
+      logLevel: app.config.logger.level,
+      docsEnabled: app.config.openapi.enabled,
+    });
+  });
+});
+```
+
+1. Clear prior PORT, VEXT_PORT/VEXT_HOST, VEXT_CONFIG, and similar overrides
+   in the terminal, or use a clean one. Run `npm run dev`. Request
+   `http://127.0.0.1:8080/config-info`: expect 200 and `data` containing
+   `port=8080`, `logLevel=info`, and `docsEnabled=true`. This proves
+   `local.ts` applies in development.
+2. Stop dev, run `npm run build`, then `npm start`. Request
+   `http://127.0.0.1:3000/config-info`: expect 200 with `port=3000`,
+   `logLevel=warn`, and `docsEnabled=false`. This proves the production
+   override applies and `local.ts` does not.
+3. Stop the service and run `npm start -- --port 3100`. Request port 3100
+   and expect `port=3100`, verifying CLI override priority. Stop this service
+   after verification.
+
+Expose only these three non-sensitive diagnostic fields. Do not return the
+whole `app.config` as an application endpoint. The listening host may be
+`0.0.0.0` or `::`; it is not the public base URL. Deployment behind a
+proxy or CDN determines that address, which cannot be inferred from host and
+port alone.
+
+VextJS merges multiple configuration layers to support environment-specific
+overrides and built-in framework settings.
 
 ## Configuration loading mechanism
 
@@ -46,6 +121,13 @@ When loading TypeScript config sources directly, the framework compiles them wit
 
 Select a config profile explicitly with `--config <name>` or `VEXT_CONFIG=<name>`. When omitted, `vext start`, `vext build`, and `vext deploy assets` default to the `production` profile, while `vext dev` defaults to the `development` profile.
 
+An explicit CLI profile takes priority over `VEXT_CONFIG`. A nonstandard
+`NODE_ENV` name still has a legacy compatibility route with a warning; use
+an explicit profile instead. Standard `NODE_ENV` does not replace each
+command's default mode. A profile name may contain only letters, digits,
+underscores, and hyphens; `default`, `local`, and `bootstrap` are reserved.
+Do not pass a file path.
+
 Profile names can represent custom deployment environments, for example:
 
 - `src/config/sg-sit.ts`
@@ -55,9 +137,14 @@ Profile names can represent custom deployment environments, for example:
 Pass the profile name at startup:
 
 ```bash
-vext start --config sg-sit
-VEXT_CONFIG=sg-sit vext start
+npm start -- --config sg-sit
+VEXT_CONFIG=sg-sit npm start
 ```
+
+The second line uses POSIX shell syntax. In PowerShell, set
+`$env:VEXT_CONFIG = "sg-sit"` before the command, or use the cross-shell
+`--config` option. The examples use `.ts`; the loader also supports `.js`,
+`.mjs`, and `.cjs`.
 
 This production start uses `default -> sg-sit -> bootstrap provider patch -> CLI override`. `local.ts` is loaded only in development/test runtime modes. Production build and start, for both JS sources and compiled TS, do not implicitly evaluate it. Use an explicit profile or bootstrap provider for deployment overrides; a custom profile does not change the runtime mode.
 
@@ -75,11 +162,11 @@ Instead of relying on the `process.env.NODE_ENV` conditional branch in the sourc
 
 ### Merge rules
 
-- **Object fields**: deep merge, the environment file only needs to declare the fields that need to be covered
-- **`middlewares` array**: smart patch strategy - match and merge by `name` instead of simply replacing the entire array
-- **Other Arrays**: The back layer covers the front layer
-- **`bootstrap provider patch`**: Participate in the same merge / validate / freeze process after `local.ts` and before CLI override
-- **Final result**: deep freeze (`deepFreeze`), unmodifiable at runtime
+- **Plain object fields**: deep merge; later layers declare only overrides. Class instances and runtime capabilities are atomic and cannot be recursively patched.
+- **`middlewares` array**: smart patch by `name` instead of replacing the whole array.
+- **Other arrays**: later layers replace earlier arrays.
+- **Bootstrap provider patch**: participates in merge, validation, and freezing after `local.ts` and before the CLI override.
+- **Final result**: plain config objects and arrays are deeply frozen. Runtime-capability instances retain their internal mutable state and are not recursively frozen.
 
 ### TypeScript base and override layers
 
@@ -120,15 +207,17 @@ export default defineBootstrapConfig({
 });
 ```
 
-provider context field:
+Provider context fields:
 
-| Field                   | Description                                                                                                              |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `env`                   | Current environment (such as `development` / `production` / `test`)                                                      |
-| `baseConfig`            | `default/env/local` Merged read-only configuration, which can be used to determine patch based on existing configuration |
-| `signal`                | `AbortSignal` that aborts on timeout or cancellation                                                                     |
-| `rootDir` / `configDir` | Current project and configuration directory path                                                                         |
-| `command` / `isBuilt`   | The current startup command and whether to compile the product                                                           |
+| Field                   | Description                                                                      |
+| ----------------------- | -------------------------------------------------------------------------------- |
+| `mode`                  | Current runtime mode: development, production, or test.                          |
+| `configProfile`         | Selected config profile; it can differ from `mode`.                              |
+| `env`                   | Deprecated compatibility alias; use `mode` or `configProfile` to express intent. |
+| `baseConfig`            | Read-only merged default/profile/local config available when computing a patch.  |
+| `signal`                | `AbortSignal` aborted on timeout or cancellation.                                |
+| `rootDir` / `configDir` | Current project and config directory paths.                                      |
+| `command` / `isBuilt`   | Current command and whether compiled output is in use.                           |
 
 `dev` and `build` evaluate configuration once from `src/config` before backend compilation so custom frontend paths are known in advance. Their provider context uses the source configuration directory and `isBuilt=false`. Backend compilation, frontend builds, and development watching reuse that configuration instead of calling providers again for paths. A compiled `start` still uses the output configuration directory and `isBuilt=true`; `isBuilt` does not mean that the current command is `build`.
 
@@ -139,6 +228,11 @@ Constraints:
 - Default priority: `local < provider < CLI`
 - When `required` is not declared: `production` defaults to fail-fast, `development/test` defaults to continue after warning
 - In Cluster mode, the Master will pass the current round of provider patches to the Worker for reuse to avoid configuration drift in the same startup cycle.
+
+Timeout aborts the signal but cannot forcibly terminate arbitrary user async
+work. Pass that signal to network operations inside providers. Replace the
+placeholder remote URL with a real service; it is not required by the opening
+complete example.
 
 ### Configuration file format
 
@@ -221,9 +315,20 @@ export default config;
 
 ### Middlewares Patch Strategy
 
-The `middlewares` array uses smart merging, matching by middleware `name`:
+The `middlewares` array merges by middleware `name`:
 
-Each configuration layer may declare a middleware name only once. Repeating a name in the same file fails fast; a later profile/local layer may declare the name once to patch the earlier declaration. `{ name, enabled: false }` removes that declaration from the runtime registry.
+Each layer may declare a middleware name only once. A duplicate in one file
+fails startup. A later profile/local layer may patch an earlier declaration.
+`{ name, enabled: false }` keeps the name registered as a no-op and does not
+look up or run the original middleware file. The disabled name remains
+referenceable, but a route must not pass `options` to it: the no-op is plain
+middleware, not a factory.
+
+Declarations with the same name merge shallowly: a later `options` value
+replaces the whole earlier `options` object. An empty array does not delete
+the inherited whitelist; use `enabled: false` for an existing item. The
+`auth`, `check-role`, and `rate-limit-api` names below require actual
+implementations. A whitelist declaration does not create middleware.
 
 ```typescript
 // src/config/default.ts
@@ -241,7 +346,7 @@ export default {
 export default {
   middlewares: [
     // Just declare the middleware to be overridden and leave the rest
-    { name: "check-role", options: { roles: [] } }, // The development environment does not check roles
+    { name: "check-role", options: { roles: [] } }, // Factory defines what an empty roles array means.
     { name: "rate-limit-api", options: { max: 10000 } }, // Relax the rate limit
   ],
 };
@@ -259,7 +364,10 @@ middlewares: [
 
 ## Use Adapter
 
-Native Adapter (`http.createServer` + `route-core`) is used by default. To switch to another Adapter, specify the `adapter` field in the configuration:
+Native Adapter (`http.createServer` + `route-core`) is the default. To use
+another Adapter, install its optional dependency as described in the
+[Adapter guide](/guide/adapters), then merge one of the following four
+alternative snippets into `default.ts`:
 
 ```typescript
 // src/config/default.ts — using Hono Adapter
@@ -307,7 +415,11 @@ When `adapter` is omitted, Vext uses the Native adapter, which has no third-part
 
 ## Frontend configuration (`frontend`)
 
-`frontend` controls the built-in browser pipeline. It can be `true`, `false`, or an object:
+`frontend` controls the built-in browser pipeline. It can be `true`, `false`,
+or an object. The following combination of optional features assumes pages,
+styles, and locale resources from the [Frontend guide](/frontend/overview).
+The `admin/app/shell` page must actually exist. To enable only defaults, use
+`frontend: true` instead of copying the entire snippet.
 
 ```typescript
 export default {
@@ -385,7 +497,7 @@ export default {
 | `frontend.build.sourcemap`              | `boolean`            | Development `true`                                 | Generate frontend source maps                                            |
 | `frontend.build.server.minify`          | `boolean`            | `false`                                            | SSR renderer minification; intentionally independent from browser output |
 | `frontend.build.server.sourcemap`       | `boolean`            | Development `true`                                 | SSR renderer source-map setting                                          |
-| `frontend.build.diagnostics.sizeReport` | `boolean`            | `true`                                             | Write `dist/client/size-report.json`                                     |
+| `frontend.build.diagnostics.sizeReport` | `boolean`            | `true`                                             | Write `size-report.json` under the effective `frontend.outDir`           |
 | `frontend.build.client.external`        | `string[]`           | `[]`                                               | Browser bundle external modules                                          |
 | `frontend.build.client.externalRuntime` | `object`             | `{}`                                               | Import map URL mapping for externalized browser modules                  |
 | `frontend.build.vendorChunks`           | `boolean \| object`  | `{ enabled: true }`                                | Shared dependency chunk management                                       |
@@ -400,11 +512,23 @@ export default {
 
 By default `spaFallback.scopes` is empty, so unknown HTML paths are not swallowed into the SPA. For mixed SSR + client-router sub-apps, declare each `basePath` in `scopes[]`. `spaFallback: true` is kept only as a compatibility shorthand and is not recommended for enterprise mixed projects.
 
-When `frontend.deploy.upload` is enabled, `vext deploy assets` reads `dist/client/deploy-manifest.json` and uploads changed assets by `uploadKey` and sha256. The built-in `filesystem` adapter writes files to `targetDir`, which is useful as a CDN sync staging directory. HTML is still rendered by Vext, and `index.html` plus `**/*.map` are excluded from the default deploy manifest.
+When `frontend.deploy.upload` is enabled, `vext deploy assets` reads the
+deploy manifest from the effective selected frontend output (by default
+`dist/client/deploy-manifest.json`) and uploads changed assets by `uploadKey`
+and sha256. The built-in `filesystem` adapter writes to `targetDir` for CDN
+sync staging; a custom adapter handles a real cloud provider. By default,
+upload excludes `index.html` and `**/*.map`: Vext still renders HTML on the
+server, while source maps can remain on the server for debugging instead of
+being published as CDN assets.
 
 This table is a general-configuration overview. For an exact nested field, resolved default, build-output topology, or CDN/upload decision, use [Frontend Configuration](/frontend/configuration) and the canonical [VextFrontendConfig API reference](/api/config#vextfrontendconfig). For creating the app, changing pages, adding components, CSS/JSCSS, assets, API calls, HTML templates, and troubleshooting, see the [Frontend guide](/frontend/overview).
 
 ## Complete configuration item reference
+
+This section lists common fields and defaults. For cache, fetch, locale,
+Session/CSRF, and other nested options, use [Configuration API](/api/config)
+as the complete reference. Setting an individual parameter does not
+necessarily enable its feature.
 
 ### Basic configuration
 
@@ -423,6 +547,11 @@ export default {
   trustProxy: false,
 };
 ```
+
+In production or containers, `host: "0.0.0.0"` listens on all IPv4
+interfaces, while `host: "::"` listens on all IPv6 interfaces. For `::`,
+the ready log also displays `http://[::1]:PORT` and a bracketed IPv6
+network URL. A specific IPv6 host is shown as `http://[IPv6]:PORT`.
 
 Production or container deployments can use `host: "0.0.0.0"` for IPv4 all interfaces, or `host: "::"` for IPv6 all interfaces. When `host: "::"` is used, the ready log also prints `http://[::1]:PORT` and bracketed IPv6 Network URLs; explicit IPv6 hosts are printed as `http://[IPv6]:PORT`.
 
@@ -448,13 +577,14 @@ export default {
 
 ### Rate limiting configuration (`rateLimit`)
 
-| Configuration item  | Type      | Default value         | Description                                       |
-| ------------------- | --------- | --------------------- | ------------------------------------------------- |
-| `rateLimit.enabled` | `boolean` | `false`               | Whether to install global throttling              |
-| `rateLimit.max`     | `number`  | `100`                 | Maximum number of requests within the time window |
-| `rateLimit.window`  | `number`  | `60`                  | Time window (seconds)                             |
-| `rateLimit.message` | `string`  | `'Too many requests'` | Rate limiting response message                    |
-| `rateLimit.keyBy`   | `string`  | `'ip'`                | Rate limit dimension (`'ip'` / custom field)      |
+| Configuration item  | Type                 | Default value         | Description                                            |
+| ------------------- | -------------------- | --------------------- | ------------------------------------------------------ |
+| `rateLimit.enabled` | `boolean`            | `false`               | Whether to install global throttling                   |
+| `rateLimit.max`     | `number`             | `100`                 | Maximum number of requests within the time window      |
+| `rateLimit.window`  | `number`             | `60`                  | Time window (seconds)                                  |
+| `rateLimit.message` | `string`             | `'Too Many Requests'` | Rate limiting response message                         |
+| `rateLimit.keyBy`   | `string \| function` | `'ip'`                | Built-in dimension or synchronous request key function |
+| `rateLimit.store`   | `string \| object`   | `'memory'`            | Memory or Redis store                                  |
 
 ```typescript
 export default {
@@ -472,8 +602,15 @@ When disabled or omitted, Vext does not install the middleware and emits no
 rate-limit headers or HTTP 429 responses. `app.setRateLimiter()` replaces the
 implementation only; it does not change this opt-in setting.
 
-:::tip Route-level current limiting coverage
-You can override the rate limiting configuration for a specific route in the route's `options.override.rateLimit`:
+`keyBy: "user"` reads `req.user.id` and falls back to IP when unavailable.
+Global rate limiting runs before ordinary authentication middleware, so it
+does not automatically isolate quotas by `req.auth`. For Redis, route
+overrides, and custom implementations, see [Rate limiting](/guide/rate-limit).
+
+:::tip Route-level rate limit overrides
+With global rate limiting enabled, a route can set
+`options.override.rateLimit`. The following snippet belongs inside a
+`defineRoutes` callback; `handler` stands for an existing handler:
 
 ```typescript
 app.post(
@@ -527,11 +664,12 @@ export default {
 
 ### Request ID configuration (`requestId`)
 
-| Configuration item   | Type           | Default value       | Description                                     |
-| -------------------- | -------------- | ------------------- | ----------------------------------------------- |
-| `requestId.enabled`  | `boolean`      | `true`              | Whether to enable request ID                    |
-| `requestId.header`   | `string`       | `'x-request-id'`    | Request ID transparent transmission header name |
-| `requestId.generate` | `() => string` | `crypto.randomUUID` | Custom ID generation function                   |
+| Configuration item         | Type           | Default value       | Description                                |
+| -------------------------- | -------------- | ------------------- | ------------------------------------------ |
+| `requestId.enabled`        | `boolean`      | `true`              | Whether to enable request ID               |
+| `requestId.header`         | `string`       | `'x-request-id'`    | Header used to read a forwarded request ID |
+| `requestId.responseHeader` | `string`       | `'x-request-id'`    | Header used to return the request ID       |
+| `requestId.generate`       | `() => string` | `crypto.randomUUID` | Custom ID generation function              |
 
 ```typescript
 export default {
@@ -542,7 +680,12 @@ export default {
 };
 ```
 
-When the request carries the `X-Request-Id` header, the framework will transparently transmit the ID instead of generating a new one. Suitable for microservice link tracking.
+By default, the framework reads `X-Request-Id`, calls the generator when
+the value is missing or empty, and writes the ID into the response header.
+An incoming or generated ID must be a string of 1–512 characters without
+control characters or an error is thrown. For an array-valued header, only
+the first value is used. This correlates requests; it is not automatically
+a distributed tracing traceId.
 
 ### Log configuration (`logger`)
 
@@ -570,8 +713,8 @@ export default {
     // prettyColor: 'auto', // Add color to level label when TTY or FORCE_COLOR=1
     // prettySingleLine: true, // Extra fields are compressed to the same line (default)
     // prettyIgnore: 'pid,hostname,requestId', // Hidden fields by default
-    // redactKeys: ['password', 'token'], // exact key desensitization
-    // redactPaths: ['headers.authorization'], // exact path desensitization
+    // redactKeys: ['password', 'token'], // redact matching keys
+    // redactPaths: ['headers.authorization'], // redact this exact path
     // mixin: () => ({ service_name: 'my-app' }), // Custom structured fields
   },
 };
@@ -593,7 +736,12 @@ export default {
 };
 ```
 
-After receiving the `SIGTERM` / `SIGINT` signal, the framework executes all `onClose` hooks (such as closing the database connection) in the reverse order of registration, and forcefully exits after timeout.
+On `SIGTERM` / `SIGINT`, a normal HTTP process enters bounded shutdown: it
+stops accepting requests, handles in-flight requests, then runs `onClose`
+hooks in reverse registration order. The entire pipeline shares a deadline.
+After it expires, remaining cleanup is invoked without further waiting.
+The test helper's close does not call `process.exit`; an unfinished async
+cleanup must not be reported as complete.
 
 ### HTTP Server Configuration (`server`)
 
@@ -681,7 +829,10 @@ export default {
 };
 ```
 
-`maxBodySize` supports string formats (`'1mb'', `'500kb'') and numeric formats (number of bytes).
+`maxBodySize` accepts strings such as `'1mb'` or `'500kb'`, or a number of
+bytes. This bounds the entire request and does not rise automatically when
+`multipart.maxFileSize` rises. An Adapter or reverse proxy may have a lower
+limit.
 
 ### Multipart / File upload configuration (`multipart`)
 
@@ -704,6 +855,12 @@ export default {
 ```
 
 ### Access Log Configuration (`accessLog`)
+
+Built-in multipart parsing is memory-only and does not write files to disk.
+Ordinary multipart text fields do not automatically appear in `req.body`,
+and a route override cannot rescue a file rejected by the earlier global
+limit. See [File uploads](/guide/uploads) for a complete example and error
+checks.
 
 | Configuration item           | Type       | Default value | Description                                          |
 | ---------------------------- | ---------- | ------------- | ---------------------------------------------------- |
@@ -729,7 +886,8 @@ export default {
 };
 ```
 
-When enabled, each request is automatically logged on completion:
+When enabled, requests are logged at completion according to log level and
+path filters. This is an illustrative pretty-mode line:
 
 ```
 GET /api/users 200 12ms | 127.0.0.1
@@ -740,7 +898,7 @@ GET /api/users 200 12ms | 127.0.0.1
 | Configuration item                      | Type                     | Default value         | Description                                                                                                                                                                                                                     |
 | --------------------------------------- | ------------------------ | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `openapi.enabled`                       | `boolean`                | `false`               | Whether to enable OpenAPI documentation                                                                                                                                                                                         |
-| `openapi.title`                         | `string`                 | `'API Documentation'` | Document title                                                                                                                                                                                                                  |
+| `openapi.title`                         | `string`                 | `'VextJS API'`        | OpenAPI spec `info.title`; `docs.ui.title` may set the UI title separately, and without either the UI uses Vext API Docs.                                                                                                       |
 | `openapi.description`                   | `string`                 | `''`                  | Document description                                                                                                                                                                                                            |
 | `openapi.version`                       | `string`                 | `'1.0.0'`             | API version number                                                                                                                                                                                                              |
 | `openapi.docs.path`                     | `string`                 | `'/docs'`             | Vext Docs path                                                                                                                                                                                                                  |
@@ -815,7 +973,10 @@ export default {
 
 ### Database configuration (`database`)
 
-Adding `database` activates Vext's built-in `monsqlize@3.3.0` lifecycle:
+Providing a nonempty `database` object activates Vext's built-in MonSQLize
+lifecycle. There is no `database.enabled` off switch: omission, `null`, or
+an empty object skips it. The repository currently checks MonSQLize 3.3.0;
+this does not pin the Vext installation version. The lifecycle includes
 connection normalization, logger bridging, model loading, raw `app.db`
 mounting, and shutdown cleanup. Use the first-class fields for
 those owned concerns. `database.monsqlizeOptions` is a typed, runtime-validated
@@ -898,6 +1059,30 @@ export default {
 
 You can also turn on Cluster mode through the environment variable `VEXT_CLUSTER=1` without modifying the configuration file.
 
+### Jobs configuration
+
+`config.jobs` controls job discovery, scheduler, worker, store, leases, and
+default execution policies for the Job runtime. It does not make HTTP startup
+run Jobs automatically. Test helpers use explicitly supplied Job definitions.
+Vext Docs has its own Job source directory configuration; changing
+`jobs.dir` does not automatically update every documentation or tooling
+entry point. See the guides and API below for each entry point's scope.
+
+```ts
+export default {
+  jobs: {
+    enabled: true,
+    dir: "jobs",
+    runner: "inline",
+    store: { type: "file", dir: ".vext/jobs" },
+    scheduler: { enabled: true, mode: "inline" },
+    worker: { enabled: true, concurrency: 4 },
+  },
+};
+```
+
+See [Jobs](/guide/jobs) and [Jobs API](/api/jobs).
+
 ### Dev mode configuration (`dev`)
 
 | Configuration item           | Type                | Default value | Description                                                                                                               |
@@ -956,12 +1141,12 @@ Only middleware declared in the whitelist can be referenced in the route's `opti
 ### Routing
 
 ```typescript
+import { defineRoutes } from "vextjs";
+
 export default defineRoutes((app) => {
-  app.get("/info", async (_req, res) => {
+  app.get("/info", {}, async (_req, res) => {
     res.json({
       port: app.config.port,
-      runtimeMode: process.env.NODE_ENV,
-      configProfile: process.env.VEXT_CONFIG,
       openapi: app.config.openapi.enabled,
     });
   });
@@ -971,12 +1156,15 @@ export default defineRoutes((app) => {
 ### In service
 
 ```typescript
+import type { VextApp } from "vextjs";
+
 export default class MyService {
   constructor(private app: VextApp) {}
 
-  getApiBaseUrl() {
+  getListenAddress() {
     const { host, port } = this.app.config;
-    return `http://${host}:${port}`;
+    const address = host.includes(":") ? `[${host}]` : host;
+    return `http://${address}:${port}`;
   }
 }
 ```
@@ -984,6 +1172,8 @@ export default class MyService {
 ### In plug-in
 
 ```typescript
+import { definePlugin } from "vextjs";
+
 export default definePlugin({
   name: "my-plugin",
   setup(app) {
@@ -995,7 +1185,10 @@ export default definePlugin({
 ```
 
 :::tip configuration read-only
-`app.config` is deep-frozen (`deepFreeze`) after startup and any attempt to modify it will throw a `TypeError`. This ensures that the configuration is not accidentally modified at runtime.
+Plain objects and arrays in `app.config` are deeply frozen after loading.
+Writing a frozen property in strict ESM code throws a `TypeError`.
+Explicit non-plain class instances are not recursively frozen, so this
+mechanism does not freeze a Redis client's internal state.
 :::
 
 ## Custom configuration fields
@@ -1023,6 +1216,8 @@ Use with `declare module` to get type hints:
 
 ```typescript
 // src/types/config.d.ts
+import "vextjs";
+
 declare module "vextjs" {
   interface VextConfig {
     redis?: {
@@ -1068,21 +1263,28 @@ export default {
 };
 ```
 
-:::warning Security Tips
-Do not hardcode sensitive information (such as database passwords, API Keys) in configuration files. Recommended:
+:::tip Choosing a configuration source
+Deployment values can come from project-selected config files, platform
+injection, or a provider. Vext does not require one universal source. For
+example:
 
-- Use environment variable: `process.env.DB_PASSWORD`
-- Use `local.ts` (added `.gitignore`) to store sensitive configurations for local development
-  :::
+- Read an environment variable with `process.env.DB_PASSWORD`.
+- Use `local.ts` (listed in `.gitignore`) for local development secrets.
+
+Production mode does not load `local.ts`; supply production values through
+the selected profile, provider, or explicit environment inputs.
+:::
 
 ## Configuration verification
 
-`config-loader` will perform Fail Fast verification after the merge is completed, checking the following:- `port` must be a positive integer in the range 1-65535
+`config-loader` checks configuration after merging. These are common checks,
+not an exhaustive list of all fields and business values:
+
+- `port` must be a positive integer from 1 to 65535.
 
 - `adapter` must be a known built-in identifier or a valid adapter object/function
 - Each element in the `middlewares` array must be a string or a `{ name: string }` object
-- `rateLimit.max` must be a positive integer
-- `rateLimit.window` must be a positive integer
+- `rateLimit.max` and `rateLimit.window` currently check for number type and a value of at least 1; the checker does not fully enforce finiteness or integer values. Applications should use finite positive numbers, an integer `max`, and seconds for `window`.
 - `logger.level` must be a legal log level
 - `logger.redactKeys` / `logger.redactPaths` must be a string array, `logger.redactValue` must be a string
 - `shutdown.timeout` must be a non-negative number (unit: seconds)
@@ -1090,118 +1292,20 @@ Do not hardcode sensitive information (such as database passwords, API Keys) in 
 - `server.maxHeaderSize`, `server.connectionsCheckingInterval` must be positive integers, `server.maxRequestsPerSocket` must be non-negative integers
 - `cluster.workers` must be a positive integer or `'auto'` / `'auto-1'`
 
-If the verification fails, the framework will report an error immediately at startup and give a clear error message to avoid configuration errors being exposed at runtime.
+Existing validators report errors during startup. Applications must still
+check custom fields, external service availability, and business constraints
+outside those validators. Successful config loading alone does not prove the
+application works.
 
-## Complete example
+## Troubleshooting and verification
 
-```typescript
-// src/config/default.ts
-export default {
-  port: Number(process.env.PORT) || 3000,
-  host: "0.0.0.0",
-  adapter: "native",
-  trustProxy: false,
-
-  logger: {
-    level: "info",
-  },
-
-  cors: {
-    origins: ["*"],
-    credentials: false,
-  },
-
-  rateLimit: {
-    enabled: true,
-    max: 100,
-    window: 60, // unit: seconds
-    keyBy: "ip",
-  },
-
-  requestId: {
-    enabled: true,
-    header: "x-request-id",
-  },
-
-  bodyParser: {
-    enabled: true,
-    maxBodySize: "1mb",
-  },
-
-  accessLog: {
-    enabled: true,
-    level: "info",
-  },
-
-  response: {
-    wrap: true,
-    hideInternalErrors: true,
-  },
-
-  shutdown: {
-    timeout: 10, // unit: seconds
-  },
-
-  server: {
-    requestTimeout: 120_000, // Maximum time to receive a complete request, unit: milliseconds
-    headersTimeout: 60_000, // Maximum time to receive complete request headers, unit: milliseconds
-    keepAliveTimeout: 5_000, // keep-alive idle waiting time after the response is completed, unit: milliseconds
-    socketTimeout: 0, // socket inactivity timeout, 0 means disabled
-    maxHeaderSize: 16 * 1024, // Maximum request header size, unit: bytes
-    maxRequestsPerSocket: 0, //The upper limit of the number of single connection requests, 0 means no limit
-    connectionsCheckingInterval: 30_000, // Timeout check interval for unfinished requests, unit: milliseconds
-  },
-
-  requestContext: {
-    enabled: true,
-  },
-
-  openapi: {
-    enabled: true,
-    title: "My App API",
-    version: "1.0.0",
-  },
-
-  frontend: {
-    enabled: true,
-    framework: "react",
-    publicDir: "public",
-    publicPath: "/",
-  },
-
-  middlewares: ["auth", { name: "check-role", options: { roles: ["user"] } }],
-
-  // Custom configuration
-  redis: {
-    url: process.env.REDIS_URL || "redis://localhost:6379",
-  },
-};
-```
-
-```typescript
-// src/config/production.ts
-export default {
-  logger: { level: "warn" },
-  cors: { origins: ["https://myapp.com"], credentials: true },
-  openapi: { enabled: false },
-  // logger.level: "warn" will suppress normal info/debug access logs; 5xx will still be promoted to error.
-  accessLog: { level: "info", warnOn4xx: true },
-  cluster: {
-    enabled: true,
-    workers: "auto",
-  },
-};
-```
-
-```typescript
-// src/config/local.ts — do not commit to Git
-export default {
-  port: 8080,
-  redis: {
-    url: "redis://localhost:6380",
-  },
-};
-```
+| Symptom                                | What to check                                                                                                       | Verification                                    |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| Profile seems ineffective              | Compare CLI/env selection, profile filename, and actual build output. A missing optional profile provides no patch. | Use the diagnostic fields above.                |
+| Local values appear in production      | Distinguish environment variables, providers, and the local layer; a custom profile does not change runtime mode.   | Retry build/start in a clean environment.       |
+| Middleware options are missing fields  | Same-name `options` replace the whole value rather than deep-merging it.                                            | Inspect effective config and request the route. |
+| Startup fails after a provider timeout | Production is required by default; check the remote dependency and signal handling.                                 | Restart after restoring the dependency.         |
+| Modifying config throws `TypeError`    | Plain config was frozen; edit source config and restart as needed.                                                  | Read effective values in a new process.         |
 
 ## Next step
 

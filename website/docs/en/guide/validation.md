@@ -1,12 +1,27 @@
-# Parameter verification
+# Parameter validation
 
-VextJS integrates [schema-dsl](https://github.com/devcodex-labs/schema-dsl) to provide **declarative parameter verification**. Use concise DSL strings to describe verification rules in the route `options.validate`. The framework automatically completes verification, type conversion, and generates OpenAPI documents synchronously.
+VextJS integrates [schema-dsl](https://github.com/devcodex-labs/schema-dsl) for **declarative parameter validation**. In route `options.validate`, use DSL strings or supported field schemas. The framework validates and converts inputs; when OpenAPI is enabled, it projects supported rules into documentation. Parameter validation does not provide authentication, authorization, or database uniqueness.
 
 ## Basic usage
 
-In the three-part definition of the route, the validation rules are declared through the `validate` field:
+Prerequisite: a TypeScript project with `dev`, `build`, and `start` scripts created from [Quick Start](/guide/quick-start). These configuration and route files form a standalone API example; merge them into an existing project as appropriate. It echoes validation results to show conversion and errors without a business service.
 
 ```typescript
+// src/config/default.ts
+import type { VextUserConfig } from "vextjs";
+
+export default {
+  port: 3000,
+  host: "127.0.0.1",
+  adapter: "native",
+  frontend: { enabled: false },
+} satisfies VextUserConfig;
+```
+
+Declare rules in the `validate` field of a three-part route:
+
+```typescript
+// src/routes/validation.ts
 import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
@@ -15,27 +30,62 @@ export default defineRoutes((app) => {
     {
       validate: {
         body: {
-          name: "string:1-50!", // Required string, length 1-50
-          email: "email!", // required, email format
-          age: "number?", // optional number
-          role: "admin|user", // enumeration value
+          name: "string:1-50!", // Required, length 1–50
+          email: "email!", // Required email
+          age: "number?", // Optional number
+          role: "admin|user", // Enum
         },
       },
-      docs: { summary: "Create user" },
+      docs: { summary: "Create a user" },
     },
     async (req, res) => {
-      // req.body has passed verification + type conversion
+      // Read the separate validated result; do not assume req.body is rewritten.
       const data = req.valid("body");
-      const user = await app.services.user.create(data);
-      res.json(user, 201);
+      res.json(data, 201);
+    },
+  );
+  app.get(
+    "/items/:id",
+    {
+      validate: {
+        param: { id: "integer:1-!" },
+        query: { active: "boolean?" },
+      },
+    },
+    async (req, res) => {
+      const { id } = req.valid("param");
+      const { active } = req.valid("query");
+      res.json({ id, active });
     },
   );
 });
 ```
 
-After validation, obtain the converted data through `req.valid(location)`. An invalid `param` returns HTTP `400`; an invalid `query`, `header`, `cookie`, or `body` returns HTTP `422`, without manual handler code.
+Run `npm run dev`. When the ready message shows the listening address, send requests from another terminal:
 
-## Check location
+```bash
+curl -i -H "Content-Type: application/json" -d '{"name":"Bob","email":"bob@example.com","age":"42","role":"user"}' http://127.0.0.1:3000/validation/users
+curl -i -H "Content-Type: application/json" -d '{"name":"Bob","email":"invalid"}' http://127.0.0.1:3000/validation/users
+curl -i "http://127.0.0.1:3000/validation/items/42?active=true"
+curl -i "http://127.0.0.1:3000/validation/items/nope?active=1"
+curl -i "http://127.0.0.1:3000/validation/items/42?active=1"
+```
+
+Expected results, in order: 201 (`data.age` is number 42), 422 (invalid email), 200 (`data.id` is number 42 and `active` is true), 400 (path param fails first), and 422 (string `1` is not accepted as boolean). Valid JSON syntax does not imply valid fields. Malformed JSON is usually rejected earlier by the body parser with 400.
+
+In Windows PowerShell, use `curl.exe` for GET. For JSON POST, avoid shell quoting differences with:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:3000/validation/users' -ContentType 'application/json' -Body '{"name":"Bob","email":"bob@example.com","age":"42","role":"user"}'
+```
+
+Stop the dev server with Ctrl+C. Run `npm run build` and `npm start`, then repeat the requests to confirm the production behavior. If the port is busy, change the example configuration and request URL or stop your own old example process.
+
+Later snippets without a file header are independent route fragments. Their `handler`, business services, and auth middleware must be supplied by your app; do not register every fragment unchanged in one app.
+
+After validation passes, read converted data through `req.valid(location)`. Invalid path `param` returns HTTP 400; invalid `query`, `header`, `cookie`, or `body` returns HTTP 422 before the handler runs.
+
+## Validation locations
 
 `validate` supports five locations, corresponding to different data sources requested:
 
@@ -47,7 +97,7 @@ After validation, obtain the converted data through `req.valid(location)`. An in
 | `cookie` | `req.cookies` | Parsed Cookie values                     |
 | `body`   | `req.body`    | Request body (JSON/URL-encoded)          |
 
-The verification is executed in the order of `param` → `query` → `header` → `cookie` → `body`. If the verification fails at any position, an error will be returned immediately.
+Validation runs in the order `param` → `query` → `header` → `cookie` → `body` and stops at the first failed location. Rules are compiled at route registration and reused for requests. Use lowercase header field names; `req.valid("header")` projects only declared fields and returns lowercase keys. A parsed cookie string is not proof of a valid cookie signature or login session.
 
 ```typescript
 app.put(
@@ -88,6 +138,8 @@ The singular `param` is used in `validate` (corresponding to the concept of path
 If a dynamic path uses `:id` or `*path` without `validate.param`, OpenAPI still emits a `required: true` string path parameter for that segment so the path template remains valid. Declare `validate.param` when you need stricter type, length, or format constraints.
 ::::
 
+<a id="dsl-syntax"></a>
+
 ## Detailed explanation of DSL syntax
 
 schema-dsl uses concise string expressions to describe data types and constraints.
@@ -98,6 +150,7 @@ schema-dsl uses concise string expressions to describe data types and constraint
 | -------------- | ------------- | ----------------------- |
 | `'string'`     | string        | `"hello"`               |
 | `'number'`     | Number        | `42`, `3.14`            |
+| `'integer'`    | Integer       | `1`, `42`               |
 | `'boolean'`    | Boolean value | `true`, `false`         |
 | `'email'`      | Email format  | `"user@example.com"`    |
 | `'url'`        | URL format    | `"https://example.com"` |
@@ -109,8 +162,8 @@ Add a `!` or `?` tag at the end of the type expression:
 
 | Suffix    | Meaning            | Example                                |
 | --------- | ------------------ | -------------------------------------- |
-| `!`       | required           | `'string!'' — required string          |
-| `?`       | Optional           | `'string?'' — Optional string          |
+| `!`       | required           | `'string!'` — required string          |
+| `?`       | Optional           | `'string?'` — optional string          |
 | no suffix | optional (default) | `'string'` — equivalent to `'string?'` |
 
 ```typescript
@@ -123,7 +176,9 @@ validate: {
 }
 ```
 
-### Scope constraints
+`!` requires the field to exist; it does not require a nonempty value. `"string!"` accepts an empty string. Use `"string:1-!"` when empty strings must fail. `?` allows omission but does not allow `null`; see field schemas below for explicit nullability. Optional fields do not receive business defaults automatically. Set pagination defaults in the handler or use a supported schema `default`.
+
+### Range constraints
 
 Use the `:min-max` syntax to specify a range:
 
@@ -141,7 +196,8 @@ Use the `:min-max` syntax to specify a range:
 ```typescript
 "number:1-100"; // Value range 1 to 100
 "number:0-"; // minimum value 0 (non-negative number)
-"number:1-"; // Minimum value 1 (positive integer/positive number)
+"number:1-"; // Minimum value 1; fractions are still allowed
+"integer:1-"; // Minimum value 1 and requires an integer
 "number:-999"; // Maximum value 999
 "number:18-120!"; // required, range 18 to 120
 ```
@@ -156,7 +212,7 @@ Use `|` to separate enumeration options:
 "male|female|other"; // Enumeration: male / female / other
 ```
 
-Enumeration values are always of type string. Maps as `enum` in OpenAPI documentation.
+The bare `|` shorthand describes a string enum and projects as an OpenAPI `enum`. For numeric enums, use an explicit definition such as `enum:number:1|2|3`; do not conflate numeric and string enums.
 
 ### Combination example
 
@@ -177,18 +233,52 @@ validate: {
 }
 ```
 
+## Field-level JSON Schema and documentation consistency
+
+A request location is a field map. Each field may use JSON Schema. This complete route demonstrates required arrays, explicit nullability, and defaults:
+
+```typescript
+// src/routes/shapes.ts
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  app.post(
+    "/",
+    {
+      validate: {
+        body: {
+          "label!": { type: "string", minLength: 2, maxLength: 20 },
+          "tags!": { type: "array", minItems: 1, items: { type: "string" } },
+          note: { type: ["string", "null"] },
+          limit: { type: "integer", minimum: 1, default: 20 },
+        },
+      },
+    },
+    async (req, res) => {
+      res.json(req.valid("body"));
+    },
+  );
+});
+```
+
+POST `{"label":"ok","tags":["guide"],"note":null}` to `/shapes`: expect 200 and `data.limit` equal to 20. A missing or single-character label, or an empty tags array, returns 422. Here `"label!"` and `"tags!"` mark required fields in the field name; `required: ["field"]` applies to a JSON Schema object node and lists required child fields. For a simple string array, `array<string>` DSL also works. Do not use `["string"]` as an array shorthand.
+
+The runtime compiler interprets bare field-level `type` and `enum`, and OpenAPI and typed clients project those field facts. A root field map may contain a business field named `type`. For a nested object with a `type` field, write `{ metadata: { type: { type: "string" }, label: "string!" } }` explicitly; `metadata.type: "string"` otherwise identifies the whole `metadata` as a raw schema type.
+
+`?` allows omission only. To allow null, use `types:string|null` or `{ type: ["string", "null"] }`. Runtime validation, TypeScript inference, and static projection each need checking; success in one does not establish support in the others.
+
 ## Type conversion
 
-schema-dsl automatically performs type conversion during validation, which is especially useful for `query` and `param` data (their original values are always strings):
+The default engine converts supported types, especially URL parameters that arrive as strings. This table describes the current dependency; a custom validator may behave differently:
 
-| declared type | original value | converted |
-| ------------- | -------------- | --------- |
-| `'number'`    | `"42"`         | `42`      |
-| `'number'`    | `"3.14"`       | `3.14`    |
-| `'boolean'`   | `"true"`       | `true`    |
-| `'boolean'`   | `"false"`      | `false`   |
-| `'boolean'`   | `"1"`          | `true`    |
-| `'boolean'`   | `"0"`          | `false`   |
+| declared type | original value | converted        |
+| ------------- | -------------- | ---------------- |
+| `'number'`    | `"42"`         | `42`             |
+| `'number'`    | `"3.14"`       | `3.14`           |
+| `'boolean'`   | `"true"`       | `true`           |
+| `'boolean'`   | `"false"`      | `false`          |
+| `'boolean'`   | `"1"`          | validation fails |
+| `'boolean'`   | `"0"`          | validation fails |
 
 ```typescript
 app.get(
@@ -204,17 +294,17 @@ app.get(
   },
   async (req, res) => {
     const { page, limit, active } = req.valid("query");
-    // page: number, limit: number, active: boolean — automatically converted
+    // Supplied values convert to number/boolean; omitted optional fields may be undefined.
     res.json({ page, limit, active });
   },
 );
 ```
 
-## Get the verified data
+## Read validated data
 
 ### `req.valid(location)`
 
-Use `req.valid()` to get the data after checksum type conversion. It can only be called after the corresponding location is configured in `validate`.
+Use `req.valid()` for validated, converted data. Only a declared location produces a result; an undeclared one returns `undefined`, as described below.
 
 ```typescript
 app.post(
@@ -252,11 +342,15 @@ app.post(
 
 2. **location is not declared in `validate`**
 
-   If only `body` is declared in `validate`, but `req.valid("query")` is called, `undefined` will also be returned. Only locations explicitly declared in `validate` will have verified data.
+   If only `body` is declared in `validate`, but `req.valid("query")` is called, `undefined` will also be returned. Only locations explicitly declared in `validate` will have validated data.
 
-3. **Handler will not be reached when verification fails**
+3. **The handler is not reached when validation fails**
 
    Before the handler runs, an invalid path `param` returns HTTP `400`, while an invalid `query`, `header`, `cookie`, or `body` returns HTTP `422`. Data read through `req.valid()` inside the handler has therefore passed validation.
+
+4. **Passing validation does not remove every undeclared field**
+
+   The default engine retains unknown fields. Validating `{ name: "string!" }` against `{ name: "Alice", extra: 42 }` still leaves `extra` in the result; headers have the separate projection behavior above. Explicitly select fields for business writes. If replacing the validator, check whether it retains, strips, or rejects unknown fields.
 
 ```typescript
 //Boundary case example
@@ -269,7 +363,7 @@ app.get(
     },
   },
   async (req, res) => {
-    const query = req.valid("query"); // { page: number }, verified
+    const query = req.valid("query"); // { page?: number }, verified
     const body = req.valid("body"); // undefined, not declared in validate
     const param = req.valid("param"); // undefined, not declared in validate
     res.json({ query });
@@ -313,15 +407,12 @@ app.post(
 );
 ```
 
-Inference covers DSL strings, required/optional markers, nested objects, and
-single-item array schemas. A chainable `schemaAdapter.compileField()` builder
-is intentionally inferred as `unknown`, because later builder mutations are
-not visible in its static type. The explicit form
+Inference covers DSL strings, required/optional markers, nested objects, and recognizable field-level JSON Schema. Preserve literal types (for example with `as const`) when extracting a schema into a variable; widening to plain `string` loses field-specific inference. Static types alone do not prove runtime compilation or static projection supports the shape. Do not use `["string"]` or `[{ code: "string!" }]` as array shorthand; use explicit `{ type: "array", items: ... }` or supported array DSL. A chainable `schemaAdapter.compileField()` builder intentionally infers as `unknown`, because later dynamic mutations are not visible in its static type. The explicit form
 `req.valid<ExternalBody>("body")` remains available as an escape hatch for
 dynamic or externally supplied schemas; it overrides inference and therefore
 must match the runtime contract maintained by the application.
 
-## Verification error response
+## Validation error response
 
 Validation failures use one structured error shape. Invalid path `param` data returns HTTP/code `400`; invalid `query`, `header`, `cookie`, or `body` data returns HTTP/code `422`. The following is a `422` example:
 
@@ -343,16 +434,18 @@ Validation failures use one structured error shape. Invalid path `param` data re
 }
 ```
 
-- `code`: HTTP status code 422 (Unprocessable Entity)
-- `message`: fixed to `"Validation failed"`
+- `code`: 422 in this example; 400 for a path param error
+- `message`: `"Validation failed"` for default route validation
 - `errors`: field-level error array, including `field` (field name) and `message` (error description)
 - `requestId`: the unique identifier of the current request
 
 Validation errors are handled uniformly by the framework's global error handler, and you do not need to manually try-catch in routing.
 
+The field messages above illustrate the shape. Actual wording depends on the validator and locale, and a custom error handler can change the response. Do not treat these English sentences as stable business error codes.
+
 ## Linkage with OpenAPI documentation
 
-DSL rules in `validate` are automatically mapped to the `parameters` and `requestBody` definitions of the OpenAPI document. No additional configuration is required, the verification rules are the document rules:
+OpenAPI is disabled by default. To project this page's example, add `openapi: { enabled: true }` to the earlier configuration and restart. Supported `validate` rules project to `parameters` and `requestBody`. Business meaning, permission, and response contracts still need separate declarations:
 
 ```typescript
 app.get(
@@ -365,63 +458,69 @@ app.get(
         status: "active|inactive|banned",
       },
     },
-    docs: { summary: "Get user list" },
+    docs: { summary: "List users" },
   },
   handler,
 );
 ```
 
-The above route will be automatically generated in the OpenAPI documentation:
+With OpenAPI enabled, this route projects:
 
-- `page` — query parameter, type: integer, minimum: 1
-- `limit` — query parameter, type: integer, minimum: 1, maximum: 100
-- `status` — query parameter, type: string, enum: ["active", "inactive", "banned"]
+- `page`: query number, minimum 1
+- `limit`: query number, minimum 1, maximum 100
+- `status`: query string enum of `active`, `inactive`, and `banned`
 
-Visit `/docs` to view the automatically generated parameter documentation in Vext Docs.
+The default endpoints, when enabled, are `/docs` and `/openapi.json`; see the [OpenAPI guide](/guide/openapi). If pagination requires integers, change `number` to `integer` and verify that fractional input fails.
 
-If you want the OpenAPI document to display the business meaning of a field, use the explicit side-effect-free builder. Vext does not install a global String `.description()` method:
+For business descriptions, use the explicit builder without global side effects. Vext does not install a global String `.description()` method:
 
 ```typescript
-import { schemaAdapter } from "vextjs";
+// src/routes/translate.ts
+import { defineRoutes, schemaAdapter } from "vextjs";
 
-app.post(
-  "/translate",
-  {
-    validate: {
-      body: {
-        content: schemaAdapter
-          .compileField("string:1-20000!")
-          .description("Text to be translated, length 1-20000 characters"),
-        targetLanguages: [
-          {
-            code: schemaAdapter
-              .compileField("string:1-64!")
-              .description("target language code"),
+export default defineRoutes((app) => {
+  app.post(
+    "/",
+    {
+      validate: {
+        body: {
+          content: schemaAdapter
+            .compileField("string:1-20000!")
+            .description("Text to translate, 1–20000 characters"),
+          targetLanguages: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                code: {
+                  type: "string",
+                  minLength: 1,
+                  maxLength: 64,
+                  description: "Target language code",
+                },
+              },
+              required: ["code"],
+            },
           },
-        ],
-        format: schemaAdapter
-          .compileField("enum:plain_text,preserve_line_breaks")
-          .description("output format"),
+          format: schemaAdapter
+            .compileField("enum:plain_text,preserve_line_breaks")
+            .description("Output format"),
+        },
       },
+      docs: { summary: "Validate a translation request" },
     },
-    docs: { summary: "Perform text translation" },
-  },
-  handler,
-);
+    async (req, res) => {
+      res.json(req.valid("body"));
+    },
+  );
+});
 ```
 
-The generated OpenAPI schema will retain these descriptions, while continuing to retain constraints such as `required`, `enum`, `minLength`, `maxLength`, etc. Fields without a handwritten description will still use the abstract description generated by the framework.
+This route echoes validation results; it does not call a translation service. POST JSON with `content` and `targetLanguages` to `/translate` to inspect descriptions and nested `code` constraints. Generated OpenAPI retains descriptions, `required`, `enum`, `minLength`, and `maxLength`. String DSL without a handwritten description receives a fallback description; raw JSON Schema fields need explicit business descriptions where appropriate.
 
-Build-time projection recognizes `schemaAdapter` only as a named import from
-`vextjs` (an alias is allowed). Its finite builder grammar is
-`compileField(<static string>)` with at most one
-`.description(<static string>)`; the complete builder may be stored in an
-unambiguous same-file `const`. Dynamic arguments, other chains, imported
-builders, and opaque Zod/Yup objects fail with route context.
+Build-time projection recognizes `schemaAdapter` as a named import from `vextjs`, including aliases. The finite builder grammar is `compileField(<static string>)` with at most one `.description(<static string>)`. A complete builder may be stored in an unambiguous same-file `const` or resolved through analyzable source bindings. Dynamic arguments, other chains, unresolvable imports, and opaque Zod/Yup values fail with route context; not every import is unsupported.
 
-The `?` suffix means optional only and does not generate `nullable: true`. Use
-`types:string|null` or raw `{ type: ["string", "null"] }` when null is an
-explicitly supported value.
+`?` means optional, not nullable. Use `types:string|null` or raw `{ type: ["string", "null"] }` to allow null explicitly.
 
 ## Advanced usage
 
@@ -459,7 +558,7 @@ The verification middleware is executed after the routing-level middleware and b
 Request → [global middleware] → [routing-level middleware: auth, check-role] → [validate verification] → [handler]
 ```
 
-Authentication check is performed before parameter verification, and unauthenticated requests will not trigger the verification logic:
+If an authentication middleware or guard rejects a request, it does not reach later schema validation. Merely extracting identity without requiring authentication does not reject anonymous requests. A cache hit or earlier middleware short-circuit also skips schema validation and the handler. The next example assumes `auth` and `check-role` are fully implemented and registered:
 
 ```typescript
 app.post(
@@ -483,7 +582,7 @@ app.post(
 
 ### Route override current limiting rules
 
-In addition to parameter verification, `options` also supports route-level configuration override (`override`), which can adjust current limiting, timeout and other settings for specific routes:
+Beyond validation, `options.override` can adjust rate limiting, timeouts, and other route behavior. First enable the limiter globally: a route override does not install it, and the default IP key does not automatically isolate budgets by path. See [Rate Limiting](/guide/rate-limit) for full verification.
 
 ```typescript
 app.post(
@@ -517,7 +616,7 @@ app.get(
 
 For route entry parameters, `RouteOptions.validate` + `req.valid()` is preferred. If the service also needs to verify non-HTTP input, such as scheduled tasks, message queues, external callbacks, or internal DTOs, you can obtain the current global validation engine through `this.app.getValidator()`.
 
-`getValidator()` returns the current validator: implemented by schema-dsl by default; if the plug-in is replaced by Zod, Yup, etc. through `app.setValidator()`, the service will also get the replaced validator.It is recommended to throw `VextValidationError` directly, so that the framework will return a structured `422` response and an `errors` array. Don't write this type of validation failure as a normal `throw new Error("...")`, otherwise it will be treated as an unknown exception and enter the 500 path.
+`getValidator()` returns the current synchronous `VextValidator`, backed by schema-dsl by default. Replace it before route registration and service schema compilation; already saved compiled functions do not update when `setValidator()` is called later. Throw `VextValidationError` to preserve field errors: through the HTTP error handler, it returns 422 with `errors`; direct Job or other callers receive an exception to handle themselves. An ordinary `Error` in the HTTP chain follows the unknown-error 500 path.
 
 ```typescript
 import { VextValidationError, type VextApp, type VextValidator } from "vextjs";
@@ -551,7 +650,7 @@ export default class UserService {
 
 ::::tip
 
-Do not directly `import "schema-dsl"` in business services. Directly relying on schema-dsl will bypass the global replacement capability of `app.setValidator()`, and will also cause route verification and service verification to use different engines.
+Use `app.getValidator()` when validation behavior should be shared. A direct independent schema library bypasses framework replacement. If you need a separate engine, document its syntax, conversion, and error contract differences.
 
 ::::
 
@@ -560,6 +659,8 @@ Do not directly `import "schema-dsl"` in business services. Directly relying on 
 VextJS uses schema-dsl as the validation engine by default. If you prefer third-party verification libraries such as Zod and Yup, you can replace the built-in verification engine through plug-ins.
 
 ### Using Zod Example
+
+This application adapter requires `npm install zod` and uses the public Zod 4 types. It translates only the listed string subset and falls back to the original engine for an entire schema if it finds any unsupported field. `z.looseObject()` preserves undeclared fields; see the [official Zod object docs](https://zod.dev/api#zlooseobject). Formatting, conversion, and error text can still differ between engines. The synchronous `VextValidator` cannot accept refinements or transforms that require async parsing.
 
 ```typescript
 // src/plugins/zod-validator.ts
@@ -575,8 +676,8 @@ export default definePlugin({
 
     // Translate Vext's serializable route schema into the selected engine.
     // This application-owned example intentionally supports a small subset.
-    const toZodField = (definition: unknown): z.ZodTypeAny | null => {
-      if (definition === "string!") return z.string().min(1);
+    const toZodField = (definition: unknown): z.ZodType | null => {
+      if (definition === "string!") return z.string();
       if (definition === "string:1-50!") return z.string().min(1).max(50);
       if (definition === "email!") return z.string().email();
       if (definition === "string?") return z.string().optional();
@@ -596,13 +697,13 @@ export default definePlugin({
                 })),
               };
 
-        const zodShape: Record<string, z.ZodTypeAny> = {};
+        const zodShape: Record<string, z.ZodType> = {};
         for (const [key, definition] of Object.entries(schema)) {
           const field = toZodField(definition);
           if (!field) return originalValidator.compile(schema);
           zodShape[key] = field;
         }
-        const zodSchema = z.object(zodShape);
+        const zodSchema = z.looseObject(zodShape);
         return (data) => toVextResult(zodSchema.safeParse(data));
       },
     };
@@ -613,13 +714,26 @@ export default definePlugin({
 });
 ```
 
-`app.setValidator()` replaces runtime compilation; it does not change the
-static route-source grammar. Route declarations must keep using serializable
-Vext schema values (DSL strings, nested literals, or the canonical
-`schemaAdapter` builder), and the adapter translates that contract into Zod or
-Yup internally. Do not place opaque third-party schema instances in
-`RouteOptions.validate`, because build, Doctor, OpenAPI, and client contracts
-must project the route before plugin setup executes.
+`app.setValidator()` replaces runtime compilation. It does not widen the public type of `RouteOptions.validate` or change the static route-source grammar. Route declarations must keep using serializable Vext schema values (DSL strings, nested literals, or the canonical `schemaAdapter` builder); the adapter translates that contract to Zod or Yup internally. Do not place opaque third-party schema instances, including opaque Zod/Yup objects, in `RouteOptions.validate`. Build, Doctor, OpenAPI, and client contracts must project the route before plugin setup runs.
+
+After installing and enabling the plugin, add a route that only uses its supported subset:
+
+```typescript
+// src/routes/zod-check.ts
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  app.post(
+    "/",
+    { validate: { body: { name: "string!", email: "email!" } } },
+    async (req, res) => {
+      res.json(req.valid("body"));
+    },
+  );
+});
+```
+
+POST `{"name":"","email":"alice@example.com","extra":42}` to `/zod-check`: expect 200 with the empty `name` and `extra` retained. Missing `name` or an invalid email returns 422. Number and boolean rules in the basic example are outside this adapter's subset and should fall back to the original engine with its conversions. Then build and start the production app and repeat the HTTP checks. Compare only the promised subset; this example does not establish full equivalence between validators.
 
 ## Common patterns
 
@@ -631,8 +745,8 @@ app.get(
   {
     validate: {
       query: {
-        page: "number:1-",
-        limit: "number:1-100",
+        page: "integer:1-",
+        limit: "integer:1-100",
         sort: "createdAt|updatedAt|title",
         order: "asc|desc",
       },
@@ -708,8 +822,9 @@ app.post(
 
 ### File path parameters
 
+This is a fragment inside the `defineRoutes` callback of `src/routes/files/[id].ts`. It requires an application file service that supplies `stream`, `name`, `contentType`, and `metadata`. The file prefix provides `/files/:id`:
+
 ```typescript
-// src/routes/files/[id].ts
 app.get(
   "/",
   {
@@ -741,18 +856,18 @@ app.get(
 Routes configured with `validate` should use `req.valid('body')` instead of directly accessing `req.body`:
 
 ```typescript
-// ✅ Correct — use verified data
+// ✅ Correct — use validated data
 const data = req.valid("body");
 
 // ❌ Avoid — type conversion skipped
 const data = req.body;
 ```
 
-The data returned by `req.valid()` has been type converted (such as `"42"` → `42` in query), and direct access to `req.body` / `req.query` is the original data.
+`req.valid()` reads the validator's stored `result.data`. The framework does not assign it back to `req.body` or `req.query`. Whether an individual validator mutates input in place is engine behavior; do not assume the raw and validated objects are always identical or always different.
 
 ### 2. Reasonable use of required tags
 
-For `query` and `header` positions, usually use optional (`?`); for core fields in `body`, use required (`!`):
+Requiredness comes from the API contract, not the input location. Pagination query may be optional if the handler supplies defaults; core create fields are usually required, and a required header should be marked required too:
 
 ```typescript
 validate: {
@@ -770,7 +885,7 @@ validate: {
 
 ### 3. Verification rules are documents
 
-Since validation rules are automatically mapped to OpenAPI documents, writing `validate` is equivalent to writing the interface document. Describe the constraints as precisely as possible:
+Validation rules give the structural part of an input contract. A complete document also needs purpose, identity requirements, responses, errors, and business constraints. State field constraints precisely:
 
 ```typescript
 // ✅ Precise constraints — clear documentation and validation
@@ -807,7 +922,7 @@ app.post(
   async (req, res) => {
     const data = req.valid("body");
 
-    // Database uniqueness check - DSL cannot override
+    // A pre-check improves the message; a database constraint still enforces concurrency safety.
     const existing = await app.services.user.findByEmail(data.email);
     if (existing) {
       app.throw(409, "Email has been registered", 10001);
@@ -819,13 +934,23 @@ app.post(
 );
 ```
 
+An application-level check before a write cannot guarantee uniqueness under concurrency. Handle a database uniqueness conflict too. Schema validation does not replace authorization, resource ownership, inventory, or payment eligibility; see the [Validation and Contracts Specification](/specification/validation-and-contracts).
+
+## Troubleshooting and verification
+
+| Symptom                                    | Check                                                            | Verify                                                      |
+| ------------------------------------------ | ---------------------------------------------------------------- | ----------------------------------------------------------- |
+| 400 instead of 422                         | Path param failed first, or the body parser rejected JSON        | Send separate invalid param and invalid field requests      |
+| Boolean `1` fails                          | Current engine does not convert string `1` or `0` to boolean     | Use `true` or `false`; verify the error path                |
+| `req.valid()` is undefined                 | Is that location declared and has validation run?                | Check singular `param` and send a valid request             |
+| Compilation or projection rejects a schema | Array shorthand, dynamic builder, or opaque third-party instance | Use supported static declarations; build and send a request |
+| Custom engine differs from OpenAPI         | Conversion, requiredness, or unknown-field behavior changed      | Inspect generated contract and valid/invalid requests       |
+| `string!` accepts an empty string          | Required means present, not nonempty                             | Use `string:1-!`; test missing, empty, and valid values     |
+| Extra fields remain in results             | Default engine retains unknown fields                            | Send an extra field; inspect output and persistence input   |
+
 ## Next step
 
 - Understand the global configuration related to verification in [Configuration](/guide/configuration)
 - View [OpenAPI Documentation](/guide/openapi) how to link with verification rules
 - Learn the complete usage of the three-stage expression in [Routing](/guide/routing)
 - Explore [plugins](/guide/plugins) how to replace the validation engine
-
-## Field-level JSON Schema and generated contracts
-
-A request location takes a DSL field map, for example `{ featured: { type: "boolean" }, status: { enum: ["draft", "published"] } }`. Bare field type/enum schemas retain the runtime compiler's meaning in OpenAPI and typed clients. The root field map may contain a business field named type. Inside a nested object, make that field explicit: `{ metadata: { type: { type: "string" }, label: "string!" } }`. Otherwise `metadata.type: "string"` identifies metadata itself as a raw string schema at runtime.

@@ -2,6 +2,8 @@
 
 The default Vext page model is SSR plus hydration. CSR fallback is scoped and explicit.
 
+In an existing [full-stack project](/frontend/getting-started), this guide adds a client shell under `/app` and verifies that it does not take over requests outside its conditions. Vext delivers the shell; the application implements routing within it. Configuring a scope does not install or generate a client router.
+
 ## When to Use CSR
 
 Use a client-router sub-app when a route range behaves like a browser application after the first shell:
@@ -15,15 +17,36 @@ Keep ordinary content pages on SSR.
 
 ## Configure a Scope
 
+Create the shell page first. This example displays the client path to confirm that the shell is running in the browser:
+
+```tsx
+// src/frontend/pages/app/shell.tsx
+import { useEffect, useState } from "react";
+
+export default function AppShellPage() {
+  const [pathname, setPathname] = useState("");
+  useEffect(() => setPathname(window.location.pathname), []);
+  return (
+    <main>
+      <h1>Client workspace</h1>
+      <p>{pathname || "Loading path..."}</p>
+    </main>
+  );
+}
+```
+
+Merge this `frontend` configuration into `src/config/default.ts`, preserving the project's other settings:
+
 ```ts
 export default {
   frontend: {
+    enabled: true,
     spaFallback: {
       scopes: [
         {
           basePath: "/app",
           page: "app/shell",
-          ssr: false,
+          ssr: true,
           exclude: ["/app/api/**"],
         },
       ],
@@ -32,21 +55,30 @@ export default {
 };
 ```
 
-`scopes[]` defaults to an empty array. Nothing falls back unless you opt in.
+Object-form `scopes[]` defaults to an empty array, so omitting it does not take over unknown paths. The special shorthand `spaFallback: true`, however, creates a `/` scope with `index` as its shell page. It does not mean “enabled with no scope.” Disable fallback with `spaFallback: false` or `enabled: false` in the object form.
 
-When `ssr: false`, Vext returns the configured page as a client shell: the document, assets, and hydration payload are present, but the server-rendered page body is empty. Set `ssr: true` when the fallback shell should include server-rendered HTML.
+The main example retains SSR for the shell, after which the browser handles interaction and internal routing. Each client path does not need a separate server page.
+
+### Current Limitation of an Empty Shell
+
+`ssr: false` keeps the document, assets, and hydration payload but omits the server-rendered page body. The generated browser entry still calls `hydrateRoot`; it does not switch to `createRoot` for an empty root. Changing this example to `ssr: false` therefore causes a hydration mismatch (React error #418 in production). React may recover and display the page, but this does not satisfy an “error-free browser” verification condition.
+
+Until the entry behavior is fixed, prefer `ssr: true` here and keep the initial SSR and client output consistent. Put browser-only logic in an effect. Do not ignore console errors to declare an empty shell successful. Route `clientOnly: true`, global SSR disablement, and per-render SSR disablement also use an empty body with the same browser entry; assess them against this limitation.
 
 ## Request Matching
 
 Fallback only applies when all of these are true:
 
-- request path is inside a configured scope
+- request path is inside a configured scope, matching by path segment (`/app` does not match `/apple`; the longest `basePath` wins on overlap)
 - no explicit API or route handled the request
 - no static asset matched
-- the request accepts HTML
-- the scope exclude list does not match
+- the method is GET or HEAD and the decoded path has no extension
+- the request accepts HTML; `text/html`, `*/*`, and an absent Accept header all count
+- neither the global `spaFallback.exclude` nor the scope's `exclude` matches
 
-JSON and API requests should keep normal 404/error behavior.
+An unknown path explicitly requesting JSON does not receive the shell. The default global exclusions are `/api/**`, `/openapi.json`, `/docs/**`, and `/_vext/docs/**`. A custom global array replaces these defaults, so preserve the exclusions your project needs. A scope exclusion only excludes that shell; it does not define an API. For example, `/app/api/missing` in this guide may still follow the ordinary HTML 404 error-page path. Register a real route and use matching request semantics to provide an API.
+
+If the shell page is absent or rendering fails, the framework continues with other 404 handling. Do not mistake arbitrary returned HTML for a successful scope match. See [Errors and Document](/frontend/errors-and-document) for selection and error pages.
 
 ## Mixed SSR and CSR
 
@@ -61,3 +93,14 @@ A project can use both:
 ```
 
 The important rule is that each client-router area has a deliberate base path and shell page.
+
+## Verification Scope
+
+Run `npm run build`, then start `npm start -- --port 3000` after the build succeeds:
+
+- Navigate to `/app/projects` as HTML: status 200, with `Client workspace` and `Loading path...` already in the original HTML. After browser scripts load, the current path appears without a hydration mismatch in the console.
+- Send `Accept: application/json` to `/app/projects`: expect a 404, not the shell.
+- Request `/app/missing.js`, `/app/api/missing`, and `/api/missing`: none should match this shell.
+- Request `/apple/projects`: it is outside `/app` and should return 404.
+
+To reproduce the limitation above, change the scope to `ssr: false`, rebuild, and start again. The original root is empty; even if the browser recovers and displays the page, record the mismatch rather than declaring error-free success. Restore `ssr: true` and stop the service after verification. If an explicit route matches a test path, its result takes precedence; fallback only handles unmatched requests.

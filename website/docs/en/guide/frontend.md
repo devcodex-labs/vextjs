@@ -1,16 +1,20 @@
 # Frontend integration
 
-This page is kept for existing links.
+This page connects the backend guides to the Frontend section while preserving older frontend integration links. Choose an entry below for your task.
 
-The frontend documentation now lives in the dedicated Frontend section, with its own sidebar and task-oriented pages for SSR, hydration, CSR fallback, render data cache, Fast Refresh, code splitting, static assets/CDN, performance budgets, configuration, and troubleshooting.
+Server routes remain the URL authority; page components are used through frontend capabilities such as `res.render()`. First get one page running, then choose rendering, development, and delivery settings as needed. The topic guides and boundary page define the actual capabilities and conditions for enabling them.
 
 Start here:
 
 - [Frontend Overview](/frontend/overview)
 - [Getting Started](/frontend/getting-started)
+- [Project Structure](/frontend/project-structure)
 - [Routing and Pages](/frontend/routing-and-pages)
 - [Rendering Modes](/frontend/rendering-modes)
 - [Build and Deploy](/frontend/build-and-deploy)
 - [Configuration](/frontend/configuration)
+- [Development Workflow](/frontend/dev-workflow)
+- [Troubleshooting](/frontend/troubleshooting)
+- [Boundaries and Roadmap](/frontend/boundaries-and-roadmap)
 
-Use this compatibility page only when following older links. New documentation should link to `/frontend/*`.
+If you already have a specific task, go directly to the corresponding Frontend topic. That topic owns its API details and steps.

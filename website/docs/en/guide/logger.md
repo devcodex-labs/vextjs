@@ -1,26 +1,71 @@
 # Logger
 
-VextJS has a built-in Vext logger kernel with zero runtime dependency, which can be used anywhere in the framework through `app.logger`. By default, it provides capabilities such as structured JSON, pretty/JSON dual mode, pretty level color output, requestId automatic injection, child logger, runtime level control, and minimalist log desensitization.
+Use `app.logger` for structured business logs, child loggers for Service identity and request IDs for correlation. The built-in implementation supports JSON and pretty output, six log methods, a runtime threshold, Error serialization and optional field redaction without a third-party logging package in its default kernel.
+
+Complete the request flow below first, then choose formatting and collection as needed. Later API snippets belong in a route or plugin that already has `app: VextApp`. Merge config fragments with your existing config rather than replacing the whole file each time.
 
 ## Basic usage
 
-`app.logger` can be used directly in routes, services, plugins and middleware:
+Prerequisite: the TypeScript API-only project from [Quick Start](/guide/quick-start). Keep its package.json, tsconfig.json and scripts, merge this config and add a Service and route:
 
 ```typescript
+// src/config/default.ts
+export default {
+  host: "127.0.0.1",
+  port: 3000,
+  frontend: { enabled: false },
+  logger: { level: "debug", pretty: false },
+};
+```
+
+```typescript
+// src/services/log-demo.ts
+import type { VextApp, VextRuntimeLogger } from "vextjs";
+
+export default class LogDemoService {
+  private readonly logger: VextRuntimeLogger;
+
+  constructor(app: VextApp) {
+    this.logger = app.logger.child({ service: "LogDemoService" });
+  }
+
+  list() {
+    this.logger.debug({ count: 2 }, "query started");
+    const users = [{ id: "u-1" }, { id: "u-2" }];
+    this.logger.info({ count: users.length }, "query completed");
+    return users;
+  }
+}
+```
+
+```typescript
+// src/routes/log-demo.ts
 import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
   app.get("/users", async (req, res) => {
-    app.logger.info("Get user list");
-    app.logger.debug({ page: 1, limit: 20 }, "query parameters");
-
-    const users = await app.services.user.findAll();
-    app.logger.info({ count: users.length }, "Query completed");
-
-    res.json(users);
+    app.logger.trace("hidden at debug threshold");
+    res.json(app.services.logDemo.list());
+  });
+  app.get("/error", async (_req, res) => {
+    const err = new Error("demonstration error");
+    app.logger.error({ err, operation: "demo" }, "caught example");
+    // Logging does not set an HTTP status or throw an exception.
+    res.json({ logged: true });
   });
 });
 ```
+
+Run `npm run dev`, then request these URLs in another terminal:
+
+```bash
+curl -H "x-request-id: log-demo-1" http://127.0.0.1:3000/log-demo/users
+curl -H "x-request-id: log-demo-2" http://127.0.0.1:3000/log-demo/error
+```
+
+Use `curl.exe` in Windows PowerShell. The first request returns 200 and two users; JSON logs include levels 20/30, `service=LogDemoService` and `requestId=log-demo-1`. Trace is filtered by the debug threshold. The second returns 200 with `data.logged: true` and logs level 50, `requestId=log-demo-2`, and the Error's type/message/name/stack.
+
+Stop dev, run `npm run build` and `npm start`, repeat both requests, then stop with Ctrl+C. Change the config level to info and restart: debug should disappear while info/error remain. Set `pretty: false` explicitly for production; application JSON logs and CLI startup notices may share one stream and need separating during collection.
 
 ## Log level
 
@@ -43,7 +88,7 @@ export default defineRoutes((app) => {
 // src/config/default.ts
 export default {
   logger: {
-    level: "debug", // The development environment outputs all levels
+    level: "debug", // Outputs debug and above; trace remains filtered.
   },
 };
 ```
@@ -64,18 +109,19 @@ After setting a certain level, **logs lower than this level will not be output**
 The default logger supports adjusting subsequent log thresholds at runtime, which is suitable for online temporary troubleshooting:
 
 ```typescript
-app.logger.getLevel(); // "info"
+app.logger.getLevel(); // "debug" in this page's complete example.
 app.logger.setLevel("debug");
-app.logger.debug({ orderId }, "debug detail");
+app.logger.debug({ orderId: "order-demo" }, "debug detail");
 app.logger.setLevel("warn");
 ```
 
 - `setLevel()` only affects subsequent logs and does not review historical logs.
 - The created child logger shares the current runtime level with the parent logger.
 - `app.logger.level = "debug"` is not supported for this writable property compatibility; please use `setLevel()`.
-- Illegal levels will throw an explicit error and will not downgrade silently.
+- Use supported levels; invalid values are outside the public contract.
+- `fatal()` only records level 60; it does not itself exit the process or perform graceful shutdown.
 
-## Life cycle log layering
+## Lifecycle log levels
 
 In addition to the regular `logger.level`, VextJS also provides `logger.lifecycleLevel`, which specifically controls the framework's own **startup/loading/hot reload** system logs:
 
@@ -97,6 +143,8 @@ It can also be overridden via environment variables or CLI:
 VEXT_LIFECYCLE_LEVEL=verbose vext start
 VEXT_VERBOSE_LIFECYCLE=1 vext dev
 ```
+
+These are Bash forms. In PowerShell, set `$env:VEXT_LIFECYCLE_LEVEL="verbose"` before `npm start` and remove the temporary variable afterward. CLI `--verbose` also enables detail. Lifecycle verbosity is separate from the business log threshold. Some CLI startup notices use a separate output path and are not guaranteed to obey `logger.level`.
 
 ## Structured log
 
@@ -121,9 +169,9 @@ Always use the form `logger.info(object, message)` - structured fields are easy 
 
 ### JSON output format
 
-In the production environment (`NODE_ENV=production`), the log output is in JSON format:
+Without an explicit pretty override, production (`NODE_ENV=production`) uses JSON. These are two JSON Lines with pid/hostname omitted, not one JSON document containing both objects:
 
-```json
+```jsonl
 {"level":30,"time":"2026-03-05T14:23:05.123Z","requestId":"abc-123","msg":"→ GET /api/users 200 45ms"}
 {"level":30,"time":"2026-03-05T14:23:05.200Z","requestId":"abc-123","service":"UserService","msg":"Query completed","count":42}
 ```
@@ -149,7 +197,7 @@ If `prettySingleLine: false` is set, the multiline expansion format is used:
     limit: 20
 ```
 
-> **Note**: `requestId` is excluded from the `ignore` list of the built-in pretty formatter by default (`prettyIgnore` configuration item) and will not be output in pretty mode. This makes the development log more compact. `requestId` is still present in the production JSON output. If you want to display requestId in pretty mode, you can remove it through the `prettyIgnore` configuration item (see configuration instructions below).
+> **Note**: `requestId` is included in the pretty formatter's default ignore list, so pretty mode hides it. A request-scoped JSON log still contains it when context is active. Remove it from `prettyIgnore` to show it in pretty output.
 
 In the TTY terminal, the pretty formatter will add fixed ANSI colors to the level labels of `trace` / `debug` / `info` / `warn` / `error` / `fatal` by default, making it easier to scan during the development period. The color only wraps the level label and does not affect message, URL, extras, redaction replacement values ​​or JSON output.
 
@@ -269,14 +317,14 @@ It is also possible to add additional ignored fields:
 //Hide requestId + custom field
 export default {
   logger: {
-    prettyIgnore: "pid,hostname,requestId,traceId,spanId",
+    prettyIgnore: "pid,hostname,requestId,trace_id,span_id",
   },
 };
 ```
 
-> **Note**: `prettyIgnore` only affects pretty mode (development environment). The production JSON output always includes all fields (including `requestId`) to ensure complete parsing by the log collection system.
+> `prettyIgnore` controls only the display of extra pretty fields. It does not change JSON. JSON includes fields actually produced by that call, subject to level and redaction rules; a log outside request scope may have no requestId.
 
-## Log desensitization
+## Log field redaction
 
 The default logger provides a minimalist redaction that is turned off by default and is used to replace structured log fields before writing to stdout:
 
@@ -310,75 +358,41 @@ Boundary:
 
 - `redactKeys` is an exact key match at any level.
 - `redactPaths` is dot notation exact path and supports array numeric subscripts.
-- Desensitization occurs before pretty/JSON output, making both formats consistent.
-- Desensitization will not modify the original object passed in by the caller.
+- Redaction occurs before pretty/JSON output, making both formats consistent.
+- Redaction does not modify the original object passed in by the caller.
 - The top level `level` is the log protocol field and will not be overwritten by redaction.
 - No support for wildcard, glob, regex, bracket notation, remove or function censor.
+- Redaction does not scan passwords or tokens inside a message string. Content embedded in `msg` or `err.message` is hidden only when that entire field is configured for replacement. `prettyIgnore` is display filtering, not redaction.
 
 ### Custom Pretty output {#custom-pretty-output}
 
-VextJS does not expose `messageFormat` template configuration by default. Most development scenarios can directly use `prettySingleLine` and `prettyIgnore` to control output compactness:
+The default logger has no `messageFormat` template option. Prefer `prettySingleLine`, `prettyIgnore` and `prettyColor`. For completely custom formatting or forwarding, use the `setLogger` wrapper below.
 
-- `prettySingleLine: true`: extra fields are inlined in the same line of the message as JSON
-- `prettySingleLine: false`: extra fields multi-line expansion
-- `prettyIgnore`: Hide structured fields that you don’t care about in the development log.
-
-If you need to synchronize logs to an external system or completely take over the formatting logic, it is recommended to wrap the current logger in the plug-in through `app.setLogger()`. This does not affect the framework's default JSON fields, requestId injection, and child logger behavior.
-
-```typescript
-import { definePlugin } from "vextjs";
-
-export default definePlugin({
-  name: "custom-log-format",
-  setup(app) {
-    app.setLogger((original) => ({
-      ...original,
-      info(...args: unknown[]) {
-        // This can be forwarded to an external SDK, or additional human-readable logs generated.
-        original.info(...args);
-      },
-      child: (bindings) => original.child(bindings),
-    }));
-  },
-});
-```
+Calling `original` retains the default output path. Returning custom `info` or `error` methods alone does not automatically apply the default serializer, threshold or redaction. A wrapper must decide which behavior to delegate to `original`.
 
 ## requestId automatic injection
 
-This is one of the most important features of the VextJS logging system. **No need to manually pass in the requestId**, all logs automatically carry the requestId of the current request.
+The default logger associates an ID when request context is enabled and the current chain has a nonempty requestId. Startup logs, independent tasks and logs after request context is disabled are not guaranteed to have one. Pretty output hides it by default.
 
 ### Working principle
 
-```
-The request enters → requestId middleware generates ID → writes requestContext (AsyncLocalStorage)
+```text
+Inbound request → requestId middleware → requestContext (AsyncLocalStorage)
                                               ↓
-app.logger.info('xxx') ← logger mixin automatically reads requestId
+app.logger.info("processing") ← logger mixin reads requestId
                                               ↓
-Output: {"requestId":"abc-123","msg":"xxx"}
+Output: {"requestId":"abc-123","msg":"processing"}
 ```
 
-Vext logger's `mixin` is called before each log is written, reading the `requestId` of the current request from `requestContext` (based on `AsyncLocalStorage`) and appending it to the log field. This means:
+After threshold filtering, the default logger reads current context and merges user mixin and call fields. Handlers, middleware and Services share the ID while still in that request chain.
 
-- **Log in handler**: automatically carry requestId ✅
-- **Log in service**: automatically carry requestId ✅
-- **Log in middleware**: automatically carry requestId ✅
-- **Log of startup phase**: No requestId (non-request context)✅
+Field merge order is child bindings → context fields → user mixin → per-call object; ordinary duplicate fields use the later value. Structured objects cannot override the top-level protocol fields level/time/msg. Special requestId protection prevents **mixin** spoofing only: a per-call object can still replace requestId, and child bindings can retain it when ALS is absent. Avoid conflicting manual IDs; see [Request Context](/guide/request-context).
 
-```typescript
-// No need to do this ❌
-app.logger.info({ requestId: req.requestId }, "Processing request");
+### Performance
 
-// Just do this ✅
-app.logger.info("Processing request");
-// Output automatically includes requestId
-```
+Below-threshold default calls skip serialization and mixin, though JavaScript still evaluates argument expressions before the call. User mixins must be synchronous and inexpensive. A returned Promise or thrown error is ignored, with at most one attempted warning that still depends on the log threshold.
 
-### Performance optimization
-
-Vext logger's request field injection takes the synchronous provider link, and directly skips the corresponding merging step when there is no request context or the user `mixin` is not configured. VextJS has made two optimizations:
-
-1. **Empty context returns quickly**: Non-request contexts such as startup phase and background tasks will not generate `requestId` / `trace_id` / `span_id` fields.
-2. **ALS Disabled Detection**: When AsyncLocalStorage is disabled, skip the `getStore()` call
+With `requestContext.enabled: false`, the default logger skips ALS reads. If ordinary `getStore()` is undefined, context fields are omitted; a background task within a manual `run` may still retain context fields.
 
 ## Child Logger
 
@@ -397,39 +411,9 @@ serviceLogger.info({ userId: "123" }, "Query user");
 
 ### Used in Service
 
-It is recommended to create the child logger in the Service constructor:
+The complete `LogDemoService` above shows this pattern: bind only the static Service name in the constructor. When a method runs, the logger reads the current request context; do not cache one request's store in a Service field.
 
-```typescript
-export class UserService {
-  private logger;
-
-  constructor(private app: any) {
-    //Create a child logger with service identifier
-    this.logger = app.logger.child({ service: "UserService" });
-  }
-
-  async findById(userId: string) {
-    this.logger.debug({ userId }, "Query user");
-
-    const user = await this.app.db.collection("users").findOne({ _id: userId });
-
-    if (!user) {
-      this.logger.warn({ userId }, "The user does not exist");
-      this.app.throw(404, "User does not exist");
-    }
-
-    this.logger.info({ userId, event: "user.found" }, "User query successful");
-    return user;
-  }
-}
-```
-
-Output example:
-
-```json
-{"level":20,"time":"...","requestId":"abc-123","service":"UserService","userId":"u-001","msg":"Query User"}
-{"level":30,"time":"...","requestId":"abc-123","service":"UserService","userId":"u-001","event":"user.found","msg":"User query successful"}
-```
+Top-level bindings are independent across child loggers. A nested child wins on a duplicate top-level binding, although nested object values may still share references. Runtime level control is shared. A logger reference saved before a wrapper is installed does not automatically become wrapped; install the wrapper during plugin setup before Services load.
 
 ### Nested Child Logger
 
@@ -445,49 +429,40 @@ queryLogger.debug("Execute query");
 
 ## Error log
 
-### Logging Error object
+### Log an Error object
 
-Vext logger automatically serializes Error objects (retains message, stack, name):
-
-```typescript
-try {
-  await someOperation();
-} catch (err) {
-  app.logger.error({ err }, "Operation failed");
-  // Vext logger will automatically serialize Error:
-  // {"err":{"type":"Error","message":"xxx","stack":"..."},"msg":"Operation failed"}
-}
-```
-
-:::tip Error calling method
-Both direct Error and `{ err }` fields are supported. When additional business context is required, it is recommended to use `{ err, ...context }`:
+Pass an Error directly to `error`/`fatal` or as a structured field. Built-in serialization keeps type, message, name and stack; arbitrary custom properties and cause chains are not fully expanded automatically.
 
 ```typescript
-// ✅ Direct transmission Error
-app.logger.error(error, "Operation failed");
-
-// ✅ Add business context
-app.logger.error({ err: error }, "Operation failed");
+const err = new Error("example failure");
+app.logger.error(err, "Operation failed");
+app.logger.error({ err, operation: "demo" }, "Operation failed");
 ```
 
-:::
+Ordinary BigInt becomes a string and circular references become `[Circular]`. Undefined, functions and symbols are omitted from objects and become null in arrays. Dates become ISO strings. This is a log serializer, not a complete storage format for arbitrary business objects.
 
 ### Log error context
 
+The caller supplies the app and an implemented payment function. Logging does not swallow payment errors:
+
 ```typescript
-async function processPayment(orderId: string, amount: number) {
+import type { VextApp } from "vextjs";
+
+export async function processPayment(
+  app: VextApp,
+  charge: (amount: number) => Promise<{ id: string }>,
+  orderId: string,
+  amount: number,
+) {
   try {
-    const result = await paymentGateway.charge(amount);
+    const result = await charge(amount);
     app.logger.info(
       { orderId, amount, chargeId: result.id },
-      "Payment successful",
+      "Payment succeeded",
     );
     return result;
   } catch (err) {
-    app.logger.error(
-      { err, orderId, amount, gateway: "stripe" },
-      "Payment failed",
-    );
+    app.logger.error({ err, orderId, amount }, "Payment failed");
     throw err;
   }
 }
@@ -495,84 +470,61 @@ async function processPayment(orderId: string, amount: number) {
 
 ## Extended Logger: setLogger()
 
-`app.setLogger(wrapper)` is a plug-in-specific API that allows you to wrap all logging methods without replacing the default logger kernel - a common use is to forward framework logs to external systems (OTel Logs, Sentry, cloud logging platforms, etc.) simultaneously.
+Call `app.setLogger(wrapper)` during plugin setup to wrap the current app logger. A wrapper may return only selected methods; missing methods fall back to the original. Repeated calls wrap the preceding result in order.
 
-### Function signature
+### Signature
 
 ```typescript
-setLogger(wrapper: (original: VextRuntimeLogger) => VextLoggerLike): void;
+import type { VextApp } from "vextjs";
+
+type SetLogger = VextApp["setLogger"];
+// (wrapper: (original: VextRuntimeLogger) => VextLoggerLike) => void
 ```
 
-`wrapper` takes the current complete runtime logger (the default Vext logger or the normalized result of the previous wrapper) and returns a complete or partial `VextLoggerLike` implementation. Missing methods fall back to the original logger. This can be done in the new implementation:
+The wrapper factory must synchronously return a plain object whose provided log members are functions. If the factory throws or returns an invalid result, installation fails. **Exceptions thrown by log methods themselves propagate to callers**; the framework does not catch them automatically.
 
-- Call external SDK to report logs
-- Filter or sample certain levels
-- Inject global fields
+### Complete wrapper example
 
-### Typical usage: Bridge to OpenTelemetry Logs
-
-When you use the `@devcodex/opentelemetry` plugin, it will call `app.setLogger()` in `setup()` to automatically forward all calls to `app.logger` to the OTel Logs SDK without additional configuration:
+Add this plugin to the complete project above, restart and request both routes again. It needs no external SDK. It supplies only `info` and omits `child`, so the framework reapplies the factory to new child loggers:
 
 ```typescript
-// src/plugins/otel.ts
-import { opentelemetryPlugin } from "@devcodex/opentelemetry/vextjs";
-
-export default opentelemetryPlugin({
-  endpoint: "grpc://collector:4317",
-  protocol: "grpc",
-  logs: {
-    bridgeAppLogger: true, //default true (automatically enabled when endpoint is valid)
-    globalAttributes: {
-      "app.version": "1.2.0",
-    },
-  },
-});
-// → app.logger.info("xxx") simultaneously reports to OTel Collector + outputs to stdout
-```
-
-### Custom Logger extension example
-
-```typescript
+// src/plugins/logger-bridge.ts
 import { definePlugin } from "vextjs";
-import type { VextLogger } from "vextjs";
 
 export default definePlugin({
-  name: "sentry-logger",
+  name: "logger-bridge",
   setup(app) {
+    let calls = 0;
     app.setLogger((original) => ({
-      ...original,
-      error(...args: unknown[]) {
-        //Report error level logs to Sentry
-        const msg =
-          typeof args[0] === "string" ? args[0] : String(args[1] ?? "");
-        Sentry.captureMessage(msg, "error");
-        //The default logger output remains unchanged
-        (original.error as (...a: unknown[]) => void)(...args);
+      info(...args: unknown[]) {
+        calls++;
+        (original.info as (...values: unknown[]) => void)(...args);
       },
-      // child logger maintains original logic
-      child: (bindings) => original.child(bindings),
     }));
+    app.onClose(() => {
+      app.logger.info({ bridgeInfoCalls: calls }, "logger bridge closing");
+    });
   },
 });
 ```
 
-:::tip is consistent with setThrow mode
-`setLogger` adopts exactly the same wrapper pattern as `setThrow`: it receives the original implementation and returns the wrapped implementation. This means:
+Business info logs should still contain LogDemoService and the request ID; unchanged debug/error methods still output. On shutdown, inspect `bridgeInfoCalls`. This count includes framework info calls passing through the wrapper; it is not an HTTP request count.
 
-- Can be called multiple times (each time wrapping the previous result)
-- Default logger functions (requestId injection, pretty format, child logger and runtime level control) are retained for methods that the wrapper does not override
-- Exceptions thrown in the wrapper function will not affect the original logger
-  :::
+### Child fallback and bridging
 
-:::warning child logger fallback and bridging
-When the wrapper does not return `child()`, child loggers fall back to the original logger. If child loggers should also be bridged, return a `child()` method from the wrapper and wrap the child logger there.
-:::
+When `child` is omitted, setLogger runs its factory again for the original child, retaining bindings and wrapping it. The factory may therefore run many times; do not open connections or register duplicate close hooks in it.
 
----
+Returning `child: bindings => original.child(bindings)` explicitly yields an unbridged child. Wrap that child if a custom child method is necessary. If a child factory fails, normalization may fall back to the original child; that tolerance does not apply to ordinary info/error methods.
+
+### Bridging OpenTelemetry Logs
+
+Initialization, endpoint, credentials, async queues and flushing belong to the external SDK integration. Prepare the environment with the [OpenTelemetry example](/examples/opentelemetry), then implement forwarding in your wrapper. Merely calling setLogger does not start a Collector or report logs.
+
+If forwarding happens before `original` handles a call, it receives raw arguments; the default logger's threshold, redaction and formatting do not automatically apply to the SDK. Handle forwarding errors, filtering and field policy. Async writing must not leave unhandled Promise rejections in synchronous log methods. Close and flush the SDK through `app.onClose`; default logger shutdown does not flush it.
 
 ## Log storage and collection
 
-For production environments, it is recommended that VextJS output structured JSON to stdout/stderr, and then the process manager, container platform or log agent is responsible for persistence, rotation and reporting. In this way, the application process does not need additional log transport dependencies, and the log pipeline can be kept replaceable.
+The default logger writes **all levels**, including error and fatal, to stdout. Process failures, CLI or other libraries may write stderr. Process managers normally collect streams, so an stderr file is not an "all error-level logs" file. Collection options below require their own installed components, permissions and network. Verify persistence, rotation and remote delivery in the actual deployment; VextJS does not guarantee them.
 
 ### Solution Overview
 
@@ -587,49 +539,38 @@ For production environments, it is recommended that VextJS output structured JSO
 
 ### Recommended log directory structure
 
-```
+```text
 project/
-├── Exclude in logs/ # .gitignore
-│ ├── app.log # Current application log
-│ ├── app.1.log # Historical log after rotation
-│ ├── app.2.log
-│ ├── error.log # Only error and above levels
-│ └── access.log # Access log (optional)
+├── logs/                 # Exclude in .gitignore
+│   ├── app.log           # Current application stdout
+│   ├── app.1.log         # Rotated history
+│   ├── app.2.log
+│   ├── stderr.log        # stderr stream, not every error-level log
+│   └── access.log        # Only if collection routes access logs separately
 ├── src/
 └── dist/
 ```
 
-:::warning
-Make sure `.gitignore` contains the `logs/` directory and do not submit log files to the repository.
-:::
-
----
+Keep `logs/` out of version control.
 
 ### Solution 1: stdout → Cloud native
 
-In platforms such as Kubernetes / AWS ECS / Google Cloud Run, output directly to stdout, which is automatically collected by the platform:
+VextJS outputs logs. Persistence and search depend on platform logging configuration:
 
-```bash
-# No additional configuration is required, JSON logs are output directly to stdout
-vext start
-```
+| Platform             | Prerequisite                                                                                                                                                                |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Kubernetes           | Runtime captures output; configure cluster storage/search separately, see [logging architecture](https://kubernetes.io/docs/concepts/cluster-administration/logging/)       |
+| AWS ECS              | Configure awslogs or another task driver with permissions, see [ECS CloudWatch integration](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/using_awslogs.html) |
+| Google Cloud Run     | Container output can reach Cloud Logging; see [Cloud Run logs](https://docs.cloud.google.com/run/docs/logging)                                                              |
+| Azure Container Apps | Configure the environment's log destination and inspect console logs; see [application logs](https://learn.microsoft.com/en-us/azure/container-apps/logging)                |
 
-| Platform                 | Log collection method                                    |
-| ------------------------ | -------------------------------------------------------- |
-| **Kubernetes**           | stdout → kubelet → Fluentd / Fluent Bit / Loki → Storage |
-| **AWS ECS**              | stdout → CloudWatch Logs                                 |
-| **Google Cloud Run**     | stdout → Cloud Logging                                   |
-| **Azure Container Apps** | stdout → Azure Monitor                                   |
-
-This is the simplest and most recommended cloud native solution - **don't do any log configuration** and let the platform handle everything.
-
----
+Send a request with a known requestId and find its business log on the target platform. Local stdout alone does not prove remote collection.
 
 ### Solution 2: PM2/systemd file collection
 
-When deploying on a single machine, you can ask the process manager to write stdout/stderr to a file, and then rotate it with `logrotate`.
+These are Linux fragments. Install the chosen process manager, build the project and ensure directories exist with write permissions. Adjust paths for PM2 on Windows; systemd does not apply there.
 
-#### PM2 Example
+#### PM2 example
 
 ```javascript
 // ecosystem.config.cjs
@@ -637,34 +578,40 @@ module.exports = {
   apps: [
     {
       name: "myapp",
+      cwd: "/srv/myapp",
       script: "node_modules/vextjs/dist/cli/index.js",
       args: "start",
-      error_file: "/var/log/myapp/error.log",
+      error_file: "/var/log/myapp/stderr.log",
       out_file: "/var/log/myapp/app.log",
-      log_date_format: "YYYY-MM-DD HH:mm:ss.SSS",
+      env: { NODE_ENV: "production" },
       merge_logs: true,
     },
   ],
 };
 ```
 
+PM2 out_file/error_file split stdout and stderr. Do not add a `log_date_format` or time prefix to JSON lines; see [PM2 log management](https://pm2.keymetrics.io/docs/usage/log-management/).
+
 #### systemd example
 
 ```ini
 # /etc/systemd/system/myapp.service
 [Service]
-ExecStart=/usr/bin/npm start
+ExecStart=/usr/bin/node /srv/myapp/node_modules/vextjs/dist/cli/index.js start
 WorkingDirectory=/srv/myapp
+Environment=NODE_ENV=production
 StandardOutput=append:/var/log/myapp/app.log
-StandardError=append:/var/log/myapp/error.log
+StandardError=append:/var/log/myapp/stderr.log
 Restart=always
 ```
+
+Use a systemd version supporting append output. Adjust Node path, service account and directory permissions. This is only the Service fragment, not complete installation. See the [systemd source documentation](https://github.com/systemd/systemd/blob/main/man/systemd.exec.xml). After startup, send this page's requests and confirm business JSON in app.log, manager status and stderr.
 
 ---
 
 ### Solution 3: System-level logrotate (Linux)
 
-If you use PM2 or systemd to manage the process, you can use the system's own `logrotate` to manage log rotation:
+If logrotate is installed and invoked by a scheduler, it can rotate files. `copytruncate` suits writers that cannot be coordinated to reopen files, but writes between copy and truncation can be lost. It is not a lossless guarantee; see the [logrotate manual](https://github.com/logrotate/logrotate/blob/main/logrotate.8.in):
 
 ```bash
 # /etc/logrotate.d/myapp
@@ -679,13 +626,13 @@ If you use PM2 or systemd to manage the process, you can use the system's own `l
 }
 ```
 
-| Options         | Description                                                   |
-| --------------- | ------------------------------------------------------------- |
-| `daily`         | Rotate every day                                              |
-| `rotate 30`     | Keep 30 historical files                                      |
-| `compress`      | History file gzip compression                                 |
-| `delaycompress` | The most recent file is not compressed (easy to view)         |
-| `copytruncate`  | Truncate after copying (without interrupting process writing) |
+| Options         | Description                                           |
+| --------------- | ----------------------------------------------------- |
+| `daily`         | Rotate every day                                      |
+| `rotate 30`     | Keep 30 historical files                              |
+| `compress`      | History file gzip compression                         |
+| `delaycompress` | The most recent file is not compressed (easy to view) |
+| `copytruncate`  | Copy then truncate; concurrent writes may be lost     |
 
 ---
 
@@ -705,64 +652,40 @@ VextJS (JSON stdout)
 
 #### Filebeat collection
 
+The old `type: log` input was deprecated in Filebeat 7.16 and disabled in 9.0; see the [official migration note](https://www.elastic.co/docs/reference/beats/filebeat/filebeat-input-log). Use filestream with an ndjson parser. This is only an input fragment to merge into an existing Filebeat config; set output address, authentication, TLS and index/data-stream policy for your environment.
+
 ```yaml
-# /etc/filebeat/filebeat.yml
+# Merge into /etc/filebeat/filebeat.yml
 filebeat.inputs:
-  - type: log
+  - type: filestream
+    id: myapp-json
     enabled: true
     paths:
       - /var/log/myapp/app.log
-    json.keys_under_root: true # JSON fields are promoted to the top level
-    json.overwrite_keys: true # Overwrite fields with the same name
-    json.add_error_key: true # Add error field when JSON parsing fails
+    parsers:
+      - ndjson:
+          target: vext
+          add_error_key: true
     fields:
       app: myapp
       env: production
-    fields_under_root: true
-
-  - type: log
-    enabled: true
-    paths: -/var/log/myapp/error.log
-    json.keys_under_root: true
-    json.overwrite_keys: true
-    fields:
-      app: myapp
-      env: production
-      log_type: error
-    fields_under_root: true
-
-output.elasticsearch:
-  hosts: ["http://elasticsearch:9200"]
-  index: "myapp-%{+yyyy.MM.dd}"
-  username: "${ELASTIC_USER}"
-  password: "${ELASTIC_PASSWORD}"
-
-# Index template (optional, optimized mapping)
-setup.template.name: "myapp"
-setup.template.pattern: "myapp-*"
-setup.template.settings:
-  index.number_of_shards: 1
-  index.number_of_replicas: 0
 ```
 
-#### Kibana index mode
+`target: vext` separates application fields from collector metadata. The parser expects one JSON object per line. CLI text produces a parse error; container-wrapped logs may need their outer envelope parsed first. See [filestream parsers](https://www.elastic.co/docs/reference/beats/filebeat/filebeat-input-filestream).
 
-1. Open Kibana → Stack Management → Index Patterns
-2. Create index mode: `myapp-*`
-3. Select `time` for the time field (ISO timestamp of Vext logger)
-4. Search logs in Discover
+Run Filebeat's own `test config` and `test output`, then send a request from this page and confirm `vext.requestId` and `vext.level` appear in the actual index. Passing config checks does not establish successful indexing. Configure rotated-file matching and deduplication for the collector version.
 
-Common queries:
+#### Kibana Data View
 
-- Track by requestId: `requestId: "abc-123"`
-- Filter by error level: `level: 50` (Vext logger level 50 = error)
-- Filter by service: `service: "UserService"`
+Create a [Data View](https://www.elastic.co/docs/explore-analyze/find-and-organize/data-views/create-data-view) for the index or data stream actually written. Choose a time field matching its mapping. Vext's `time` is an ISO string; map it to Elasticsearch date before selecting it as the time field. Filebeat reception time is not automatically business event time.
+
+With the `vext` target above, query `vext.requestId: "log-demo-1"`, `vext.level >= 50` or `vext.service: "LogDemoService"`. Change queries if you choose another target or mapping.
 
 ---
 
 ### Option 5: Docker → Loki
 
-When deploying containers, use the Docker logging driver to push directly to Grafana Loki:
+Install the Loki driver on the Docker host and provide a Loki address reachable by the host/driver before configuring the service. The Compose service name `loki` is not guaranteed to resolve from the driver's network. This `127.0.0.1:3100` example assumes the port is published on the Docker host. See the [driver configuration](https://grafana.com/docs/loki/latest/send-data/docker-driver/configuration/).
 
 ```yaml
 # docker-compose.yml
@@ -772,13 +695,13 @@ services:
     logging:
       driver: loki
       options:
-        loki-url: "http://loki:3100/loki/api/v1/push"
-        loki-batch-size: "400"
+        loki-url: "http://127.0.0.1:3100/loki/api/v1/push"
+        loki-batch-size: "400000"
         loki-retries: "3"
         loki-external-labels: "app=myapp,env=production"
 ```
 
-Add the Loki data source to Grafana to query the logs:
+Check Compose config before deployment and driver send errors and Loki receipt afterward. Then query from Grafana with a configured Loki data source. Batch size is in bytes; finite retries do not guarantee delivery:
 
 - Query by requestId: `{app="myapp"} |= "abc-123"`
 - Filter by JSON field: `{app="myapp"} | json | level >= 50`
@@ -787,105 +710,47 @@ Add the Loki data source to Grafana to query the logs:
 
 ### Solution six: app.setLogger bridges external SDK
 
-If you must call the external log SDK synchronously within the application, you can wrap the current logger through `app.setLogger()`. This method is suitable for plug-in encapsulation, and the default logger continues to output to stdout.
+Reuse the wrapper pattern above. The SDK writer is an application-provided dependency: create it once during plugin setup and close it in `app.onClose`; the wrapper factory only binds methods. Verify default stdout first, then the SDK's success/failure behavior, child loggers, filtering, redaction and queue flush on shutdown.
 
-```typescript
-import { definePlugin } from "vextjs";
-
-export default definePlugin({
-  name: "cloud-logger-bridge",
-  setup(app) {
-    app.setLogger((original) => ({
-      ...original,
-      info(...args: unknown[]) {
-        cloudLogger.write("info", args);
-        original.info(...args);
-      },
-      error(...args: unknown[]) {
-        cloudLogger.write("error", args);
-        original.error(...args);
-      },
-      child: (bindings) => original.child(bindings),
-    }));
-  },
-});
-```
-
-This is not a replacement mechanism for the default logger, but a forwarding bridge at the plug-in layer. If you need official OTel Logs, Sentry, Loki/ELK plug-ins in the future, you can continue to expand on this wrapper contract.
+This page does not supply an individual cloud SDK's installation or credentials. Follow that integration's documentation. Undefined `cloudLogger` or `Sentry` objects are not built-in VextJS features.
 
 ## Logging and OpenTelemetry
 
-Combined with OpenTelemetry, `trace_id` and `span_id` can be automatically injected into the log to associate the log with link tracking:
+With a configured tracing SDK, a synchronous mixin can read the current active span. Alternatively, put fields in request context within the correct request chain; see [Request Context](/guide/request-context).
+
+This typed config factory receives `readActiveSpan` from an already initialized SDK adapter. It only creates logger config; it does not create a tracing SDK or span:
 
 ```typescript
-// src/config/production.ts
-import { trace } from "@opentelemetry/api";
+import type { VextLoggerConfig } from "vextjs";
 
-export default {
-  logger: {
+export function tracingLoggerConfig(
+  readActiveSpan: () => { traceId: string; spanId: string } | undefined,
+): VextLoggerConfig {
+  return {
     level: "info",
+    pretty: false,
     mixin() {
-      const span = trace.getActiveSpan();
-      if (!span?.isRecording()) return {};
-      const ctx = span.spanContext();
-      return {
-        trace_id: ctx.traceId, // injected into the trace_id field of each log (OTEL semantic convention)
-        span_id: ctx.spanId, // Inject into the span_id field of each log
-      };
+      const span = readActiveSpan();
+      return span ? { trace_id: span.traceId, span_id: span.spanId } : {};
     },
-  },
-};
+  };
+}
 ```
 
-**How it works**:
-
-- `mixin()` is called before each log is written, and the return value will be merged and injected with the framework's built-in fields
-- `requestId` is a framework protected field and cannot be overridden by user mixin; `trace_id` / `span_id` and other fields are given priority by user mixin
-- When `mixin` is not configured, user mixin calls will not be executed and the default request field injection behavior remains unchanged
-- The framework does not depend on `@opentelemetry/api`, which is introduced by the user during tracing initialization
-
-**Relationship with F-03 (ALS automatic injection)**: If you write `traceId` / `spanId` to `requestContext` in the tracing middleware, the framework's built-in mixin will automatically inject it into the log - no need to configure the `mixin` option. The `mixin` configuration is suitable for scenarios where the currently active Span needs to be read directly from the OTEL Context API in real time.
-
-For details, see the log correlation chapter in [OpenTelemetry Access Example](/examples/opentelemetry).
+Merge the return value into `config.logger`. The SDK adapter decides whether unsampled traces still need log correlation; `isRecording` need not be the sole condition. A mixin may override ALS trace_id/span_id but not requestId; per-call fields have higher priority. See the [OpenTelemetry example](/examples/opentelemetry) for complete SDK setup.
 
 ## VextLogger interface
 
-```typescript
-interface VextLogger {
-  trace(...args: unknown[]): void;
-  info(...args: unknown[]): void;
-  warn(...args: unknown[]): void;
-  error(...args: unknown[]): void;
-  debug(...args: unknown[]): void;
-  fatal(...args: unknown[]): void;
-  getLevel():
-    | "trace"
-    | "debug"
-    | "info"
-    | "warn"
-    | "error"
-    | "fatal"
-    | "silent";
-  setLevel(
-    level: "trace" | "debug" | "info" | "warn" | "error" | "fatal" | "silent",
-  ): void;
-  child(bindings: Record<string, unknown>): VextLogger;
-}
-```
+Import the public types from `vextjs` rather than copying a potentially stale interface:
 
-`VextLogger` is the logging interface exposed by the framework. You can use this interface in type declarations:
+| Type                | Purpose                                                                                                 |
+| ------------------- | ------------------------------------------------------------------------------------------------------- |
+| `VextLogger`        | Base plugin-compatible interface; trace/getLevel/setLevel optional, child returns VextLogger            |
+| `VextRuntimeLogger` | Complete `app.logger` interface; those three methods required, child returns complete runtime interface |
+| `VextLoggerLike`    | Partial result of a setLogger factory, equivalent to `Partial<VextLogger>`                              |
+| `VextLoggerConfig`  | Logger configuration fields                                                                             |
 
-```typescript
-import type { VextLogger } from "vextjs";
-
-class PaymentService {
-  private logger: VextLogger;
-
-  constructor(app: VextApp) {
-    this.logger = app.logger.child({ service: "PaymentService" });
-  }
-}
-```
+The complete `LogDemoService` above shows type usage. Public `app.logger` has no writable level property or public flush/close method. App lifecycle manages default kernel shutdown; external SDK resources still need plugin close hooks.
 
 ## Differences in abilities from Pino
 
@@ -896,7 +761,7 @@ The goal of Vext's built-in logger is to override a stable subset of the framewo
 | `logger.trace()` public method     | Supported                                                                                       | N/A                                                                                     |
 | Modify the log level at runtime    | `getLevel()` / `setLevel()` is supported; the writable `logger.level` property is not supported | If sampling/complex strategies are required, the `app.setLogger()` wrapper is available |
 | custom levels / level formatter    | Custom levels or renamed `level` fields are not supported                                       | External logging system side mapping numeric level                                      |
-| `redact` path desensitization      | Exact key/path subset is supported                                                              | wildcard/remove/censor function can be processed on the wrapper/Agent side              |
+| `redact` path redaction            | Exact key/path subset is supported                                                              | wildcard/remove/censor function can be processed on the wrapper/Agent side              |
 | serializers/stdSerializers         | Only built-in Error and JSON-safe serialization                                                 | Business field preprocessing or processing in wrapper                                   |
 | `messageKey` / `errorKey`          | Fixed use of `msg` / `err` semantics                                                            | Log collection side mapping field                                                       |
 | `transport` / multistream / file   | No built-in worker transport, multi-target or file writing                                      | stdout → Agent/platform collection, or `app.setLogger()` bridge                         |
@@ -904,93 +769,61 @@ The goal of Vext's built-in logger is to override a stable subset of the framewo
 | browser API                        | Browser logger is not supported                                                                 | Vext is a Node.js server-side framework, an alternative on the browser side             |
 | `hooks.logMethod` / merge strategy | Unexposed log call hook or mixin merge strategy                                                 | Use `app.setLogger()` to wrap the exposed method                                        |
 
-These gaps do not affect the Vext default framework log, access log, requestId/trace field injection, child logger, Error serialization, and stdout-first collection. If official OTel Logs, Sentry, Loki/ELK plug-ins are needed in the future, priority should be based on `app.setLogger()` and external Agent extensions, rather than building the transport system back into the core.
+This comparison defines Vext's current boundary; consult [Pino's official API](https://github.com/pinojs/pino/blob/main/docs/api.md) for its full options. For additional transports or formatting, integrate through a wrapper or collector and verify that external path separately.
 
 ## Configuration reference
 
-| Configuration item        | Type       | Default value               | Description                                                                                                                                       |
-| ------------------------- | ---------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `logger.level`            | `string`   | `'info'`                    | Log thresholds: `'trace'` / `'debug'` / `'info'` / `'warn'` / `'error'` / `'fatal'` / `'silent'`                                                  |
-| `logger.lifecycleLevel`   | `string`   | `'concise'`                 | Framework lifecycle log verbosity level: `'concise'` / `'verbose'`                                                                                |
-| `logger.pretty`           | `boolean`  | `NODE_ENV !== 'production'` | Whether to use the built-in pretty formatter to output a readable format                                                                          |
-| `logger.prettyColor`      | `string`   | `'auto'`                    | Whether to add ANSI to the level label in pretty mode: `'auto'` / `'always'` / `'never'`                                                          |
-| `logger.prettyIgnore`     | `string`   | `'pid,hostname,requestId'`  | Fields to ignore in pretty mode (comma separated). Hide `requestId` by default to avoid multi-line noise, production JSON output is not affected  |
-| `logger.prettySingleLine` | `boolean`  | `true`                      | Whether to compress extra fields in the same line of the message as JSON inline in pretty mode. Set to `false` to use multi-line expansion format |
-| `logger.redactKeys`       | `string[]` | `[]`                        | Desensitize structured log fields by exact key at any level                                                                                       |
-| `logger.redactPaths`      | `string[]` | `[]`                        | Desensitize structured log fields by dot notation exact path                                                                                      |
-| `logger.redactValue`      | `string`   | `'[Redacted]'`              | Desensitized replacement value                                                                                                                    |
-| `logger.mixin`            | `function` | `undefined`                 | Synchronously return custom structured fields; `requestId` cannot be overridden, `trace_id` / `span_id` can be overridden by user fields          |
+| Configuration item        | Type       | Default value               | Description                                                                                                                                           |
+| ------------------------- | ---------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `logger.level`            | `string`   | `'info'`                    | Log thresholds: `'trace'` / `'debug'` / `'info'` / `'warn'` / `'error'` / `'fatal'` / `'silent'`                                                      |
+| `logger.lifecycleLevel`   | `string`   | `'concise'`                 | Framework lifecycle log verbosity level: `'concise'` / `'verbose'`                                                                                    |
+| `logger.pretty`           | `boolean`  | `NODE_ENV !== 'production'` | Whether to use the built-in pretty formatter to output a readable format                                                                              |
+| `logger.prettyColor`      | `string`   | `'auto'`                    | Whether to add ANSI to the level label in pretty mode: `'auto'` / `'always'` / `'never'`                                                              |
+| `logger.prettyIgnore`     | `string`   | `'pid,hostname,requestId'`  | Fields to ignore in pretty mode (comma separated). Hide `requestId` by default to avoid multi-line noise, production JSON output is not affected      |
+| `logger.prettySingleLine` | `boolean`  | `true`                      | Whether to compress extra fields in the same line of the message as JSON inline in pretty mode. Set to `false` to use multi-line expansion format     |
+| `logger.redactKeys`       | `string[]` | `[]`                        | Desensitize structured log fields by exact key at any level                                                                                           |
+| `logger.redactPaths`      | `string[]` | `[]`                        | Desensitize structured log fields by dot notation exact path                                                                                          |
+| `logger.redactValue`      | `string`   | `'[Redacted]'`              | Desensitized replacement value                                                                                                                        |
+| `logger.mixin`            | `function` | `undefined`                 | Synchronously return custom fields; the mixin cannot override `requestId`, but a per-call object can; user fields can override `trace_id` / `span_id` |
 
 ## Best Practices
 
 ### 1. Use structured fields instead of string concatenation
 
-```typescript
-// ✅ Structured fields — indexable, filterable
-app.logger.info({ userId, action: "login", ip: req.ip }, "user login");
+For example, `app.logger.info({ userId: "u-1", action: "login" }, "User logged in")` keeps fields queryable. Put an Error in `err` rather than losing its stack in a concatenated message.
 
-// ❌ String concatenation — difficult to parse and filter
-app.logger.info(`User ${userId} logged in from ${req.ip}`);
-```
+### 2. Create a child logger for each Service
 
-### 2. Create Child Logger for each Service
+As shown above, bind the static Service name in its constructor and pass business fields at call time. Read runtime context on each call rather than binding one request's identity to a long-lived logger.
 
-```typescript
-// ✅ Recommended — the log automatically carries the service logo
-this.logger = app.logger.child({ service: 'OrderService' });
+### 3. Handle sensitive data according to project policy
 
-// ❌ Avoid — each log must be manually added with service
-app.logger.info({ service: 'OrderService', ... }, 'xxx');
-```
+Choose logged fields under your project's data policy. If redaction is required, configure it explicitly and verify JSON, pretty and external bridge outputs. Built-in redaction is off by default; field names are not automatically hidden.
 
-### 3. Do not output sensitive information in the log
+### 4. Choose levels intentionally
 
-```typescript
-// ✅ SAFE
-app.logger.info(
-  { userId, action: "password_change" },
-  "Password has been changed",
-);
+Whether debug is emitted depends on the current threshold; it can also be enabled explicitly in production. Neither error nor fatal automatically throws or exits. Use the appropriate business or lifecycle mechanism when a request or process must change state.
 
-// ❌ DANGER — password leaked to logs
-app.logger.info({ userId, newPassword }, "Password has been changed");
+### 5. Use JSON in production
 
-// ❌ Danger — token leaks to logs
-app.logger.debug(
-  { token: req.headers.authorization },
-  "Authentication information",
-);
-```
+Set `pretty: false` explicitly and parse JSON at the collector. Do not prefix JSON lines with another timestamp. CLI notices and third-party stdout may not be JSON; use a separate parser or retain parse-error events.
 
-### 4. Use log levels appropriately
+## Common questions
 
-```typescript
-//debug — Detailed debugging information (not output in production environment)
-app.logger.debug({ sql: query, params }, "Execute database query");
-
-// info — important business events
-app.logger.info({ orderId, total }, "Order created successfully");
-
-// warn — requires attention but does not affect operation
-app.logger.warn({ retryCount: 3, url }, "Request retry");
-
-// error — something went wrong
-app.logger.error({ err, orderId }, "Payment processing failed");
-
-// fatal — the application cannot continue to run
-app.logger.fatal(
-  { err },
-  "The database connection is disconnected and cannot be restored",
-);
-```
-
-### 5. Use JSON format in production environment
-
-JSON logs are the standard input format for log collection systems (ELK, Loki, Datadog, etc.). Ensure production environment `pretty: false` (default behavior).
+| Symptom                            | Check                                                                                         |
+| ---------------------------------- | --------------------------------------------------------------------------------------------- |
+| debug/trace missing                | Current `getLevel()` threshold; debug does not include trace and children share the threshold |
+| requestId invisible                | `prettyIgnore`, context enablement and call chain; check per-call overrides                   |
+| error.log lacks `app.logger.error` | All default levels go to stdout; stderr files are not split by numeric level                  |
+| Child not forwarded after wrapping | Whether `original.child` was returned explicitly or a pre-install logger was cached           |
+| Logging method fails a request     | Whether wrapper/SDK threw; normal log methods have no universal error isolation               |
+| Filebeat cannot parse JSON         | pretty mode, PM2 timestamp prefix, CLI text, container envelope, input type and parser        |
+| trace_id without a trace           | Log correlation does not prove the SDK sampled, created a span or exported successfully       |
 
 ## Next step
 
-- Understand the log collection solutions in [Deployment and Production Environment](/guide/deployment)
-- View [OpenTelemetry Access](/examples/opentelemetry) to associate logs with link tracking
-- Learn how [middleware](/guide/middleware) generates logs during the request life cycle
-- Explore the environment configuration override mechanism in [Configuration](/guide/configuration)
+- [Request Context](/guide/request-context): identify sources of IDs, locale and trace fields.
+- [Access Log API](/api/access-log): configure HTTP request access logs.
+- [Deployment](/guide/deployment): choose runtime and collection paths.
+- [OpenTelemetry](/examples/opentelemetry): prepare an SDK and Collector.
+- [Configuration](/guide/configuration): understand profile overrides and validation.

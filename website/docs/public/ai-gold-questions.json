@@ -7,7 +7,8 @@
       "locale": "en",
       "question": "What is VextJS's default frontend rendering model?",
       "requiredRoutes": ["/frontend/rendering-modes"],
-      "mustNotClaim": ["React Server Components are enabled by default"]
+      "mustNotClaim": ["React Server Components are enabled by default"],
+      "requiredDocIds": ["frontend.rendering-modes"]
     },
     {
       "id": "frontend-streaming-lifecycle",
@@ -16,7 +17,8 @@
       "requiredRoutes": ["/frontend/rendering-modes"],
       "mustNotClaim": [
         "Streaming SSR can replace status and headers after bytes are sent"
-      ]
+      ],
+      "requiredDocIds": ["frontend.rendering-modes"]
     },
     {
       "id": "frontend-rsc-boundary",
@@ -26,7 +28,11 @@
         "/frontend/boundaries-and-roadmap",
         "/frontend/rendering-modes"
       ],
-      "mustNotClaim": ["RSC is required for VextJS SSR or SEO"]
+      "mustNotClaim": ["RSC is required for VextJS SSR or SEO"],
+      "requiredDocIds": [
+        "frontend.boundaries-and-roadmap",
+        "frontend.rendering-modes"
+      ]
     },
     {
       "id": "frontend-navigation-boundary",
@@ -36,7 +42,11 @@
         "/frontend/data-flow",
         "/frontend/boundaries-and-roadmap"
       ],
-      "mustNotClaim": ["VextJS adds a loader/action route DSL"]
+      "mustNotClaim": ["VextJS adds a loader/action route DSL"],
+      "requiredDocIds": [
+        "frontend.data-flow",
+        "frontend.boundaries-and-roadmap"
+      ]
     },
     {
       "id": "frontend-build-boundary",
@@ -46,35 +56,43 @@
         "/frontend/boundaries-and-roadmap",
         "/frontend/performance-budgets"
       ],
-      "mustNotClaim": ["VextJS requires a Vite or Webpack plugin"]
+      "mustNotClaim": ["VextJS requires a Vite or Webpack plugin"],
+      "requiredDocIds": [
+        "frontend.boundaries-and-roadmap",
+        "frontend.performance-budgets"
+      ]
     },
     {
       "id": "frontend-freshness",
       "locale": "en",
       "question": "Where are static, revalidate, and client-only frontend freshness policies configured?",
       "requiredRoutes": ["/frontend/rendering-modes"],
-      "mustNotClaim": ["PPR is required for VextJS revalidation"]
+      "mustNotClaim": ["PPR is required for VextJS revalidation"],
+      "requiredDocIds": ["frontend.rendering-modes"]
     },
     {
       "id": "api-only-project",
       "locale": "en",
       "question": "Can VextJS run as an API-only project?",
       "requiredRoutes": ["/frontend/boundaries-and-roadmap"],
-      "mustNotClaim": ["The frontend is mandatory"]
+      "mustNotClaim": ["The frontend is mandatory"],
+      "requiredDocIds": ["frontend.boundaries-and-roadmap"]
     },
     {
       "id": "support-entry",
       "locale": "en",
       "question": "Where should a team begin a scoped VextJS support or integration conversation?",
       "requiredRoutes": ["/resources/support-and-services"],
-      "mustNotClaim": ["A public pricing or SLA is guaranteed"]
+      "mustNotClaim": ["A public pricing or SLA is guaranteed"],
+      "requiredDocIds": ["resources.support-and-services"]
     },
     {
       "id": "docs-machine-assets",
       "locale": "en",
       "question": "Which VextJS documentation assets are intended for AI-assisted analysis?",
       "requiredRoutes": ["/resources/documentation-data-and-ai"],
-      "mustNotClaim": ["llms.txt controls or authorizes crawlers"]
+      "mustNotClaim": ["llms.txt controls or authorizes crawlers"],
+      "requiredDocIds": ["resources.documentation-data-and-ai"]
     },
     {
       "id": "documentation-privacy",
@@ -83,49 +101,75 @@
       "requiredRoutes": ["/resources/documentation-data-and-ai"],
       "mustNotClaim": [
         "Raw search text or user identity is collected by default"
-      ]
+      ],
+      "requiredDocIds": ["resources.documentation-data-and-ai"]
     },
     {
       "id": "framework-seo",
       "locale": "en",
       "question": "How do framework defaults, route SEO, and per-render SEO combine, and where are sitemap and robots outputs configured?",
       "requiredRoutes": ["/frontend/seo-sitemap"],
-      "mustNotClaim": ["SEO metadata bypasses validation or origin selection"]
+      "mustNotClaim": ["SEO metadata bypasses validation or origin selection"],
+      "requiredDocIds": ["frontend.seo-sitemap"]
     },
     {
       "id": "whole-page-no-hydration",
       "locale": "en",
       "question": "How can a VextJS page keep SSR HTML while shipping no hydration runtime, payload, or route JavaScript?",
       "requiredRoutes": ["/frontend/hydration"],
-      "mustNotClaim": ["hydration: none is the same as clientOnly"]
+      "mustNotClaim": ["hydration: none is the same as clientOnly"],
+      "requiredDocIds": ["frontend.hydration"]
     },
     {
       "id": "raw-app-db",
       "locale": "en",
       "question": "Which VextJS application property exposes the raw MonSQLize instance and its full upstream API?",
       "requiredRoutes": ["/guide/database"],
-      "mustNotClaim": ["app.monsqlize remains a second v2 entry point"]
+      "mustNotClaim": ["app.monsqlize remains a second v2 entry point"],
+      "requiredDocIds": ["guide.database"]
     },
     {
       "id": "rate-limit-opt-in",
       "locale": "en",
       "question": "Is global rate limiting installed by default, and how is it explicitly enabled or overridden per route?",
       "requiredRoutes": ["/guide/configuration"],
-      "mustNotClaim": ["Omitting rateLimit enables the global limiter"]
+      "mustNotClaim": ["Omitting rateLimit enables the global limiter"],
+      "requiredDocIds": ["guide.configuration"]
     },
     {
       "id": "scaffold-type-ownership",
       "locale": "en",
       "question": "Which type directories belong to Vext tooling versus the application, and what differs between TypeScript and JavaScript starters?",
       "requiredRoutes": ["/guide/cli"],
-      "mustNotClaim": ["JavaScript preflight creates src/types/generated"]
+      "mustNotClaim": ["JavaScript preflight creates src/types/generated"],
+      "requiredDocIds": ["guide.cli"]
     },
     {
       "id": "path-validation-status",
       "locale": "en",
       "question": "Which HTTP status is returned for invalid path parameters versus body, query, header, or cookie validation failures?",
       "requiredRoutes": ["/guide/validation"],
-      "mustNotClaim": ["Every validate location returns HTTP 422"]
+      "mustNotClaim": ["Every validate location returns HTTP 422"],
+      "requiredDocIds": ["guide.validation"]
+    },
+    {
+      "id": "routing-specification",
+      "locale": "en",
+      "question": "How must a VextJS route module export its factory, how are routes collected, and what boundaries apply to validation and middleware?",
+      "requiredRoutes": [
+        "/guide/routing",
+        "/api/route-definition",
+        "/specification/http-and-routing"
+      ],
+      "requiredDocIds": [
+        "guide.routing",
+        "api.route-definition",
+        "specification.http-and-routing"
+      ],
+      "mustNotClaim": [
+        "Business HTTP routes can be registered directly on the created app instance",
+        "An asynchronous route factory is a supported form of static route definition"
+      ]
     },
     {
       "id": "frontend-rendering-model-zh",

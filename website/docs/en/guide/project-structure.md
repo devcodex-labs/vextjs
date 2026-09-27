@@ -1,10 +1,8 @@
 # Project structure
 
-## Jobs
-
-Background jobs live in `src/jobs/**` by default. The directory is a convention, not a hard requirement; use `config.jobs.dir` when a service owns another layout. Jobs are loaded by `vext job ...` and testing helpers, not by normal HTTP startup. See [Jobs](/guide/jobs).
-
 VextJS provides default directory conventions and automatic loading entries. Existing project architecture may override suggested locations. Distinguish actual Loader entries from ordinary import directories; configurable roles use their real configuration fields.
+
+This page explains where files belong, which entries Vext loads automatically, how to organize shared code, and where development and build output goes. See the [Architecture Specification](/specification/architecture) for directory and dependency rules; this guide keeps concrete layouts and commands.
 
 ## Standard directory structure
 
@@ -41,7 +39,7 @@ my-app/
 │ │ └── local.ts # Generated empty local override; ignored by Git
 │ │
 │ ├── preload/ # Optional project-level preload sources; create when needed
-│ │ └── 01-otel.ts # Execute before process starts
+│ │ └── 01-otel.ts # Execute before app configuration and initialization
 │ │
 │ ├── routes/ # Route definition (conventional, automatic scanning)
 │ │ ├── index.ts # → /
@@ -59,6 +57,8 @@ my-app/
 │ │ └── payment/
 │ │ └── stripe.ts # → app.services.payment.stripe
 │ │
+│ ├── jobs/ # Optional background job entry; not run during HTTP startup
+│ │
 │ ├── constants/ # Shared runtime values; create only for real consumers
 │ │ └── services/
 │ │   └── order-status.ts # Runtime constants shared by service consumers
@@ -66,7 +66,7 @@ my-app/
 │ ├── utils/ # Stateless reusable helpers; ordinary imports, not auto-scanned
 │ │ └── format-date.ts
 │ │
-│ ├── middlewares/ # Middleware definition (convention, automatic scanning)
+│ ├── middlewares/ # Middleware files resolved by configured mounted names
 │ │ ├── auth.ts # → referenced by name 'auth'
 │ │ └── check-role.ts # → referenced by name 'check-role'
 │ │
@@ -91,7 +91,9 @@ my-app/
 │     └── index.d.ts # Created by typegen; scaffold starts with .gitkeep
 │
 ├── .vext/
+│ ├── dev/ # Development backend compilation output
 │ ├── client/ # development frontend build output
+│ ├── generated/frontend/ # Generated frontend entry and registry
 │ ├── types/ # hidden generated declarations
 │ └── manifest/ # tooling manifests
 │
@@ -100,100 +102,6 @@ my-app/
 ├── package.json
 └── tsconfig.json # TypeScript configuration
 ```
-
-## Default roles, reusable validation and feature modules
-
-Create these directories only when needed. Project conventions may override the suggested locations; a directory name does not add an automatic Loader.
-
-```text
-my-app/
-├── src/
-│   ├── schemas/order/payment.ts          # Reusable schema; explicit export/import
-│   ├── validators/order/can-pay.ts        # Business rule; called by a route/service
-│   ├── models/
-│   │   ├── user.ts                       # collection=users → model("users")
-│   │   ├── billing/invoice.ts            # model("BillingInvoice")
-│   │   └── cn/billing/invoice.ts         # model("CnBillingInvoice")
-│   ├── modules/order/
-│   │   ├── payment.ts                    # Feature implementation; explicit imports
-│   │   └── types.ts                      # Feature-private types
-│   ├── routes/orders.ts                  # Real defineRoutes registration entry
-│   ├── services/order.ts                 # Injected entry delegating to modules/order
-│   ├── locales/order/payment/
-│   │   ├── zh-CN.json                   # Backend validation/error messages
-│   │   └── en-US.json
-│   └── frontend/
-│       ├── hooks/                        # Explicit browser imports
-│       ├── locales/order/payment/
-│       │   ├── zh-CN.json               # Separate browser messages
-│       │   └── en-US.json
-│       └── assets/                       # Imported build assets
-├── public/                               # Public files copied when frontend is enabled
-├── test/
-│   ├── unit/
-│   ├── integration/
-│   ├── e2e/                              # Real HTTP or browser tests
-│   └── fixtures/                         # Test data, not production storage
-└── storage/                              # Persistent user data, outside build cleanup
-    ├── uploads/                          # Private unless explicitly served by the app
-    └── exports/
-```
-
-Schemas describe structure, format and input/output contracts. Validators implement business decisions such as stock or payment eligibility. Both use ordinary imports; there is no injected app.schemas or app.validators. Keep database, network and other side effects in an explicit service/plugin. Shared browser/server modules must satisfy browser dependency boundaries; a shared directory does not make Node APIs or server credentials browser-safe.
-
-Keep route registration in a synchronous defineRoutes factory and delegate from the handler to feature functions. Frontend page files are renderer entries; backend routes and res.render() still bind their URLs. Moving schemas to contracts/validation changes imports, without creating a new Loader configuration option.
-
-### Actual source extensions by role
-
-| Role                                       | Supported source                        | Discovery/call boundary                                                                                |
-| ------------------------------------------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| routes                                     | .ts, .js, .mjs                          | Recursive; .cjs is rejected; .mts/.cts are not route entries                                           |
-| services                                   | .ts, .mts, .cts, .js, .mjs, .cjs        | Recursive injection; index is an ordinary key segment; declarations/tests/private files excluded       |
-| config, middleware, plugin, model          | .ts, .js, .mjs, .cjs                    | Config selected by name; middleware resolved by mounted name; plugins/models follow their own scanners |
-| preload                                    | .ts, .mts, .js, .mjs                    | Ordered top-level src/preload entries; two populated preload source locations cannot coexist           |
-| backend locales                            | .ts, .mts, .cts, .js, .mjs, .cjs, .json | Module/nested paths; duplicate final keys report both sources                                          |
-| frontend pages                             | Defaults: .tsx, .jsx, .ts, .js          | pages.extensions is configurable; an extension still needs a supported compiler loader                 |
-| types, schemas, validators, utils, modules | Consumer toolchain                      | Explicit imports; .d.ts/.d.mts/.d.cts are declarations only                                            |
-
-A generic module loader supporting an extension does not make every role discover it. NodeNext service declarations reference .mts/.cts as .mjs/.cjs. The framework owns the different backend deployment output mapping.
-
-### Monorepos and multiple services
-
-```text
-workspace/
-├── package.json                          # Workspaces and package-manager scripts
-├── pnpm-workspace.yaml                   # Only for pnpm workspaces
-├── packages/
-│   ├── contracts/
-│   │   ├── package.json                  # Real exports / types
-│   │   ├── src/order.ts
-│   │   └── dist/                         # Built by the shared package
-│   └── models/
-│       ├── package.json                  # Default-exported model map
-│       ├── src/index.ts
-│       └── dist/
-└── apps/
-    ├── api/
-    │   ├── package.json                  # vextjs and shared-package dependencies
-    │   ├── src/
-    │   ├── .vext/
-    │   ├── dist/
-    │   └── storage/
-    └── admin/
-        ├── package.json                  # May use a different Vext version
-        ├── src/
-        ├── .vext/
-        ├── dist/
-        └── storage/
-```
-
-Build shared packages in dependency order, then run dev/build/typegen/start from each service. Vext resolves that service's installed exports, ESM/CJS conditions and declarations. It does not install dependencies or build arbitrary workspace packages. Static sourceExports do not replace executable JS or declarations.
-
-The default backend compiler does not bundle arbitrary sibling packages through cross-root relative TS imports. Use package exports. Explicit models.dir/config/locale read roots are separate from the service's writable state. External model/locale changes use cold restart; other shared package changes require workspace build/restart orchestration. Uncached native ESM/CJS loading refreshes the entry, not every transitive module.
-
-Services own separate business ports and build state. One real service root, including aliases, has one writer. Identical or nested output paths conflict explicitly. External outDir may use a dedicated workspace artifacts directory, but not source, another package or persistent data. Manifests identify owned outputs; do not delete another service's .vext or a shared directory wholesale.
-
-See [Database](/guide/database) for exact model keys, whole connection overrides and sharedPackage maps, and [Deployment](/guide/deployment) for shared-resource isolation.
 
 ## Detailed explanation of each directory
 
@@ -330,7 +238,7 @@ or promote a value shared by multiple services to
 
 This affects only newly scaffolded projects. Existing applications are not
 moved, renamed, or deleted, and `vext typegen` continues to own only
-`src/types/generated/`. Frontend and backend runtime configuration still belongs
+`src/types/generated/`; it also generates referenced declarations under `.vext/types/` and related manifests. Do not hand-edit any of these outputs. Frontend and backend runtime configuration still belongs
 under `src/config/`, not under any type directory.
 
 ### `public/` — Frontend static assets
@@ -391,15 +299,16 @@ export default defineRoutes((app) => {
 
 #### Exclusion rules
 
-The following files will be automatically skipped and will not be loaded as routes:
+These files are skipped rather than loaded as routes. See [Actual source extensions by role](#actual-source-extensions-by-role) for supported extensions:
 
-- Test files: `*.test.ts`, `*.spec.ts`
+- Test files with `.test.` or `.spec.` in their names, such as `*.test.ts` or `*.spec.js`
+- TypeScript declaration files such as `*.d.ts`
 - Files/directories starting with `_` or `.`
 - `node_modules` directory
 
 ### `src/services/` — Services directory
 
-Service files are automatically scanned by `service-loader`, each file exports a class, and the constructor receives the `app` parameter. Automatically mounted to `app.services` after instantiation.
+`service-loader` scans service files. Each default export must be a class or constructor function that can be called with `new` and accepts `app`; instances are mounted on `app.services`. Prefer the class form below. An ordinary arrow factory does not satisfy this construction contract.
 
 #### Name mapping rules
 
@@ -459,8 +368,14 @@ export default class UserService {
 ```
 
 :::warning circular dependency detection
-`service-loader` has built-in circular dependency detection mechanism. If `ServiceA` directly accesses `app.services.b` in the constructor, and `ServiceB` also accesses `app.services.a`, the framework will detect it at startup and report an error.Recommended practice: Only save the `app` reference in the constructor, and access other services on demand in the method (delayed access).
+Services are instantiated and attached one by one in filename order, not first injected in dependency topological order. A constructor that accesses a service not yet attached can fail immediately; store the `app` reference in the constructor and read initialized dependencies in methods.
+
+This avoids an initialization timing problem, but does not remove circular dependencies. After loading, the framework analyzes service accesses in source, including recognizable method-body dependencies, and reports cycles. Dynamic access or inheritance may only yield an incomplete-analysis warning; that is not proof of no cycle. Extract shared logic or reverse an edge to resolve a cycle; see the [Architecture Specification](/specification/architecture).
 :::
+
+### `src/jobs/` — Background job entry {#jobs}
+
+Background jobs live in `src/jobs/**` by default. This is a convention rather than a required directory; use `config.jobs.dir` for another project layout. `vext job ...` and testing helpers load jobs; ordinary HTTP startup does not run them. See [Jobs](/guide/jobs).
 
 ### `src/utils/` — Shared helper functions
 
@@ -476,7 +391,7 @@ browser-safe; do not expose Node-only utilities through a frontend entry.
 
 ### `src/middlewares/` — middleware directory
 
-Middleware files are automatically scanned by `middleware-loader`. Each file exports a middleware tagged via `defineMiddleware` or `defineMiddlewareFactory`.
+`middleware-loader` finds files by mounted names in `config.middlewares` and builds a registry for route references. Placing a file in the directory does not mount it or make it global on every request. Each file exports middleware tagged by `defineMiddleware` or `defineMiddlewareFactory`.
 
 The file name is the middleware name and is referenced by name in configuration and routing:
 
@@ -492,7 +407,7 @@ export default defineMiddleware(async (req, res, next) => {
 });
 ```
 
-When using it, first declare the whitelist in the configuration and then reference it in the routing:
+The `auth.ts` fragment only shows placement and tagging, not complete identity verification; see [Security](/guide/security) for that workflow. Allowlist the middleware, then reference it from a route. The next fragment assumes a `check-role` factory and a business `handler` supplied by the app; it is not a standalone program:
 
 ```typescript
 // src/config/default.ts
@@ -521,6 +436,8 @@ See the [Middleware](/guide/middleware) chapter for details.
 
 Plug-in files are automatically scanned by `plugin-loader`, topologically sorted according to `dependencies` statement, and then `setup()` is executed in sequence.
 
+This resource-ownership sketch uses `createRedisClient` and `app.config.redis` from an application-selected Redis SDK and configuration type. They are not built-in Vext APIs. See [Plugins](/guide/plugins) for a complete integration.
+
 ```typescript
 // src/plugins/redis.ts
 import { definePlugin } from "vextjs";
@@ -539,15 +456,15 @@ See the [Plugins](/guide/plugins) chapter for details.
 
 ### `src/locales/` — Internationalization directory
 
-Language pack files are automatically scanned by `i18n-loader`, and the file name is the language code. After loading, it is registered to the i18n system of schema-dsl and linked with `app.throw()`.
+`i18n-loader` scans locale files named by language code. The current app's validator and `app.throw()` use the loaded messages; each app has its own locale runtime.
 
 ```typescript
 // src/locales/zh-CN.ts
 export default {
-  "user.not_found": { code: 40001, message: "The user does not exist" },
+  "user.not_found": { code: 40001, message: "用户不存在" },
   "balance.insufficient": {
     code: 20001,
-    message: "Insufficient balance, current balance {{balance}}",
+    message: "余额不足，当前余额 {{balance}}",
   },
 };
 ```
@@ -573,10 +490,10 @@ When the framework starts (`bootstrap`), each directory is loaded in the followi
 1. config/ → load and merge configuration (loadConfig)
 2. locales/ → Load language pack (loadI18n)
 3. plugins/ → topological sort + execute setup() (loadPlugins)
-4. middlewares/ → Scan middleware definition (loadMiddlewares)
+4. middlewares/ → Load named middleware from configuration (loadMiddlewares)
 5. services/ → Instantiate and inject into app.services(loadServices)
 6. routes/ → scan routes + register to adapter (loadRoutes)
-7. frontend → build/serve client assets when `frontend.enabled` is true
+7. frontend → Mount renderer and client assets when `frontend.enabled` is true
 8. Start HTTP listening
 ```
 
@@ -586,6 +503,8 @@ This order ensures:
 - Plugins can extend the `app` object (e.g. inject database connections)
 - Middleware is ready before route registration
 - Services are injected before routing, and `app.services` can be safely accessed in the routing handler
+
+This is the main dependency order for HTTP startup, not a full list of built-in middleware or plugin details. Frontend compilation belongs to dev/build tools. Production `start` consumes an existing build; it does not automatically build frontend assets.
 
 ## `package.json` requirements
 
@@ -597,7 +516,7 @@ VextJS projects must be declared as ESM modules:
   "scripts": {
     "start": "vext start",
     "dev": "vext dev",
-    "build": "vext build"
+    "build": "vext build --typecheck"
   }
 }
 ```
@@ -608,21 +527,21 @@ VextJS projects must be declared as ESM modules:
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "Node16",
-    "moduleResolution": "Node16",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "outDir": "dist",
     "rootDir": "src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true
+    "noEmit": true
   },
-  "include": ["src"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", ".vext/types/**/*.d.ts"],
   "exclude": ["node_modules", "dist"]
 }
 ```
+
+This is a base backend type-check configuration. Full-stack projects should retain the scaffold's JSX, DOM, and frontend alias options. The framework's build flow determines actual output; this `outDir` does not. `noEmit` controls independent type checking and does not prevent `vext build`.
 
 ## Build product `dist/`
 
@@ -648,8 +567,122 @@ dist/
 
 - **`vext dev`**: TypeScript backend sources are compiled into the service's .vext/dev before its worker starts. Incremental output includes declared JSON; failures retain the previous valid runtime or explicitly request cold restart.
 - **`vext start`**: Uses the successful build record and actual backend mode. TypeScript production needs build first; merely having tsconfig does not turn a JavaScript source project into compiled mode.
-  - When frontend is enabled, production start also requires `dist/client/index.html`
+  - When frontend is enabled, production start also requires `client/index.html` in the selected build output (normally `dist/client/index.html`).
     :::
+
+## Default roles, reusable validation and feature modules
+
+Create these directories only when needed. Project conventions may override the suggested locations; a directory name does not add an automatic Loader.
+
+```text
+my-app/
+├── src/
+│   ├── schemas/order/payment.ts          # Reusable schema; explicit export/import
+│   ├── validators/order/can-pay.ts        # Business rule; called by a route/service
+│   ├── models/
+│   │   ├── user.ts                       # collection=users → model("users")
+│   │   ├── billing/invoice.ts            # model("BillingInvoice")
+│   │   └── cn/billing/invoice.ts         # model("CnBillingInvoice")
+│   ├── modules/order/
+│   │   ├── payment.ts                    # Feature implementation; explicit imports
+│   │   └── types.ts                      # Feature-private types
+│   ├── routes/orders.ts                  # Real defineRoutes registration entry
+│   ├── services/order.ts                 # Injected entry delegating to modules/order
+│   ├── locales/order/payment/
+│   │   ├── zh-CN.json                   # Backend validation/error messages
+│   │   └── en-US.json
+│   └── frontend/
+│       ├── hooks/                        # Explicit browser imports
+│       ├── locales/order/payment/
+│       │   ├── zh-CN.json               # Separate browser messages
+│       │   └── en-US.json
+│       └── assets/                       # Imported build assets
+├── public/                               # Public files copied when frontend is enabled
+├── test/
+│   ├── unit/
+│   ├── integration/
+│   ├── e2e/                              # Real HTTP or browser tests
+│   └── fixtures/                         # Test data, not production storage
+└── storage/                              # Persistent user data, outside build cleanup
+    ├── uploads/                          # Private unless explicitly served by the app
+    └── exports/
+```
+
+Schemas describe structure, format and input/output contracts. Validators implement business decisions such as stock or payment eligibility. Both use ordinary imports; there is no injected app.schemas or app.validators. Keep database, network and other side effects in an explicit service/plugin. Shared browser/server modules must satisfy browser dependency boundaries; a shared directory does not make Node APIs or server credentials browser-safe.
+
+Keep route registration in a synchronous defineRoutes factory and delegate from the handler to feature functions. Frontend page files are renderer entries; backend routes and res.render() still bind their URLs. Moving schemas to contracts/validation changes imports, without creating a new Loader configuration option.
+
+### Actual source extensions by role
+
+| Role                                       | Supported source                        | Discovery/call boundary                                                                                |
+| ------------------------------------------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| routes                                     | .ts, .js, .mjs                          | Recursive; .cjs is rejected; .mts/.cts are not route entries                                           |
+| services                                   | .ts, .mts, .cts, .js, .mjs, .cjs        | Recursive injection; index is an ordinary key segment; declarations/tests/private files excluded       |
+| config, middleware, plugin, model          | .ts, .js, .mjs, .cjs                    | Config selected by name; middleware resolved by mounted name; plugins/models follow their own scanners |
+| preload                                    | .ts, .mts, .js, .mjs                    | Ordered top-level src/preload entries; two populated preload source locations cannot coexist           |
+| backend locales                            | .ts, .mts, .cts, .js, .mjs, .cjs, .json | Module/nested paths; duplicate final keys report both sources                                          |
+| frontend pages                             | Defaults: .tsx, .jsx, .ts, .js          | pages.extensions is configurable; an extension still needs a supported compiler loader                 |
+| types, schemas, validators, utils, modules | Consumer toolchain                      | Explicit imports; .d.ts/.d.mts/.d.cts are declarations only                                            |
+
+A generic module loader supporting an extension does not make every role discover it. NodeNext service declarations reference .mts/.cts as .mjs/.cjs. The framework owns the different backend deployment output mapping.
+
+### Monorepos and multiple services
+
+```text
+workspace/
+├── package.json                          # Workspaces and package-manager scripts
+├── pnpm-workspace.yaml                   # Only for pnpm workspaces
+├── packages/
+│   ├── contracts/
+│   │   ├── package.json                  # Real exports / types
+│   │   ├── src/order.ts
+│   │   └── dist/                         # Built by the shared package
+│   └── models/
+│       ├── package.json                  # Default-exported model map
+│       ├── src/index.ts
+│       └── dist/
+└── apps/
+    ├── api/
+    │   ├── package.json                  # vextjs and shared-package dependencies
+    │   ├── src/
+    │   ├── .vext/
+    │   ├── dist/
+    │   └── storage/
+    └── admin/
+        ├── package.json                  # May use a different Vext version
+        ├── src/
+        ├── .vext/
+        ├── dist/
+        └── storage/
+```
+
+Build shared packages in dependency order, then run dev/build/typegen/start from each service. Vext resolves that service's installed exports, ESM/CJS conditions and declarations. It does not install dependencies or build arbitrary workspace packages. Static sourceExports do not replace executable JS or declarations.
+
+The default backend compiler does not bundle arbitrary sibling packages through cross-root relative TS imports. Use package exports. Explicit models.dir/config/locale read roots are separate from the service's writable state. External model/locale changes use cold restart; other shared package changes require workspace build/restart orchestration. Uncached native ESM/CJS loading refreshes the entry, not every transitive module.
+
+Services own separate business ports and build state. One real service root, including aliases, has one writer. Identical or nested output paths conflict explicitly. External outDir may use a dedicated workspace artifacts directory, but not source, another package or persistent data. Manifests identify owned outputs; do not delete another service's .vext or a shared directory wholesale.
+
+See [Database](/guide/database) for exact model keys, whole connection overrides and sharedPackage maps, and [Deployment](/guide/deployment) for shared-resource isolation.
+
+## Verify directories and loading
+
+In an existing TypeScript scaffold, merge the first `src/config/default.ts` example on this page and add the complete `src/routes/users.ts` and `src/services/user.ts` files. The other snippets explain their own directories; do not overwrite one configuration fragment with another. Run `npm run dev` from the project root, then send these Bash requests using the port shown at startup:
+
+```bash
+curl -i http://127.0.0.1:3000/users/list
+curl -i http://127.0.0.1:3000/users/42
+curl -i -H "Content-Type: application/json" -d '{"name":"Bob"}' http://127.0.0.1:3000/users
+```
+
+For the first two requests in PowerShell, use `curl.exe`. For JSON POST, avoid native command quoting differences with:
+
+```powershell
+Invoke-WebRequest -Method Post -Uri http://127.0.0.1:3000/users -ContentType 'application/json' -Body '{"name":"Bob"}'
+```
+
+Expect HTTP 200, 200, and 201. The successful `data` values are `[]`, `{ "id": "42", "name": "Alice" }`, and `{ "id": "1", "name": "Bob" }`. This in-memory example demonstrates directory mapping; it has no persistence or input validation. Add the appropriate [Validation](/guide/validation) and [Database](/guide/database) responsibilities for a real endpoint.
+
+For a 404, check the file prefix and path registered in `defineRoutes`. If a service is undefined, inspect its default export, naming, and exclusions. Restart after changing directory entries and repeat the requests. After dev verification, stop the dev server, run the `npm run build` script above (which includes type checking), then `npm start` and repeat all three requests. Dev requests alone do not verify deployment.
 
 ## Next step
 

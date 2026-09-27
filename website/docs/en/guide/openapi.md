@@ -1,9 +1,5 @@
 # OpenAPI Documentation
 
-## Job docs source
-
-Vext Docs can include Job entries when `openapi.docs.code.jobs` is enabled. These entries are separate from OpenAPI operations because jobs are not HTTP endpoints. See [Jobs](/guide/jobs).
-
 VextJS has built-in automatic generation of OpenAPI documentation. Based on route `validate` and `docs` configuration, the framework generates an OpenAPI 3.0 JSON document and serves the default `/docs` page with the Vext Docs Renderer. Third-party documentation tools should consume `/openapi.json` directly.
 
 The built-in renderer uses the same Vext mark geometry, teal/cyan light/dark
@@ -13,45 +9,67 @@ applications do not need to install a separate OpenAPI UI package.
 
 ## Quick Start
 
+Prerequisite: a TypeScript project with `dev`, `build`, and `start` scripts from [Quick Start](/guide/quick-start). The next two files form a standalone example; merge the configuration into an existing project. User data stays in memory for this process and disappears after restart. This example verifies documentation generation; it provides no database, authentication, or email uniqueness checks.
+
 ### 1. Enable OpenAPI
 
-Enable `openapi.enabled` in the configuration:
+Enable `openapi.enabled` in configuration:
 
 ```typescript
 // src/config/default.ts
+import type { VextUserConfig } from "vextjs";
+
 export default {
   port: 3000,
+  host: "127.0.0.1",
+  adapter: "native",
+  frontend: { enabled: false },
   openapi: {
     enabled: true,
+    title: "Users API",
   },
-};
+} satisfies VextUserConfig;
 ```
 
-### 2. Add document information to the route
+### 2. Add documentation to a route
 
 ```typescript
 // src/routes/users.ts
+import { randomUUID } from "node:crypto";
 import { defineRoutes } from "vextjs";
 
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  age?: number;
+}
+
 export default defineRoutes((app) => {
+  const users: User[] = [];
   app.get(
     "/",
     {
       validate: {
         query: {
-          page: "number:1-",
-          limit: "number:1-100",
+          page: "integer:1-1000?",
+          limit: "integer:1-100?",
         },
       },
       docs: {
-        summary: "Get user list",
-        description: "Get all user information in pages",
+        summary: "List users",
+        description: "List user records with pagination",
       },
     },
     async (req, res) => {
-      const { page = 1, limit = 20 } = req.valid("query");
-      const users = await app.services.user.findAll({ page, limit });
-      res.json(users);
+      const { page = 1, limit = 20 } = req.valid<{
+        page?: number;
+        limit?: number;
+      }>("query");
+      res.json({
+        items: users.slice((page - 1) * limit, page * limit),
+        total: users.length,
+      });
     },
   );
 
@@ -65,28 +83,48 @@ export default defineRoutes((app) => {
           age: "number:0-150?",
         },
       },
-      middlewares: ["audit-log"],
       docs: {
-        summary: "Create user",
+        summary: "Create a user",
+        responses: { 201: { description: "Created" } },
       },
     },
     async (req, res) => {
-      const data = req.valid("body");
-      const user = await app.services.user.create(data);
+      const data = req.valid<Omit<User, "id">>("body");
+      const user = { ...data, id: randomUUID() };
+      users.push(user);
       res.json(user, 201);
     },
   );
 });
 ```
 
-### 3. Access documents
+### 3. Open the documentation
 
-After starting the project, visit the following address:
+Run `npm run dev`. After the ready message, open:
 
-| Address                              | Description                                                                                          |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `http://localhost:3000/docs`         | Vext Docs interface (HTTP API, Pages, and services/utils/models/components/plugins/middlewares docs) |
-| `http://localhost:3000/openapi.json` | OpenAPI JSON specification file                                                                      |
+| Address                              | Purpose      |
+| ------------------------------------ | ------------ |
+| `http://127.0.0.1:3000/docs`         | Vext Docs UI |
+| `http://127.0.0.1:3000/openapi.json` | OpenAPI JSON |
+
+The JSON should contain GET and POST `/users`; GET `page` and `limit` are integers and POST `name` and `email` are required. The UI should show “List users” and “Create a user” with expandable parameter and response details.
+
+### 4. Verify requests and the production build
+
+From another terminal (these commands work in Windows PowerShell):
+
+```powershell
+Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:3000/users' -ContentType 'application/json' -Body '{"name":"Alice","email":"alice@example.com"}'
+Invoke-RestMethod -Uri 'http://127.0.0.1:3000/users?page=1&limit=20'
+Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:3000/users' -ContentType 'application/json' -Body '{"name":"Alice","email":"invalid"}'
+Invoke-RestMethod -Uri 'http://127.0.0.1:3000/users?page=1.5'
+```
+
+Expect 201 with nonempty `data.id`, then 200 with `data.total: 1`, then 422 for email and 422 for a fractional page. PowerShell reports HTTP errors for the last two commands; they do not add users. Stop dev with Ctrl+C, run `npm run build -- --typecheck` and `npm start`, and check both documentation URLs and requests again. The new process starts with no users.
+
+Later configuration and route snippets are independent. Your application supplies `app`, `handler`, and business services; do not execute object fragments as whole files or register every same-path snippet in one app. See [Validation](/guide/validation) for runtime rules and [Security](/guide/security) for authentication wiring.
+
+## Reading the docs UI and multi-source surfaces
 
 The default Vext Docs UI keeps HTTP API, Pages, Services, Utils, Models, discovered Components, Plugins, and Middlewares as top-level sections. Active top-level sections can collapse and expand their current navigation tree.
 
@@ -119,13 +157,13 @@ Route-level `docs.tags` is deprecated and ignored with a warning; operation tags
 
 `x-tagGroups` is emitted only when `openapi.tagGroups` is explicitly configured as a raw OpenAPI vendor extension; the built-in docs navigation does not depend on it. When OpenAPI security schemes are present, the UI shows operation security badges and a global Authorize control that is merged into same-origin Try it out requests.
 
-B26 adds built-in theme and density controls, a more useful Overview workspace, keyboard search shortcuts, category search filters, highlighted matches, desktop page outline, copy buttons for endpoints, links, responses, usage snippets, and source paths, plus deep links for navigation leaves. Middle dynamic path parameters remain visually weak but are preserved when they lead to stable child resources, so paths such as `/docs-nav/{id}/sdfs/sdfaf` keep their resource hierarchy.
+The docs UI offers theme and density controls, an Overview workspace, keyboard search shortcuts, category filters, highlighted matches, a desktop outline, copy buttons for endpoints, links, responses, usage snippets, and source paths, plus navigation deep links. Middle dynamic path parameters remain visually subdued but keep their hierarchy when they lead to stable child resources, as in `/docs-nav/{id}/sdfs/sdfaf`.
 
-B27 upgrades Try it out into a lightweight request console. Each operation can show a server selector and full URL preview with Copy URL, plus tabs for Params, Headers, Body, Samples, History, and Response. Structured query/header rows stay compact when empty and still support raw fallbacks; header rows are generated from OpenAPI `parameters[in=header]`, including `validate.header`. The Headers tab also shows auth status and an effective header preview so Authorize-injected headers and manual overrides are visible in one place. The Samples tab includes cURL, browser fetch, Node fetch, and Axios snippets, while the fixed Response tab keeps pretty/raw body modes and shows the actual request headers beside the response headers so you can verify what was sent. The Axios snippet is only text; Vext does not add Axios as a runtime dependency.
+Try it out is a request console. Each operation can show a server selector and full URL preview with Copy URL, plus Params, Headers, Body, Samples, History, and Response tabs. Query and header rows stay compact when empty and support raw fallbacks; header rows come from OpenAPI `parameters[in=header]`, including `validate.header`. The Headers tab shows auth state and effective headers so Authorize injection and manual overrides can be checked together. Samples include cURL, browser fetch, Node fetch, and Axios snippets. The fixed Response tab offers pretty/raw body views and shows actual sent request headers beside response headers. Axios is sample text only, not a Vext runtime dependency.
 
-B31 improves the default docs page on small screens and large API surfaces. Mobile uses an off-canvas navigation drawer with synchronized search and category filters, generated field tables switch to labeled row cards under narrow breakpoints, Try it out internals are created only when an operation console is opened, and long HTTP API lists render incrementally with a Load more control while preserving deep-link targets.
+On small screens and large APIs, mobile uses a navigation drawer with synchronized search and category filters. Generated field tables become labeled row cards at narrow widths. Try it out internals are created when an operation console opens; long HTTP API lists render incrementally with Load more while keeping deep-link targets reachable.
 
-B32 adds source-aware documentation surfaces for multi-version projects. If the generated OpenAPI paths contain at least two versioned source groups such as `/api/v1/**`, `/api/v2/**`, `/api/beta/**`, `/v1/**`, `/v2/**`, or `/beta/**`, Vext Docs automatically exposes an ordered `All / API v1 / API v2 / API Beta` style selector. Numbered versions are listed before named release channels such as `alpha`, `beta`, or `rc`.
+For multiple versions, if generated OpenAPI paths contain at least two source groups such as `/api/v1/**`, `/api/v2/**`, `/api/beta/**`, `/v1/**`, `/v2/**`, or `/beta/**`, Vext Docs shows an ordered `All / API v1 / API v2 / API Beta` selector. Numbered versions precede named channels such as `alpha`, `beta`, or `rc`.
 
 Each source fetches filtered `/_vext/docs/openapi.json?source=<id>`, `code.json?source=<id>`, and `search.json?source=<id>` data, so the current source has its own Overview counts, navigation tree, search state, access-filtered operations, and deep links.
 
@@ -133,7 +171,7 @@ Non-`All` sources return only OpenAPI entries by default; Code JSDoc items appea
 
 Projects can define custom source surfaces with `openapi.docs.sources` when automatic version detection is not enough. `source.access`, including `source.access.visible`, is applied to the source selector and source-aware endpoints. Every explicit source still needs a `match` pattern because it scopes OpenAPI data. For a code-only source, use a stable non-API namespace such as `/sdk/**` and opt into Code JSDoc with `code.include` / `code.exclude`.
 
-B32 also extends Try it out for real project environments. OpenAPI `servers[].variables` are rendered as controls beside the server selector and are resolved into the URL preview, Copy URL, samples, history, and Send request.
+Try it out renders OpenAPI `servers[].variables` beside the server selector and applies them to URL preview, Copy URL, samples, history, and Send.
 
 Projects can optionally configure a browser-side request hook with `openapi.docs.tryItOut.hookScript` and `hookGlobal`. `hookGlobal` is only the lookup name, so hook notes are shown only when a hook script is configured or the runtime global exposes `beforeRequest` / `afterResponse`.
 
@@ -181,7 +219,11 @@ export default {
 };
 ```
 
-`source.access` is passed to `openapi.docs.access.resolver` as a `kind: "source"` descriptor. `source.access.visible: false` hides a source before resolver execution. `options.docs.access` is emitted as `x-vext-docs-access` and passed to the same resolver as the `access` field of a `kind: "operation"` descriptor; `visible: false` hides the operation directly, and `tryItOut: false` disables Try it out for that operation. `source.code.include` / `source.code.exclude` opt a non-`All` source into Code JSDoc items; without them, non-`All` sources only expose OpenAPI entries. Code filters match each item's id, title, and source file, so path-like patterns such as `models/*` and `services/sdk/**` can be used for common source-file scopes.
+`source.access` is passed to `openapi.docs.access.resolver` as a `kind: "source"` descriptor. `source.access.visible: false` hides the source before the resolver runs. This source filtering is separate from operation filtering.
+
+`options.docs.access` is emitted as `x-vext-docs-access`. To apply operation `visible: false`, `tryItOut: false`, and resolver decisions in the docs UI, set `openapi.docs.access.mode` to `"visibility-only"` or `"enforce"`; the default `"off"` does not filter operations. Once enabled, the resolver receives a `kind: "operation"` descriptor with its `access` field. Hiding an entry or disabling Try it out does not change the actual API's access control. See “Control by environment” for the difference between these modes at canonical `/openapi.json`.
+
+`source.code.include` / `source.code.exclude` opt a non-`All` source into Code JSDoc items; otherwise it exposes only OpenAPI entries. Code filters match item ID, title, and source file, so patterns such as `models/*` and `services/sdk/**` can scope source files.
 
 ### Try it out request hook
 
@@ -239,6 +281,10 @@ export default definePlugin({
 });
 ```
 
+## Job docs source
+
+Vext Docs can include Job entries when `openapi.docs.code.jobs` is enabled. These entries are separate from OpenAPI operations because jobs are not HTTP endpoints. See [Jobs](/guide/jobs).
+
 ## Document configuration
 
 ### Global configuration
@@ -287,9 +333,9 @@ export default {
 
     // Tag definitions (describe global tags; the default docs page still navigates by path segment)
     tags: [
-      { name: "User Management", description: "User CRUD Operation" },
-      { name: "Order Management", description: "Order Related Interface" },
-      { name: "System", description: "System-level interface" },
+      { name: "Users", description: "Operations under /users" },
+      { name: "Orders", description: "Operations under /orders" },
+      { name: "General", description: "General endpoints such as /health" },
     ],
 
     // Security scheme definition
@@ -446,6 +492,8 @@ docs: {
 
 Routes you don't want to appear in the document (such as internal interfaces):
 
+`hidden` removes the entry from generated documentation only. The real route remains callable and still needs access control.
+
 ```typescript
 app.get(
   "/internal/metrics",
@@ -511,7 +559,7 @@ app.get(
 );
 ```
 
-Use `auth: { security: "bearerAuth" }` when you want to choose the security scheme explicitly. `auth: { required: false }` without roles, scopes, permissions, or `check` marks the route as public in OpenAPI; if those authorization rules are present, runtime still requires authentication and OpenAPI emits authentication security. `config.openapi.guardSecurityMap` is still supported for legacy middleware-only routes, but it should not be the primary source for new Auth examples.
+Use `auth: { security: "bearerAuth" }` to choose a scheme explicitly. If `auth.security` is absent and `required: false` has no roles, scopes, permissions, or `check`, the Auth contract projects OpenAPI `security: []`. Otherwise, the explicit scheme takes priority and the fallback is `bearerAuth`. Roles, scopes, permissions, or `check` still require authentication at runtime; `auth.security` alone only affects documentation. Higher-priority `docs.security` can override the documentation result without changing runtime checks. `config.openapi.guardSecurityMap` remains for legacy middleware-only routes, not as the main path for new Auth examples.
 
 #### Keep runtime authorization, OpenAPI security, and Docs access separate
 
@@ -526,7 +574,7 @@ Use `auth: { security: "bearerAuth" }` when you want to choose the security sche
 Manual override:
 
 ```typescript
-// No authentication required (even with auth middleware)
+// Omit a documentation security requirement; runtime auth checks still apply.
 docs: {
   security: [];
 }
@@ -597,6 +645,8 @@ fails instead of choosing one silently.
 HEAD routes and exact `204` contracts never compile or emit a body.
 `rawJson()`, `text()`, redirects, files/downloads, streams, and HTML/SSR
 `render()` responses intentionally bypass the JSON contract serializer.
+
+The `4xx` schema above applies to business data sent with `res.json(data, 4xx)`. Errors from `app.throw()` go through the global error handler and are not rewritten by that route schema. A documented response example does not set the runtime status, body, or headers.
 
 #### Response example
 
@@ -695,8 +745,8 @@ app.get(
   {
     validate: {
       query: {
-        page: "number:1-",
-        limit: "number:1-100",
+        page: "integer:1-1000?",
+        limit: "integer:1-100",
         status: "active|inactive|banned",
         keyword: "string?",
       },
@@ -711,7 +761,7 @@ Automatically generated OpenAPI parameters:
 
 | Parameters | Position | Type    | Constraints                            |
 | ---------- | -------- | ------- | -------------------------------------- |
-| `page`     | query    | integer | minimum: 1                             |
+| `page`     | query    | integer | minimum: 1, maximum: 1000              |
 | `limit`    | query    | integer | minimum: 1, maximum: 100               |
 | `status`   | query    | string  | enum: ["active", "inactive", "banned"] |
 | `keyword`  | query    | string  | —                                      |
@@ -761,13 +811,21 @@ app.post(
         content: schemaAdapter
           .compileField("string:1-20000!")
           .description("Text to be translated, length 1-20000 characters"),
-        targetLanguages: [
-          {
-            code: schemaAdapter
-              .compileField("string:1-64!")
-              .description("target language code"),
+        targetLanguages: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              code: {
+                type: "string",
+                minLength: 1,
+                maxLength: 64,
+                description: "Target language code",
+              },
+            },
+            required: ["code"],
           },
-        ],
+        },
         format: schemaAdapter
           .compileField("enum:plain_text,preserve_line_breaks")
           .description("output format"),
@@ -808,8 +866,12 @@ Use `RouteOptions.multipart.files` to declare the file upload route, and the gen
 app.post(
   "/upload/avatar",
   {
-    middlewares: ["upload"],
+    bodyParser: { maxBodySize: "6mb" },
     multipart: {
+      enabled: true,
+      maxFiles: 1,
+      maxFileSize: 5 * 1024 * 1024,
+      allowedMimeTypes: ["image/jpeg", "image/png"],
       files: {
         avatar: {
           description: "Avatar image (JPEG/PNG, maximum 5MB)",
@@ -850,10 +912,10 @@ Generated OpenAPI snippet:
 }
 ```
 
-`required: true` is a runtime contract as well as an OpenAPI hint. If the request omits a required upload field, Vext responds with `400` and the missing field names. Optional and undeclared file fields are accepted unless they violate `maxFiles`, `maxFileSize`, or `allowedMimeTypes`.
+`required: true` is an OpenAPI hint and participates in runtime checks when multipart parsing is enabled and the request is multipart. A missing required field returns 400. It does not guarantee rejection of a non-multipart request; handlers must still check `req.files` and the expected field. Optional and undeclared fields are not restricted by the file-field allowlist, though file count, size, and MIME limits still apply. See [Uploads](/guide/uploads) for reading and failure checks.
 
 :::tip Relationship with validate.body
-`multipart.files` and `validate.body` are mutually exclusive. When configured at the same time, `multipart.files` takes precedence.
+When both are declared, `multipart.files` takes priority for OpenAPI requestBody projection. They are not mutually exclusive at runtime: `validate.body` may still run. The built-in multipart parser does not put text parts in `req.body`, so do not assume form text will validate as a JSON body.
 :::
 
 ## Control by environment
@@ -885,7 +947,7 @@ export default {
 };
 ```
 
-If your production environment requires keeping API documentation (read-only reference):
+If production needs API documentation but should hide the page's interactive request control, merge this configuration:
 
 ```typescript
 // src/config/production.ts
@@ -894,6 +956,7 @@ export default {
     enabled: true,
     docs: {
       path: "/docs",
+      ui: { tryItOut: false },
       access: {
         mode: "visibility-only",
       },
@@ -902,7 +965,7 @@ export default {
 };
 ```
 
-`visibility-only` keeps the public `/openapi.json` complete while the Vext Docs page, docs OpenAPI/config source data, code docs, search data, and menu receive visibility-filtered data. Use `enforce` when hidden operations or code docs must also be removed from canonical docs data.
+`ui.tryItOut: false` hides interaction from the docs page; other clients can still call the API. `visibility-only` keeps canonical `/openapi.json` complete while docs data follows actual `access.visible` and resolver decisions. Setting only the mode does not identify an audience automatically. Use `enforce` with matching decisions if canonical OpenAPI must be filtered too. Runtime APIs still need independent authentication and authorization.
 
 ## Custom document path
 
@@ -968,10 +1031,10 @@ Browser GET /admin/docs
   → Nginx strip /admin → vext GET /_vext/docs/openapi.json?source=all ✅
 ```
 
-#### Scenario 2: Proxy transparent transmission prefix (`proxy_pass` does not have `/` at the end)
+#### Scenario 2: Preserve the prefix (`proxy_pass` has no trailing `/`)
 
 ```nginx
-# Nginx:/admin/* → vext (retain /admin prefix transparent transmission)
+# Nginx: /admin/* → Vext with the /admin prefix preserved
 location /admin/ {
     proxy_pass http://127.0.0.1:3000;
 }
@@ -995,7 +1058,7 @@ export default {
 
 #### Comparison of two situations
 
-|                         | Proxy stripping prefix                                    | Proxy transparent transmission prefix            |
+|                         | Proxy strips prefix                                       | Proxy preserves prefix                           |
 | ----------------------- | --------------------------------------------------------- | ------------------------------------------------ |
 | Nginx `proxy_pass`      | `http://127.0.0.1:3000/` (with `/` at the end)            | `http://127.0.0.1:3000` (without `/` at the end) |
 | `jsonPath`              | `/openapi.json` (default)                                 | `/admin/openapi.json`                            |
@@ -1061,11 +1124,10 @@ Visit `http://localhost:3000/openapi.json` to get the complete OpenAPI 3.0 JSON 
 
 ### Example: Generate TypeScript client
 
+This optional external tool requires Java 11 or later. Its first invocation downloads an npm package and generator. Start the local API first and choose an output directory without handwritten code. See the [official OpenAPI Generator installation guide](https://openapi-generator.tech/docs/installation/) for usage and prerequisites.
+
 ```bash
-npx openapi-generator-cli generate \
-  -i http://localhost:3000/openapi.json \
-  -g typescript-fetch \
-  -o ./generated/api-client
+npx @openapitools/openapi-generator-cli generate -i http://127.0.0.1:3000/openapi.json -g typescript-fetch -o ./generated/api-client
 ```
 
 ## Documentation Best Practices
@@ -1097,16 +1159,14 @@ docs: {
 
 ### 2. Use consistent tags
 
-Use Chinese or English tags uniformly, and predefine the order and description in global `tags`:
+Global `tags` names should match inferred operation tags to add descriptions; they do not rewrite route tags or the built-in sidebar order. For example, `/api/v1/**` infers `API v1` and `/webhooks/**` infers `Webhooks`:
 
 ```typescript
 // ✅ Define uniformly in config
 openapi: {
   tags: [
-    { name: 'Authentication', description: 'Login, registration, Token management' },
-    { name: 'User', description: 'User CRUD' },
-    { name: 'Order', description: 'Order Management' },
-    { name: 'System', description: 'Health check, configuration information' },
+    { name: 'API v1', description: 'Version 1 endpoints' },
+    { name: 'Webhooks', description: 'Third-party callbacks' },
   ],
 }
 ```
@@ -1121,9 +1181,9 @@ docs: {
   responses: {
     201: { description: 'Created successfully' },
     400: { description: 'Incorrect request parameter' },
-    401: { description: 'Uncertified' },
-    409: { description: 'Mailbox already exists' },
-    422: { description: 'Parameter verification failed' },
+    401: { description: 'Unauthenticated' },
+    409: { description: 'Email address already exists' },
+    422: { description: 'Parameter validation failed' },
   },
 }
 ```
@@ -1223,6 +1283,8 @@ export default {
 
 ### Each routing file
 
+The following directory layout belongs to a business application, not a second standalone Quick Start. Implement and load the user, order, dashboard, and payment services and allowlist and load the `auth` and `check-role` middleware first. Authentication and resource ownership checks are application responsibilities; directory grouping and docs declarations do not supply them. Without these dependencies, use the two-file example at the start of this page.
+
 #### `routes/api/v1/users.ts` — User public interface
 
 ```typescript
@@ -1236,8 +1298,8 @@ export default defineRoutes((app) => {
     {
       validate: {
         query: {
-          page: "number:1-",
-          limit: "number:1-50",
+          page: "integer:1-1000?",
+          limit: "integer:1-50",
           role: "admin|user?",
         },
       },
@@ -1290,7 +1352,7 @@ export default defineRoutes((app) => {
         param: { id: "string!" },
         query: {
           status: "pending|paid|shipped|completed?",
-          limit: "number:1-100",
+          limit: "integer:1-100",
         },
       },
       docs: {
@@ -1388,8 +1450,8 @@ export default defineRoutes((app) => {
       ],
       validate: {
         query: {
-          page: "number:1-",
-          limit: "number:1-100",
+          page: "integer:1-1000?",
+          limit: "integer:1-100",
           status: "active|banned|suspended?",
         },
       },
@@ -1447,6 +1509,7 @@ export default defineRoutes((app) => {
   app.post(
     "/",
     {
+      bodyParser: { enabled: false },
       validate: {
         header: { "stripe-signature": "string!" },
       },
@@ -1462,27 +1525,29 @@ export default defineRoutes((app) => {
     },
     async (req, res) => {
       const signature = req.valid("header")["stripe-signature"];
-      await app.services.payment.handleStripeWebhook(req.body, signature);
+      await app.services.payment.handleStripeWebhook(req, signature);
       res.json({ received: true });
     },
   );
 });
 ```
 
+Here `payment.handleStripeWebhook(req, signature)` is an application integration contract. An application plugin or adapter must provide restricted access to the raw request body; then use the Stripe SDK, signature, and endpoint secret to verify it before processing the event idempotently. Public `VextRequest` has no general raw-stream reader. Disabling the body parser does not produce raw content automatically, and `req.body` cannot substitute for it. This snippet shows directory and documentation declarations; it is not a ready-to-run payment integration. See [Stripe's official signature guide](https://docs.stripe.com/webhooks/signature) for raw-body requirements.
+
 ### Generated OpenAPI path
 
 The above directory structure finally automatically generates the following OpenAPI paths. The default Vext Docs sidebar follows the path segments; tags remain operation metadata:
 
-| OpenAPI Path                          | Method | Tag              | Source File                   |
-| ------------------------------------- | ------ | ---------------- | ----------------------------- |
-| `/api/v1/users`                       | GET    | v1/users         | `api/v1/users.ts`             |
-| `/api/v1/users/{id}`                  | GET    | v1/users         | `api/v1/users.ts`             |
-| `/api/v1/users/{id}/orders`           | GET    | v1/userorders    | `api/v1/users/[id]/orders.ts` |
-| `/api/v1/users/{id}/orders/{orderId}` | GET    | v1/userorders    | `api/v1/users/[id]/orders.ts` |
-| `/api/v1/admin/dashboard/stats`       | GET    | v1/admin backend | `api/v1/admin/dashboard.ts`   |
-| `/api/v1/admin/users`                 | GET    | v1/admin backend | `api/v1/admin/users.ts`       |
-| `/api/v1/admin/users/{id}/ban`        | PATCH  | v1/admin backend | `api/v1/admin/users.ts`       |
-| `/webhooks/stripe`                    | POST   | Webhook          | `webhooks/stripe.ts`          |
+| OpenAPI Path                          | Method | Tag      | Source File                   |
+| ------------------------------------- | ------ | -------- | ----------------------------- |
+| `/api/v1/users`                       | GET    | API v1   | `api/v1/users.ts`             |
+| `/api/v1/users/{id}`                  | GET    | API v1   | `api/v1/users.ts`             |
+| `/api/v1/users/{id}/orders`           | GET    | API v1   | `api/v1/users/[id]/orders.ts` |
+| `/api/v1/users/{id}/orders/{orderId}` | GET    | API v1   | `api/v1/users/[id]/orders.ts` |
+| `/api/v1/admin/dashboard/stats`       | GET    | API v1   | `api/v1/admin/dashboard.ts`   |
+| `/api/v1/admin/users`                 | GET    | API v1   | `api/v1/admin/users.ts`       |
+| `/api/v1/admin/users/{id}/ban`        | PATCH  | API v1   | `api/v1/admin/users.ts`       |
+| `/webhooks/stripe`                    | POST   | Webhooks | `webhooks/stripe.ts`          |
 
 :::tip Best practices for multi-level directories
 
@@ -1505,7 +1570,7 @@ VextJS does not generate `x-tagGroups` by default. The built-in Vext Docs render
 Route-level `docs.tags` is deprecated and ignored. If another OpenAPI tool in your delivery chain needs `x-tagGroups`, explicitly specify `tagGroups` in the configuration and make sure the names match the automatically inferred operation tags or the global `openapi.tags` entries:
 
 ```typescript
-// src/config/app.ts
+// src/config/default.ts
 export default {
   port: 3000,
   openapi: {
@@ -1556,9 +1621,11 @@ In dev mode, soft reload automatically regenerates the OpenAPI spec. If `openapi
 4. Regenerate OpenAPI spec (including explicit `x-tagGroups`, when configured)
 5. Re-register the `/docs` and `/openapi.json` endpoints on the new adapter
 
-No need to restart the dev server, refresh the document page to see the updated grouping.
+The new spec contains the configured extension after a route change; the built-in sidebar still does not reorder by tagGroups. Configuration changes follow the configuration restart flow; route soft reload is not configuration hot update.
 
 ## Complete example
+
+This is a complete **order route file**, not a standalone runnable project. First register `auth` as described in [Security](/guide/security), and implement an order service: `findAll(auth, filters)` returns `{ items, total }`; `create(auth, data)` and `cancel(auth, id, reason)` must enforce the current identity, ownership, and business state. Authentication establishes `req.auth`; declaring OpenAPI security alone does not verify credentials. Use the two-file example at the beginning of this page to verify documentation generation independently.
 
 ```typescript
 // src/routes/orders.ts
@@ -1571,8 +1638,8 @@ export default defineRoutes((app) => {
     {
       validate: {
         query: {
-          page: "number:1-",
-          limit: "number:1-50",
+          page: "integer:1-1000?",
+          limit: "integer:1-50",
           status: "pending|paid|shipped|completed|cancelled",
           startDate: "date?",
           endDate: "date?",
@@ -1599,8 +1666,12 @@ export default defineRoutes((app) => {
     },
     async (req, res) => {
       const filters = req.valid("query");
-      const orders = await app.services.order.findAll(filters);
-      res.json(orders);
+      const { items, total } = await app.services.order.findAll(
+        req.auth,
+        filters,
+      );
+      res.setHeader("X-Total-Count", String(total));
+      res.json(items);
     },
   );
 
@@ -1611,7 +1682,7 @@ export default defineRoutes((app) => {
       validate: {
         body: {
           productId: "string!",
-          quantity: "number:1-99!",
+          quantity: "integer:1-99!",
           shippingAddress: "string:1-200!",
           couponCode: "string?",
         },
@@ -1636,7 +1707,7 @@ export default defineRoutes((app) => {
     },
     async (req, res) => {
       const data = req.valid("body");
-      const order = await app.services.order.create(data);
+      const order = await app.services.order.create(req.auth, data);
       res.json(order, 201);
     },
   );
@@ -1663,7 +1734,7 @@ export default defineRoutes((app) => {
     async (req, res) => {
       const { id } = req.valid("param");
       const { reason } = req.valid("body");
-      await app.services.order.cancel(id, reason);
+      await app.services.order.cancel(req.auth, id, reason);
       res.json({ success: true });
     },
   );

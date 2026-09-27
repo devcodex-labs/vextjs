@@ -1,6 +1,8 @@
 # Configuration items
 
-This page details all configuration fields, types, default values and usage instructions of VextJS.
+This page describes public configuration groups, defaults, override rules, and effective runtime boundaries. Read the [Configuration guide](/guide/configuration) first when configuring a project. Merge snippets into the appropriate existing file; do not combine mutually exclusive examples into multiple default exports. See each plugin's documentation for plugin-owned configuration. Internal `_testMode` and `_runtimeMode` are not user settings.
+
+Framework constants, module-level fallback values, and explicit template configuration are different kinds of defaults. A field that parses but is not connected to runtime does not imply usable functionality.
 
 ## Configuration loading mechanism
 
@@ -13,28 +15,30 @@ src/config/default.ts (project default configuration)
   ↓ Deep merge
 src/config/{profile}.ts (config profile, such as production.ts or sg-sit.ts)
   ↓ Deep merge
-src/config/local.ts (local override, optional)
+src/config/local.ts (development/test runtime only, optional local override)
   ↓ provider patch
 src/config/bootstrap.ts (remote configuration during startup, optional)
   ↓ CLI override
 vext start/dev --port --host ...
 ```
 
-The merged configuration is deep-frozen through `deepFreeze()` and cannot be modified at runtime.
+Plain objects are recursively merged. Arrays are generally replaced as a whole; middleware entries merge specially by name. After validation, plain objects and arrays are deeply frozen. Date, Map, Set, Buffer, and class instances retain runtime state and are not a hot-update channel for configuration.
+
+The configuration profile is distinct from the runtime mode. Profile selection is `--config → VEXT_CONFIG → nonstandard NODE_ENV (compatibility with warning) → command default`. `start` and `build` use production runtime mode; `dev` uses development mode. Even `start --config development` does not load `local.ts`, and a standard `NODE_ENV` does not replace `--config` for profile selection.
 
 For TypeScript, the layers do not share one loose type. Use `VextUserConfig` for the base `default.ts`; if it contains `database`, that nested value must be a complete `MonSQLizeDatabaseConfig`. Use `VextConfigOverride` for profile/local patches, where nested fields may be supplied incrementally according to the runtime deep merge.
 
 ### Configuration file list
 
-| File                        | Purpose                                | Is it necessary |
-| --------------------------- | -------------------------------------- | :-------------: |
-| `src/config/default.ts`     | Basic configuration for all profiles   |       ✅        |
-| `src/config/development.ts` | Default development profile overrides  |    Optional     |
-| `src/config/production.ts`  | Default production profile overrides   |    Optional     |
-| `src/config/test.ts`        | Default test profile overrides         |    Optional     |
-| `src/config/sg-sit.ts`      | Custom profile overrides               |    Optional     |
-| `src/config/local.ts`       | Local override (usually no Git commit) |    Optional     |
-| `src/config/bootstrap.ts`   | Startup provider registration entrance |    Optional     |
+| File                        | Purpose                                      | Is it necessary |
+| --------------------------- | -------------------------------------------- | :-------------: |
+| `src/config/default.ts`     | Basic configuration for all profiles         |       ✅        |
+| `src/config/development.ts` | Default development profile overrides        |    Optional     |
+| `src/config/production.ts`  | Default production profile overrides         |    Optional     |
+| `src/config/test.ts`        | Default test profile overrides               |    Optional     |
+| `src/config/sg-sit.ts`      | Custom profile overrides                     |    Optional     |
+| `src/config/local.ts`       | Local override in development/test mode only |    Optional     |
+| `src/config/bootstrap.ts`   | Startup provider registration entrance       |    Optional     |
 
 ### `src/config/bootstrap.ts`
 
@@ -48,17 +52,16 @@ export default defineBootstrapConfig({
     {
       name: "remote-config",
       timeoutMs: 10_000,
-      async load({ configProfile, signal, baseConfig }) {
+      async load({ configProfile, signal }) {
         const response = await fetch(
           `https://config.example.com/${configProfile}.json`,
           { signal },
         );
+        if (!response.ok)
+          throw new Error(`Config service HTTP ${response.status}`);
         const remote = await response.json();
         return {
           database: remote.database,
-          logger: {
-            lifecycleLevel: baseConfig.logger?.lifecycleLevel ?? "concise",
-          },
         };
       },
     },
@@ -66,10 +69,12 @@ export default defineBootstrapConfig({
 });
 ```
 
+This illustrates the remote provider structure. Supply an accessible configuration service and a valid database patch, and validate the response JSON. A minimal local project can use `providers: []` without contacting the example domain.
+
 Constraints:
 
 - provider must return plain object patch or `null`
-- patch only supports JSON-like structure
+- patches support JSON-like structures only, not functions or class instances; multiple providers merge in declaration order
 - `timeoutMs` is a hard deadline: expiry aborts the provider `signal`, and a patch returned by a late continuation is discarded rather than merged
 - When `required` is not declared: `production` defaults to fail-fast, `development/test` defaults to continue after warning
 - In Cluster mode, the same provider patch will be reused in the same startup cycle to prevent Master / Worker from seeing different results.
@@ -121,35 +126,36 @@ export default config;
 
 ### `VextConfig`
 
-| Field             | Type                                                    | Default Value        | Description                                                                  |
-| ----------------- | ------------------------------------------------------- | -------------------- | ---------------------------------------------------------------------------- |
-| `port`            | `number`                                                | `3000`               | HTTP listening port                                                          |
-| `host`            | `string`                                                | `'0.0.0.0'`          | HTTP listening address                                                       |
-| `adapter`         | `string \| Function \| VextAdapter`                     | `'native'`           | Low-level adapter                                                            |
-| `trustProxy`      | `boolean`                                               | `false`              | Whether to trust the proxy                                                   |
-| `middlewares`     | `VextMiddlewareConfig[]`                                | `[]`                 | Route-level middleware whitelist                                             |
-| `cors`            | [`VextCorsConfig`](#vextcorsconfig)                     | See below            | CORS configuration                                                           |
-| `rateLimit`       | [`VextRateLimitConfig`](#vextratelimitconfig)           | See below            | Rate limit configuration                                                     |
-| `requestId`       | [`VextRequestIdConfig`](#vextrequestidconfig)           | See below            | Request ID configuration                                                     |
-| `logger`          | [`VextLoggerConfig`](#vextloggerconfig)                 | See below            | Log configuration                                                            |
-| `shutdown`        | [`VextShutdownConfig`](#vextshutdownconfig)             | See below            | Graceful shutdown configuration                                              |
-| `server`          | [`VextServerConfig`](#vextserverconfig)                 | `{}`                 | Node.js HTTP server configuration                                            |
-| `response`        | [`VextResponseConfig`](#vextresponseconfig)             | See below            | Response configuration                                                       |
-| `session`         | `VextSessionConfig`                                     | See below            | Session auto-registration, store, and cookie configuration                   |
-| `csrf`            | `VextCsrfConfig`                                        | See below            | CSRF middleware configuration                                                |
-| `securityHeaders` | `VextSecurityHeadersConfig`                             | `{ enabled: false }` | Browser security response headers                                            |
-| `bodyParser`      | [`VextBodyParserConfig`](#vextbodyparserconfig)         | See below            | Body parsing configuration                                                   |
-| `multipart`       | [`VextMultipartConfig`](#vextmultipartconfig)           | `undefined`          | File upload configuration                                                    |
-| `accessLog`       | [`VextAccessLogConfig`](#vextaccesslogconfig)           | See below            | Access log configuration                                                     |
-| `openapi`         | [`VextOpenAPIConfig`](#vextopenapiconfig)               | See below            | OpenAPI documentation configuration                                          |
-| `requestContext`  | [`VextRequestContextConfig`](#vextrequestcontextconfig) | See below            | Request context configuration                                                |
-| `fetch`           | [`VextFetchConfig`](#vextfetchconfig)                   | See below            | Built-in HTTP client and proxy configuration                                 |
-| `database`        | `MonSQLizeDatabaseConfig`                               | `undefined`          | Built-in MonSQLize plugin extension; see [Database guide](../guide/database) |
-| `frontend`        | `boolean \| VextFrontendConfig`                         | `{ enabled: false }` | Built-in frontend build and static serving configuration                     |
-| `cluster`         | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined`          | Cluster multi-process configuration                                          |
-| `jobs`            | [`VextJobsConfig`](./jobs#configuration)                | See Jobs API         | Background Job discovery and worker configuration                            |
-| `cache`           | [`VextCacheConfig`](#vextcacheconfig)                   | See below            | Route-level response cache configuration                                     |
-| `dev`             | [`VextDevConfig`](#vextdevconfig)                       | See below            | Development-only tooling configuration                                       |
+| Field             | Type                                                    | Default Value         | Description                                                                  |
+| ----------------- | ------------------------------------------------------- | --------------------- | ---------------------------------------------------------------------------- |
+| `locale`          | [`VextLocaleConfig`](#vextlocaleconfig)                 | Module fallback below | Backend language and message directory                                       |
+| `port`            | `number`                                                | `3000`                | HTTP listening port                                                          |
+| `host`            | `string`                                                | `'0.0.0.0'`           | HTTP listening address                                                       |
+| `adapter`         | `string \| Function \| VextAdapter`                     | `'native'`            | Low-level adapter                                                            |
+| `trustProxy`      | `boolean`                                               | `false`               | Whether to trust the proxy                                                   |
+| `middlewares`     | `VextMiddlewareDecl[]`                                  | `[]`                  | String or object middleware declarations                                     |
+| `cors`            | [`VextCorsConfig`](#vextcorsconfig)                     | See below             | CORS configuration                                                           |
+| `rateLimit`       | [`VextRateLimitConfig`](#vextratelimitconfig)           | See below             | Rate limit configuration                                                     |
+| `requestId`       | [`VextRequestIdConfig`](#vextrequestidconfig)           | See below             | Request ID configuration                                                     |
+| `logger`          | [`VextLoggerConfig`](#vextloggerconfig)                 | See below             | Log configuration                                                            |
+| `shutdown`        | [`VextShutdownConfig`](#vextshutdownconfig)             | See below             | Graceful shutdown configuration                                              |
+| `server`          | [`VextServerConfig`](#vextserverconfig)                 | `{}`                  | Node.js HTTP server configuration                                            |
+| `response`        | [`VextResponseConfig`](#vextresponseconfig)             | See below             | Response configuration                                                       |
+| `session`         | `VextSessionConfig`                                     | See below             | Session auto-registration, store, and cookie configuration                   |
+| `csrf`            | `VextCsrfConfig`                                        | See below             | CSRF middleware configuration                                                |
+| `securityHeaders` | `VextSecurityHeadersConfig`                             | `{ enabled: false }`  | Browser security response headers                                            |
+| `bodyParser`      | [`VextBodyParserConfig`](#vextbodyparserconfig)         | See below             | Body parsing configuration                                                   |
+| `multipart`       | [`VextMultipartConfig`](#vextmultipartconfig)           | `undefined`           | File upload configuration                                                    |
+| `accessLog`       | [`VextAccessLogConfig`](#vextaccesslogconfig)           | See below             | Access log configuration                                                     |
+| `openapi`         | [`VextOpenAPIConfig`](#vextopenapiconfig)               | See below             | OpenAPI documentation configuration                                          |
+| `requestContext`  | [`VextRequestContextConfig`](#vextrequestcontextconfig) | See below             | Request context configuration                                                |
+| `fetch`           | [`VextFetchConfig`](#vextfetchconfig)                   | See below             | Built-in HTTP client and proxy configuration                                 |
+| `database`        | `MonSQLizeDatabaseConfig`                               | `undefined`           | Built-in MonSQLize plugin extension; see [Database guide](../guide/database) |
+| `frontend`        | `boolean \| VextFrontendConfig`                         | `{ enabled: false }`  | Built-in frontend build and static serving configuration                     |
+| `cluster`         | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined`           | Cluster multi-process configuration                                          |
+| `jobs`            | [`VextJobsConfig`](./jobs#configuration)                | See Jobs API          | Background Job discovery and worker configuration                            |
+| `cache`           | [`VextCacheConfig`](#vextcacheconfig)                   | See below             | Route-level response cache configuration                                     |
+| `dev`             | [`VextDevConfig`](#vextdevconfig)                       | See below             | Development-only tooling configuration                                       |
 
 `host` accepts `"0.0.0.0"`, `"::"`, an explicit IPv4 address, an explicit IPv6 address, or a hostname. With `"::"`, the ready log prints IPv4 local URLs plus bracketed IPv6 local/network URLs such as `http://[::1]:3000`; explicit IPv6 hosts are printed with brackets too.
 
@@ -157,25 +163,24 @@ export default config;
 
 ### `adapter`
 
-The underlying HTTP adapter supports three parameter passing methods:
+The following options are mutually exclusive: export one configuration in a real file. Implement a custom adapter instance in the application first. The underlying HTTP adapter supports three forms:
 
 ```typescript
 // Method 1: String identification (built-in adapter)
-export default {
+export const byName = {
   adapter: "native", // 'native' | 'hono' | 'fastify' | 'express' | 'koa'
 };
 
 // Method 2: Factory function (pass in custom options)
 import { fastifyAdapter } from "vextjs/adapters/fastify";
 
-export default {
+export const byFactory = {
   adapter: fastifyAdapter({ bodyLimit: 5 * 1024 * 1024 }),
 };
 
 //Method 3: Custom adapter instance (implementing VextAdapter interface)
-export default {
-  adapter: myCustomAdapter,
-};
+// Once the application implements it, use export default { adapter: myCustomAdapter }.
+export default byName;
 ```
 
 ### `trustProxy`
@@ -185,21 +190,18 @@ When set to `true`:
 - `req.ip` reads the first IP from the `X-Forwarded-For` request header
 - `req.protocol` is read from the `X-Forwarded-Proto` request header
 
-This option needs to be enabled when deployed behind Nginx/cloud load balancer.
+Enable this only behind a trusted proxy that overwrites forwarded headers. This switch does not have a trusted-proxy IP allowlist.
 
 ### `middlewares`
 
-Route-level middleware whitelist declaration. Only middleware declared here can be referenced in routes `options.middlewares`.
+Route-level middleware declarations. A string such as `"auth"` is equivalent to `{ name: "auth" }`; full entries support `options` and `enabled`. Entries with the same name shallow-merge across layers, with `options` replaced as a whole. New names append, duplicate names in one layer fail, and `enabled: false` disables the entry. A referenced middleware must also exist and load from `src/middlewares`.
 
 ```typescript
+import type { VextUserConfig } from "vextjs";
+
 export default {
-  middlewares: [
-    { name: "auth" },
-    { name: "framework-auth" },
-    { name: "admin", options: { role: "admin" } },
-    { name: "client-cache", options: { maxAge: 60 } },
-  ],
-};
+  middlewares: [{ name: "framework-auth" }],
+} satisfies VextUserConfig;
 ```
 
 :::tip
@@ -237,6 +239,8 @@ Cross-domain resource sharing configuration.
 | `maxAge`      | `number`   | `undefined`                                                    | CORS preflight result cache time (seconds) |
 
 ```typescript
+import type { VextUserConfig } from "vextjs";
+
 export default {
   cors: {
     enabled: true,
@@ -244,7 +248,7 @@ export default {
     credentials: true,
     maxAge: 86400,
   },
-};
+} satisfies VextUserConfig;
 ```
 
 :::warning
@@ -255,7 +259,7 @@ export default {
 
 ## VextRateLimitConfig
 
-Global rate limit configuration, implemented based on `flex-rate-limit`.
+Global rate limiting uses `flex-rate-limit`. By default this middleware runs before authentication, so the example limits by IP. See the [Rate limiting guide](/guide/rate-limit) for the full flow.
 
 | Field     | Type                 | Default Value         | Description                                       |
 | --------- | -------------------- | --------------------- | ------------------------------------------------- |
@@ -266,91 +270,122 @@ Global rate limit configuration, implemented based on `flex-rate-limit`.
 | `keyBy`   | `string \| Function` | `'ip'`                | Request source identifier                         |
 
 ```typescript
+import type { VextUserConfig } from "vextjs";
+
 export default {
   rateLimit: {
     enabled: true,
     max: 200,
     window: 120,
-    //Limit flow by user ID (requires auth middleware to parse the user first)
-    keyBy: (req) => req.user?.id ?? req.ip,
+    keyBy: "ip",
+    store: "memory",
   },
-};
+} satisfies VextUserConfig;
 ```
 
 ### `keyBy` option
 
-| value             | description                                |
-| ----------------- | ------------------------------------------ |
-| `'ip'`            | Limit flow by client IP (default)          |
-| `'user'`          | Press `req.user?.id` to limit current      |
-| `(req) => string` | Custom function, returns unique identifier |
+| value             | description                                                      |
+| ----------------- | ---------------------------------------------------------------- |
+| `'ip'`            | Limit flow by client IP (default)                                |
+| `'user'`          | Read `req.user.id`, falling back to IP; does not read `req.auth` |
+| `(req) => string` | Custom function, returns unique identifier                       |
 
 :::tip
-After global rate limiting is explicitly enabled, a route can override it via `options.override.rateLimit`, or set it to `false` to disable rate limiting.
+Once global limiting is explicitly enabled, a route can override max/window/string keyBy with `options.override.rateLimit`, or use `false` to skip it. A function keyBy must synchronously return a string; other strings are treated as IP. A route override alone does not enable global limiting.
 :::
 
 ---
 
+### Rate-limit store
+
+`rateLimit.store` defaults to `"memory"`; it also accepts `"redis"` or a Redis options object. Process-local memory is not shared. Redis target selection is `url → uri → VEXT_REDIS_URL → REDIS_URL`; initialization fails if no target is found.
+
+| Field         | Type      | Default / meaning                                      |
+| ------------- | --------- | ------------------------------------------------------ |
+| `type`        | `"redis"` | Required for the object form                           |
+| `url` / `uri` | `string`  | Optional address; `url` wins                           |
+| `client`      | `unknown` | Optional compatible client; application closes it      |
+| `keyPrefix`   | `string`  | Explicit prefix before `namespace`                     |
+| `namespace`   | `string`  | Otherwise derived from application/profile/mode/module |
+
+Instances sharing a policy should use the same target and prefix. Give distinct policies separate keys. Built-in store checks may allow a request on failure; see [Storage failures and allow behavior](/guide/rate-limit#storage-failures-and-allow-policy).
+
+## VextLocaleConfig
+
+Backend language configuration is separate from `frontend.i18n`:
+
+| Field       | Type       | Runtime fallback / meaning                                                                         |
+| ----------- | ---------- | -------------------------------------------------------------------------------------------------- |
+| `default`   | `string`   | `en-US`, used when nothing matches                                                                 |
+| `supported` | `string[]` | Unset by default; when configured, matches Accept-Language and falls back to `default`             |
+| `directory` | `string`   | `src/locales`; relative to service root or absolute; directories in `src` map into compiled output |
+
+Language metadata depends on request context, independent of `requestId.enabled`. Outside a request, the application default applies. See [Backend i18n](/guide/i18n) for dictionaries and matching order; frontend locale must be selected explicitly as described in [Frontend i18n](/frontend/i18n).
+
 ## VextRequestIdConfig
 
-Request ID tracing configuration for log correlation and distributed link tracing.
+Request IDs correlate requests and logs. A nonempty inbound header wins, then `app.setRequestIdGenerator`, `config.generate`, and `randomUUID`. IDs must be 1–512 characters without control characters. With `enabled: false`, the ID is empty and no response ID header is written; independent locale and propagated-header handling still runs.
 
-| Field            | Type           | Default Value         | Description                                                          |
-| ---------------- | -------------- | --------------------- | -------------------------------------------------------------------- |
-| `enabled`        | `boolean`      | `true`                | Whether to enable request ID                                         |
-| `header`         | `string`       | `'x-request-id'`      | From which request header to read (gateway transparent transmission) |
-| `responseHeader` | `string`       | `'x-request-id'`      | The name to write the response header                                |
-| `generate`       | `() => string` | `crypto.randomUUID()` | Custom ID generation function                                        |
+| Field            | Type           | Default Value         | Description                                                   |
+| ---------------- | -------------- | --------------------- | ------------------------------------------------------------- |
+| `enabled`        | `boolean`      | `true`                | Whether to enable request ID                                  |
+| `header`         | `string`       | `'x-request-id'`      | Request header to read (including one forwarded by a gateway) |
+| `responseHeader` | `string`       | `'x-request-id'`      | The name to write the response header                         |
+| `generate`       | `() => string` | `crypto.randomUUID()` | Custom ID generation function                                 |
 
 ### requestId vs traceId
 
 `requestId` is the unique identifier of the request built into vext, and `traceId` usually refers to the tracing ID generated by the APM link tracking system (such as OpenTelemetry / Jaeger). Both have different usage scenarios:
 
-**Mode 1: requestId acts as traceId (simple scenario)**
+**Mode 1: Custom correlation header**
 
-Change the request header name of `requestId` to `x-trace-id` to unify it with the link tracking header, which is suitable for systems that do not rely on external APM:
+You may use `x-trace-id` as an application convention. Renaming the header does not create an OpenTelemetry trace/span or W3C Trace Context:
 
 ```typescript
-import { nanoid } from "nanoid";
+import { randomUUID } from "node:crypto";
 
 export default {
   requestId: {
     header: "x-trace-id", // Read from x-trace-id (gateway injection)
     responseHeader: "x-trace-id", // Write back the response header
-    generate: () => nanoid(), // Can be replaced by a shorter ID generator
+    generate: () => randomUUID(),
   },
 };
 ```
 
-**Mode 2: requestId + APM traceId coexist (enterprise-level scenario)**
+**Mode 2: requestId and APM traceId coexist**
 
-Keep `requestId` (log association), and transparently transmit APM's `traceparent` header through `config.fetch.propagateHeaders`, suitable for connecting to OpenTelemetry / Jaeger and other systems:
+Keep `requestId`. `fetch.propagateHeaders` can forward received tracing headers, but does not itself create an outbound span or new `traceparent`. For real tracing, initialize OpenTelemetry and verify an active context as shown in the [OpenTelemetry example](/examples/opentelemetry):
 
 ```typescript
+import type { VextUserConfig } from "vextjs";
+
 export default {
-  // requestId retains the default configuration (for log correlation)
+  // Keep requestId for log correlation.
   requestId: {
     header: "x-request-id",
     responseHeader: "x-request-id",
   },
-  // APM tracking headers are automatically transparently transmitted to downstream services through propagateHeaders
+  // Forward inbound APM headers to downstream services.
   fetch: {
     propagateHeaders: ["traceparent", "tracestate"],
   },
-};
+} satisfies VextUserConfig;
 ```
 
-:::tip Select suggestions
+:::tip Which to choose
 
 - Internal system, simple tracing → Mode 1 (rename header to `x-trace-id`)
-- Access OpenTelemetry / Jaeger / Datadog → Mode 2 (retain requestId, configure propagateHeaders)
-- For details, see [Request context → Relationship with distributed tracing](/guide/request-context#Relationship with distributed tracing traceId)
+- OpenTelemetry integration → Retain requestId and initialize, propagate, and verify trace/span using the plugin approach.
+- See [Request context and distributed tracing](/guide/request-context#relationship-with-distributed-tracing-traceid).
   :::
 
 Generators can also be replaced dynamically via plugins:
 
 ```typescript
-app.setRequestIdGenerator(() => myCustomId());
+// In plugin setup(app); import randomUUID from node:crypto.
+app.setRequestIdGenerator(() => randomUUID());
 ```
 
 ---
@@ -359,17 +394,19 @@ app.setRequestIdGenerator(() => myCustomId());
 
 Built-in HTTP client and request proxy configuration.
 
-| Field              | Type                                    | Default Value | Description                                                                        |
-| ------------------ | --------------------------------------- | ------------- | ---------------------------------------------------------------------------------- |
-| `timeout`          | `number`                                | `10000`       | `app.fetch` and `app.fetch.proxy` default timeouts                                 |
-| `retry`            | `number`                                | `0`           | The default number of retries, indicating the number of additional attempts        |
-| `retryDelay`       | `number \| (attempt: number) => number` | `1000`        | Default retry interval, supports function form                                     |
-| `propagateHeaders` | `string[]`                              | `[]`          | Common `app.fetch` request header whitelist for automatic transparent transmission |
-| `proxy`            | `VextFetchProxyTargetConfig[]`          | `[]`          | List of upstream targets for `app.fetch.proxy.<name>()`                            |
+| Field              | Type                                    | Default Value | Description                                                                 |
+| ------------------ | --------------------------------------- | ------------- | --------------------------------------------------------------------------- |
+| `timeout`          | `number`                                | `10000`       | `app.fetch` and `app.fetch.proxy` default timeouts                          |
+| `retry`            | `number`                                | `0`           | The default number of retries, indicating the number of additional attempts |
+| `retryDelay`       | `number \| (attempt: number) => number` | `1000`        | Default retry interval, supports function form                              |
+| `propagateHeaders` | `string[]`                              | `[]`          | Inbound request headers that `app.fetch` forwards automatically             |
+| `proxy`            | `VextFetchProxyTargetConfig[]`          | `[]`          | List of upstream targets for `app.fetch.proxy.<name>()`                     |
 
 `timeout` must be a finite positive number no greater than `2147483647` milliseconds. `retryDelay` must be a finite non-negative number no greater than `2147483647` milliseconds, and function return values are validated at runtime.
 
 ```typescript
+import type { VextUserConfig } from "vextjs";
+
 export default {
   fetch: {
     timeout: 10_000,
@@ -387,7 +424,7 @@ export default {
       },
     ],
   },
-};
+} satisfies VextUserConfig;
 ```
 
 ### VextFetchProxyTargetConfig
@@ -397,14 +434,16 @@ export default {
 | `name`                      | `string`                                |    ✅    | Target name, corresponding to `app.fetch.proxy.<name>()`; reserved name `then` cannot be used |
 | `baseURL`                   | `string`                                |    ✅    | Upstream base URL                                                                             |
 | `headers`                   | `Record<string, string>`                |    ❌    | Target-level fixed request headers                                                            |
-| `forwardHeaders`            | `string[]`                              |    ❌    | Whitelist of request headers transparently transmitted from the current `req.headers`         |
+| `forwardHeaders`            | `string[]`                              |    ❌    | Request headers forwarded from the current `req.headers`                                      |
 | `defaultInjectHeaders`      | `Record<string, string> \| Function`    |    ❌    | Target-level dynamic injection headers                                                        |
-| `allowAuthorizationForward` | `boolean`                               |    ❌    | Whether to allow transparent transmission of the original Authorization                       |
+| `allowAuthorizationForward` | `boolean`                               |    ❌    | Whether to allow forwarding the original Authorization header                                 |
 | `timeout`                   | `number`                                |    ❌    | Target-level timeout                                                                          |
 | `retry`                     | `number`                                |    ❌    | Number of target-level retries                                                                |
 | `retryDelay`                | `number \| (attempt: number) => number` |    ❌    | Target-level retry interval                                                                   |
 
-Proxy request header priority: `target.headers < forwardHeaders < target.defaultInjectHeaders < options.headers < options.injectHeaders`. `Authorization` does not transmit transparently by default, and both whitelist and `allowAuthorizationForward: true` must be configured.Agent retry priority: `options.retry > target.retry > config.fetch.retry > 0`. Only GET / HEAD / OPTIONS / PUT / DELETE will automatically retry when upstream 5xx or network error occurs; POST / PATCH does not retry by default, does not retry when timeout and returns local 504.
+Proxy request header priority: `target.headers < forwardHeaders < target.defaultInjectHeaders < options.headers < options.injectHeaders`. `Authorization` is not forwarded by default; both the allowlist and `allowAuthorizationForward: true` are required.
+
+Proxy retry priority: `options.retry > target.retry > config.fetch.retry > 0`. Only GET / HEAD / OPTIONS / PUT / DELETE retry automatically on upstream 5xx or network errors. POST / PATCH do not retry by default. Timeouts do not retry and return local 504.
 
 ---
 
@@ -521,6 +560,16 @@ Response format configuration.
 | `wrap`               | `boolean`             | `true`        | Whether to enable export packaging                                                 |
 | `logErrors`          | `VextLogErrorsConfig` | See below     | Error logging policy: unknown/5xx default on; 4xx logging requires `http4xx: true` |
 
+### Error logging fields
+
+| Field                     | Default | Effect                           |
+| ------------------------- | ------- | -------------------------------- |
+| `logErrors.unknownErrors` | `true`  | Log unknown exceptions           |
+| `logErrors.http5xx`       | `true`  | Log 5xx `HttpError`              |
+| `logErrors.http4xx`       | `false` | Log 4xx `HttpError` when enabled |
+
+Logging still depends on `logger.level`. Schema validation errors are not automatically logged by `http4xx: true`. Logging policy and response hiding are independent.
+
 ### Export packaging
 
 When `wrap: true` is enabled, `res.json(data)` is automatically wrapped:
@@ -543,7 +592,7 @@ Error response format:
 }
 ```
 
-When `wrap: false` is disabled, `res.json(data)` sends raw `data` directly.
+With `wrap: false`, `res.json(data)` sends raw `data` without changing the error response contract. `rawJson`, pages, text, and streams do not use the successful JSON wrapper.
 
 ### Hide internal errors
 
@@ -556,7 +605,7 @@ When `hideInternalErrors: true` is used, 500 errors are not exposed stack trace:
 { "code": 500, "message": "Internal Server Error" }
 
 // hideInternalErrors: false (for development environment only)
-{ "code": 500, "message": "Internal Server Error", "stack": "..." }
+{ "code": 500, "message": "Original exception message", "stack": "..." }
 ```
 
 ---
@@ -855,7 +904,6 @@ Built-in frontend build and static serving configuration.
 | `spaFallback.enabled`                                  | `boolean`                            | `true`                                                       | Enables scoped fallback arbitration; with no scopes, no path is captured                                       |
 | `spaFallback.exclude`                                  | `string[]`                           | `['/api/**', '/openapi.json', '/docs/**', '/_vext/docs/**']` | Global fallback exclusion paths                                                                                |
 | `spaFallback.scopes`                                   | `object[]`                           | `[]`                                                         | Explicit client-router sub-app scopes                                                                          |
-| `spaFallback.scopes[]`                                 | `object[]`                           | `[]`                                                         | Explicit client-router sub-app scopes                                                                          |
 | `spaFallback.scopes[].basePath`                        | `string`                             | Required                                                     | URL prefix owned by the client shell                                                                           |
 | `spaFallback.scopes[].page`                            | `string`                             | Required                                                     | Page id for the client shell                                                                                   |
 | `spaFallback.scopes[].ssr`                             | `boolean`                            | `false`                                                      | Whether the client shell is first rendered by SSR                                                              |
@@ -970,7 +1018,11 @@ Built-in frontend build and static serving configuration.
 | `deploy.upload.include`                                | `string[]`                           | `['**/*']`                                                   | Deploy-manifest paths eligible for upload                                                                      |
 | `deploy.upload.exclude`                                | `string[]`                           | `['**/*.map']`                                               | Deploy-manifest paths omitted from upload                                                                      |
 
+The `i18n.*` fields above describe the declared configuration shape. Current frontend runtime does not perform automatic locale discovery, message injection, client switching, or HTML language setting from these fields alone. Select the locale and load messages explicitly as shown in [Frontend i18n](/frontend/i18n).
+
 ```typescript
+import type { VextUserConfig } from "vextjs";
+
 export default {
   frontend: {
     enabled: true,
@@ -982,23 +1034,30 @@ export default {
         {
           basePath: "/admin/app",
           page: "admin/app/shell",
+          ssr: true,
           exclude: ["/admin/api/**"],
         },
       ],
     },
   },
-};
+} satisfies VextUserConfig;
 ```
+
+This configuration contract still has runtime limits: empty-shell hydration with `ssr: false` or `clientOnly`, production SSR CSS Module class consistency, direct server image imports, and static sitemap/robots MIME behavior. See [Rendering modes](/frontend/rendering-modes), [Styles and assets](/frontend/styles-and-assets), [Static assets](/frontend/static-assets-and-cdn), and [SEO](/frontend/seo-sitemap). Configurable fields do not resolve these limits.
+
+The SPA scope example needs a real shell page. Start with `scopes[].ssr: true` and verify hydration and unknown-path behavior following [CSR and SPA fallback](/frontend/csr-and-spa-fallback).
 
 ### Adapter extension contracts
 
-`frontend.adapter` is an explicit, in-process typed seam; it is not automatic plugin discovery. A `VextFrontendAdapter` provides `name`, `framework`, and an optional `resolveBuildOptions(config)`. The resolver receives the resolved frontend configuration and may return synchronous or asynchronous compiler options. It does not add another bundler, nor does it enable RSC, Server Functions, or PPR.
+`frontend.adapter` reserves an in-process typed extension contract. `VextFrontendAdapter` declares `name`, `framework`, and an optional `resolveBuildOptions(config)`, but the current built-in build and render flow does not call that resolver. Do not assume its compiler options take effect. This is not automatic plugin discovery and does not enable another bundler, RSC, Server Functions, or PPR.
 
 `frontend.seo` is documented end-to-end in [SEO, Sitemap, and Robots](/frontend/seo-sitemap). `publicOrigin` is a deployment origin, not a fixed page URL: the current pathname or an explicit page canonical supplies the per-page portion. Runtime artifacts accept only exact declared hosts; providers do not receive `app` or `app.db` implicitly.
 
 For a delivery target other than the built-in local staging adapters, pass a `VextFrontendDeployUploadAdapter` object to `deploy.upload.adapter`. It provides `name` and `upload(input)`. Its `VextFrontendDeployUploadAdapterInput` contains `asset`, `sourcePath`, `uploadKey`, and `dryRun`; its `VextFrontendDeployUploadAdapterResult` must return `uploaded` and may return `url` and `etag`.
 
 ```ts
+import type { VextUserConfig } from "vextjs";
+
 export default {
   frontend: {
     deploy: {
@@ -1008,20 +1067,19 @@ export default {
           name: "company-cdn",
           async upload({ asset, sourcePath, uploadKey, dryRun }) {
             if (dryRun) return { uploaded: false };
-            // Upload sourcePath under uploadKey with the provider SDK of your choice.
-            return {
-              uploaded: true,
-              url: `https://cdn.example.com/${uploadKey}`,
-            };
+            // Implement and await a real upload before reporting success.
+            throw new Error("Implement CDN upload before enabling it");
           },
         },
       },
     },
   },
-};
+} satisfies VextUserConfig;
 ```
 
 `filesystem` and `mock` are the only built-in upload adapter names. A provider-specific adapter stays explicit in application configuration, so the runtime does not silently install or discover cloud/bundler plugins.
+
+`build.client.externalRuntime` mappings also accept a URL string shorthand or an object with `url`, `integrity`, and `crossOrigin`.
 
 By default `spaFallback.scopes` is empty, so unknown HTML paths are not swallowed into the SPA. For mixed SSR + client-router sub-apps, declare each `basePath` in `scopes[]`. `spaFallback: true` is kept only as a compatibility shorthand and is not recommended for enterprise mixed projects.
 
@@ -1042,20 +1100,22 @@ Cluster multi-process configuration. For the complete interface definition, see 
 | `restartWindow`    | `number`                       | `60000`       | Fast restart detection window (milliseconds)                                                                                                 |
 | `restartBaseDelay` | `number`                       | `1000`        | Restart interval backoff base (milliseconds)                                                                                                 |
 | `restartMaxDelay`  | `number`                       | `30000`       | Upper limit of restart interval (milliseconds)                                                                                               |
-| `memoryThreshold`  | `number`                       | `1073741824`  | Worker heap threshold in bytes; exceeding it triggers diagnostics and worker exit                                                            |
+| `memoryThreshold`  | `number`                       | `1073741824`  | Worker heapUsed threshold in bytes; a periodic breach asks Master for replacement rather than exiting immediately                            |
 | `pidFile`          | `string`                       | `'.vext.pid'` | PID file path (for `vext stop` / `vext reload` to locate the process)                                                                        |
 | `titlePrefix`      | `string`                       | `'vext'`      | Worker process title prefix                                                                                                                  |
-| `sticky`           | `'none' \| 'ip'`               | `'none'`      | Sticky session mode (`'ip'` allocates fixed Worker based on client IP, suitable for WebSocket/SSE)                                           |
+| `sticky`           | `'none' \| 'ip'`               | `'none'`      | Scheduling branch; IP-based Worker assignment is not implemented                                                                             |
 
 ### `healthCheck` — heartbeat detection
 
-| Field                  | Type      | Default Value | Description                                                                     |
-| ---------------------- | --------- | ------------- | ------------------------------------------------------------------------------- |
-| `healthCheck.enabled`  | `boolean` | `true`        | Whether to enable Worker heartbeat detection                                    |
-| `healthCheck.interval` | `number`  | `15000`       | The interval at which the Master sends heartbeat detections (milliseconds)      |
-| `healthCheck.timeout`  | `number`  | `30000`       | Worker heartbeat timeout threshold (milliseconds), forced restart after timeout |
+| Field                  | Type      | Default Value | Description                                                             |
+| ---------------------- | --------- | ------------- | ----------------------------------------------------------------------- |
+| `healthCheck.enabled`  | `boolean` | `true`        | Whether to enable Worker heartbeat detection                            |
+| `healthCheck.interval` | `number`  | `15000`       | Master's interval for checking the last heartbeat (milliseconds)        |
+| `healthCheck.timeout`  | `number`  | `30000`       | Heartbeat timeout; replacement after termination follows restart policy |
 
 ### `reload` — Zero-downtime rolling restart
+
+Windows does not support the current reload signal operation. Long-lived connections may still break when an old Worker exits; see the [Cluster guide](/guide/cluster).
 
 `cluster.reload` only configures timing for rolling restarts triggered by `vext reload` / `SIGHUP`. Omitting `cluster.reload` does not disable rolling restart; Vext uses the defaults.
 
@@ -1066,6 +1126,8 @@ Cluster multi-process configuration. For the complete interface definition, see 
 | `reload.shutdownTimeout` | `number` | `10000`       | Old Worker shutdown timeout (milliseconds)                   |
 
 ```typescript
+import type { VextUserConfig } from "vextjs";
+
 export default {
   cluster: {
     enabled: true,
@@ -1083,7 +1145,7 @@ export default {
       shutdownTimeout: 10000,
     },
   },
-};
+} satisfies VextUserConfig;
 ```
 
 It can also be enabled through environment variables (no need to modify the configuration file):
@@ -1241,40 +1303,40 @@ export default {
 
 ## DEFAULT_CONFIG
 
-The full value of the framework’s built-in default configuration:
+This is a read-only snapshot of the `DEFAULT_CONFIG` constant, not a minimal project configuration. Module fallbacks may not appear explicitly in this constant, and actual values depend on merged layers:
 
 ```typescript
-import { DEFAULT_CONFIG } from 'vextjs';
+import { DEFAULT_CONFIG } from "vextjs";
 
-// Complete content of DEFAULT_CONFIG:
-{
+// Complete DEFAULT_CONFIG content (read-only snapshot):
+const documentedDefaults = {
   port: 3000,
-  host: '0.0.0.0',
-  adapter: 'native',
+  host: "0.0.0.0",
+  adapter: "native",
   trustProxy: false,
   middlewares: [],
   cors: {
     enabled: true,
-    origins: ['*'],
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'],
-    headers: ['Content-Type', 'Authorization', 'X-Request-Id'],
+    origins: ["*"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
+    headers: ["Content-Type", "Authorization", "X-Request-Id"],
     credentials: false,
   },
   rateLimit: {
     enabled: false,
     max: 100,
     window: 60,
-    message: 'Too Many Requests',
-    keyBy: 'ip',
-    store: 'memory',
+    message: "Too Many Requests",
+    keyBy: "ip",
+    store: "memory",
   },
   requestId: {
     enabled: true,
-    header: 'x-request-id',
-    responseHeader: 'x-request-id',
+    header: "x-request-id",
+    responseHeader: "x-request-id",
   },
   logger: {
-    level: 'info',
+    level: "info",
   },
   shutdown: {
     timeout: 10,
@@ -1286,45 +1348,45 @@ import { DEFAULT_CONFIG } from 'vextjs';
   },
   session: {
     enabled: false,
-    name: 'vext.sid',
+    name: "vext.sid",
     ttl: 86400,
     rolling: false,
     autoCommit: true,
     idLength: 32,
     cookie: {
       httpOnly: true,
-      sameSite: 'lax',
-      path: '/',
-      secure: 'auto',
+      sameSite: "lax",
+      path: "/",
+      secure: "auto",
     },
   },
   csrf: {
     enabled: false,
-    mode: 'auto',
-    methods: ['POST', 'PUT', 'PATCH', 'DELETE'],
-    headerNames: ['x-csrf-token', 'x-xsrf-token'],
-    bodyField: '_csrf',
+    mode: "auto",
+    methods: ["POST", "PUT", "PATCH", "DELETE"],
+    headerNames: ["x-csrf-token", "x-xsrf-token"],
+    bodyField: "_csrf",
     cookie: {
-      name: 'vext.csrf',
+      name: "vext.csrf",
       httpOnly: false,
-      sameSite: 'lax',
-      path: '/',
-      secure: 'auto',
+      sameSite: "lax",
+      path: "/",
+      secure: "auto",
     },
     fetchMetadata: true,
     origin: false,
   },
   securityHeaders: {
     enabled: false,
-    preset: 'basic',
+    preset: "basic",
   },
   bodyParser: {
     enabled: true,
-    maxBodySize: '1mb',
+    maxBodySize: "1mb",
   },
   accessLog: {
     enabled: true,
-    level: 'info',
+    level: "info",
     skipPaths: [],
   },
   openapi: {
@@ -1338,18 +1400,18 @@ import { DEFAULT_CONFIG } from 'vextjs';
   },
   jobs: {
     enabled: true,
-    dir: 'jobs',
-    runner: 'inline',
+    dir: "jobs",
+    runner: "inline",
     store: {
-      type: 'file',
-      dir: '.vext/jobs',
+      type: "file",
+      dir: ".vext/jobs",
     },
     scheduler: {
       enabled: true,
-      mode: 'inline',
+      mode: "inline",
       tickInterval: 1000,
-      timezone: 'UTC',
-      misfirePolicy: 'skip',
+      timezone: "UTC",
+      misfirePolicy: "skip",
       maxCatchUp: 10,
       jitter: 0,
       lease: {
@@ -1374,12 +1436,12 @@ import { DEFAULT_CONFIG } from 'vextjs';
       retry: {
         attempts: 1,
         delay: 0,
-        backoff: 'fixed',
+        backoff: "fixed",
       },
       concurrency: 1,
     },
   },
-}
+};
 ```
 
 ---
@@ -1496,17 +1558,17 @@ For cache-backed production sessions, prefer `createCacheSessionStore(cacheLike,
 
 `config.csrf` configures the built-in CSRF middleware. `enabled: true` auto-registers CSRF globally after body parsing and plugin global middleware. You can also keep it disabled and register `csrf()` manually for scoped paths.
 
-| Field           | Type                                     | Default                                             | Description                                                           |
-| --------------- | ---------------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------- |
-| `enabled`       | `boolean`                                | `false` in app config; `true` for manual `csrf()`   | Whether global auto-registration is enabled                           |
-| `mode`          | `"auto" \| "session" \| "signed-cookie"` | `"auto"`                                            | Token storage mode                                                    |
-| `secret`        | `string`                                 | `undefined`                                         | Required for `signed-cookie` mode                                     |
-| `methods`       | `string[]`                               | `["POST", "PUT", "PATCH", "DELETE"]`                | Unsafe methods that require CSRF validation                           |
-| `headerNames`   | `string[]`                               | `["x-csrf-token", "x-xsrf-token"]`                  | Header names accepted for submitted tokens                            |
-| `bodyField`     | `string \| false`                        | `"_csrf"`                                           | Request body field accepted for submitted tokens; `false` disables it |
-| `cookie`        | `CookieSerializeOptions`                 | `{ name: "vext.csrf", sameSite: "lax", path: "/" }` | Signed double-submit cookie attributes                                |
-| `fetchMetadata` | `boolean`                                | `true`                                              | Reject `Sec-Fetch-Site: cross-site` unsafe requests                   |
-| `origin`        | `false \| { trustedOrigins?: string[] }` | `false`                                             | Optional Origin/Referer same-origin enforcement                       |
+| Field           | Type                                     | Default                                                            | Description                                                           |
+| --------------- | ---------------------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| `enabled`       | `boolean`                                | `false` in app config; `true` for manual `csrf()`                  | Whether global auto-registration is enabled                           |
+| `mode`          | `"auto" \| "session" \| "signed-cookie"` | `"auto"`                                                           | Token storage mode                                                    |
+| `secret`        | `string`                                 | `undefined`                                                        | Required for `signed-cookie` mode                                     |
+| `methods`       | `string[]`                               | `["POST", "PUT", "PATCH", "DELETE"]`                               | Unsafe methods that require CSRF validation                           |
+| `headerNames`   | `string[]`                               | `["x-csrf-token", "x-xsrf-token"]`                                 | Header names accepted for submitted tokens                            |
+| `bodyField`     | `string \| false`                        | `"_csrf"`                                                          | Request body field accepted for submitted tokens; `false` disables it |
+| `cookie`        | `VextCsrfCookieConfig`                   | name: vext.csrf, httpOnly:false, sameSite:lax, path:/, secure:auto | Signed cookie attributes; secure accepts boolean or auto              |
+| `fetchMetadata` | `boolean`                                | `true`                                                             | Reject `Sec-Fetch-Site: cross-site` unsafe requests                   |
+| `origin`        | `false \| { trustedOrigins?: string[] }` | `false`                                                            | Optional Origin/Referer same-origin enforcement                       |
 
 Routes can opt out with route options `{ csrf: false }`.
 
@@ -1533,6 +1595,8 @@ Routes can opt out with route options `{ csrf: false }`.
 | `skipPaths`                 | `string[]`                                                                                                         | `[]`              | Exact paths or trailing-`*` prefixes to skip                                   |
 
 ```typescript
+import type { VextUserConfig } from "vextjs";
+
 export default {
   securityHeaders: {
     enabled: true,
@@ -1545,7 +1609,7 @@ export default {
       },
     },
   },
-};
+} satisfies VextUserConfig;
 ```
 
 `basic` sends `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `X-Frame-Options: SAMEORIGIN`. `strict` adds HTTPS-only HSTS, a minimal `Permissions-Policy`, COOP, and CORP, but still leaves CSP and COEP explicit. `custom` sends only fields you configure. Routes can opt out with `{ securityHeaders: false }`.
@@ -1588,6 +1652,8 @@ Some configurations support overriding through environment variables:
 VEXT_PORT=8080 VEXT_CONFIG=sg-sit vext start
 ```
 
+In PowerShell, set `$env:VEXT_PORT` and `$env:VEXT_CONFIG` before running `npm start`. The port must be an integer from 1 to 65535. The CLI rejects an invalid port; a direct invalid environment override may be ignored by a lower layer, so a successful start alone does not prove that the override applied.
+
 ---
 
 ## Type declaration extension
@@ -1596,6 +1662,8 @@ Plug-ins can add custom fields to `VextConfig` through `declare module`:
 
 ```typescript
 // types/vext.d.ts
+import "vextjs";
+
 declare module "vextjs" {
   interface VextConfig {
     redis?: {
@@ -1607,14 +1675,20 @@ declare module "vextjs" {
 }
 ```
 
-Later use in the configuration file will get full type hints:
+Include this declaration file in `tsconfig.include`. Import `vextjs` so the declaration augments rather than replaces the module. Use `satisfies VextUserConfig` for configuration type checking:
 
 ```typescript
 // src/config/default.ts
+import type { VextUserConfig } from "vextjs";
+
 export default {
   redis: {
     host: "localhost",
     port: 6379,
   },
-};
+} satisfies VextUserConfig;
 ```
+
+## Verify a configuration change
+
+Run the existing type check and build, then restart the relevant process and check the actual port, feature entry point, and failure path. Configuration is frozen; editing a file does not update an already running instance. Choose practical checks from [Rate limiting](/guide/rate-limit), [Authentication and security](/guide/security), [Session](/guide/cookies-session), [Database](/guide/database), [Frontend configuration](/frontend/configuration), or [Jobs API](./jobs). When diagnosing, first confirm runtime mode/profile, working directory, provider success, and CLI overrides without dumping the whole configuration unnecessarily.

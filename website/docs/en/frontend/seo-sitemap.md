@@ -5,10 +5,11 @@ merges application defaults, route metadata, and per-render metadata into the
 server-rendered document, and can generate `sitemap.xml` and `robots.txt` at
 build time or serve them at runtime.
 
-The feature is opt-in. Omitting `frontend.seo` keeps the existing rendering and
-build output unchanged.
+Start by adding page metadata to a [full-stack app](./getting-started), then enable sitemap/robots as needed for deployment. Explicit route or render SEO can still produce metadata such as a title without global `frontend.seo`; only the absence of all SEO declarations preserves previous behavior. Explicit `frontend.seo.enabled: false` disables structured SEO while legacy `head` remains independent.
 
 ## Basic Configuration
+
+Merge this into `src/config/default.ts`. A fixed `/about` entry verifies the complete path without an external content service:
 
 ```ts
 import type { VextUserConfig } from "vextjs";
@@ -28,7 +29,7 @@ const config: VextUserConfig = {
         },
         twitter: { card: "summary_large_image" },
       },
-      sitemap: {},
+      sitemap: { entries: () => [{ pathname: "/about" }] },
       robots: {},
     },
   },
@@ -57,22 +58,46 @@ same-file `const`. Imported values, computed expressions, and interpolated
 templates are not executed:
 
 ```ts
-app.get(
-  "/about",
-  {
-    frontend: {
-      seo: {
-        title: "About",
-        canonical: "/about",
-        openGraph: { type: "profile" },
+// src/routes/about.ts
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  app.get(
+    "/",
+    {
+      frontend: {
+        hydration: "none",
+        seo: {
+          title: "About Us",
+          canonical: "/about",
+          openGraph: { type: "profile" },
+        },
       },
     },
-  },
-  async (_req, res) => res.render("about"),
-);
+    (_req, res) => res.render("about"),
+  );
+});
 ```
 
-Data-dependent metadata belongs in the third argument to `res.render()`:
+```tsx
+// src/frontend/pages/about.tsx
+export default function AboutPage() {
+  return (
+    <main>
+      <h1>About Us</h1>
+      <p>About the Example app</p>
+    </main>
+  );
+}
+```
+
+Run `npm run build` and confirm that the default `dist/client/sitemap.xml` contains `https://www.example.com/about` and `robots.txt` contains the sitemap URL. Start `npm start -- --port 3000` and request `/about`: raw HTML should contain `About Us | Example`, canonical, description, `og:type=profile`, and visible body. This no-hydration example should have no Vext hydration data or browser entry. Check that `/sitemap.xml` and `/robots.txt` return 200 and have the expected content, then stop the server.
+
+The current built-in frontend static server does not include XML/TXT in its extension-to-MIME table: those built files respond as `application/octet-stream`, even though the deploy manifest records their correct MIME types. When hosting built files, configure `application/xml; charset=utf-8` and `text/plain; charset=utf-8` at the static host/CDN, or use runtime mode below, which sets the respective MIME types. Manifest metadata alone does not establish an HTTP Content-Type.
+
+The example origin is an output URL, not a domain that local verification must contact. Replace it for deployment. Build-mode files do not select a runtime Host. A title in HTML does not itself prove search-engine indexing.
+
+Data-dependent metadata belongs in the third argument to `res.render()`. The following is an integration fragment inside a route registration callback: it requires an existing `posts` service, corresponding types, a `posts/detail` page, and a 404 response for a missing post. It is separate from the runnable about example above:
 
 ```ts
 app.get(
@@ -124,6 +149,7 @@ seo: {
       const response = await fetch("https://cms.example.com/seo/posts", {
         signal,
       });
+      if (!response.ok) throw new Error(`CMS HTTP ${response.status}`);
       const posts = (await response.json()) as Array<{
         slug: string;
         updatedAt: string;
@@ -153,6 +179,8 @@ inject `app`, services, or `app.db` into configuration callbacks. Read dynamic
 entries from a build-safe module or external content source, and honor the
 abort signal.
 
+Merge these `seo: { ... }` fragments into an enabled `frontend.seo` config. Replace the CMS address and validate real data; returning an entry does not create its route. `includeStatic` collects successful static pages, not every SSR route. Manage external I/O timeouts in a build provider; `timeoutMs` applies to the runtime deadline.
+
 ## Runtime Sitemap and Dynamic Domains
 
 Use runtime mode when entries or the public domain must be selected per
@@ -172,6 +200,7 @@ seo: {
         `https://cms.example.com/seo/paths?site=${originKey ?? "default"}`,
         { signal },
       );
+      if (!response.ok) throw new Error(`CMS HTTP ${response.status}`);
       const paths = (await response.json()) as string[];
       return paths.map((pathname) => ({
         pathname,
@@ -183,16 +212,15 @@ seo: {
 }
 ```
 
-At runtime, the request `Host` must exactly match `publicOrigin` or one entry in
-`origins`. Unknown hosts return 404 instead of generating attacker-controlled
-canonical or sitemap URLs. A route or render can select a finite named origin
-with `seo.originKey`; undeclared keys fail closed.
+For runtime sitemap/robots endpoints, the request `Host` must match `publicOrigin` or one entry in `origins`; an unknown host returns 404. This does not mean every ordinary page returns 404 for an unknown Host: its canonical comes from the configured `publicOrigin` or `seo.originKey`, never directly from the request Host. A route or render can select a finite named origin with `seo.originKey`; undeclared keys fail.
 
 Configured origins are canonicalized for host comparison, including trailing dots and default ports, while any pathname base in `publicOrigin` is preserved in canonical, sitemap-index, chunk, and robots URLs. Runtime SEO endpoints support both `GET` and `HEAD`; `HEAD` returns the same status and headers without an entity body.
 
 Runtime sitemap and robots responses use `Cache-Control: no-store`. Add an
 explicit cache at your reverse proxy only after defining its host and refresh
 policy.
+
+To verify runtime mode locally, request the local port with a declared Host, for example `curl -i -H "Host: www.example.com" http://127.0.0.1:3000/sitemap.xml`. An undeclared Host should return 404; `curl -I` should show the same status and headers without a body. The basic build-mode configuration above does not provide these runtime behaviors.
 
 ## Robots
 

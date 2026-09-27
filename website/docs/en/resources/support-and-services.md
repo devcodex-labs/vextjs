@@ -1,6 +1,6 @@
 ---
 title: Support and Services
-description: A scoped, maintainer-led path for production reviews, migration work, and team enablement.
+description: Where to ask usage questions, report issues, and discuss production reviews or migration work.
 ---
 
 # Support and Services
@@ -9,6 +9,19 @@ VextJS stays Apache-2.0 and its public documentation stays open. Teams that
 need help applying the framework in a production context can begin a scoped
 conversation with the maintainers through
 [GitHub Discussions](https://github.com/devcodex-labs/vextjs/discussions).
+
+## Choose an entry point
+
+| Purpose                                    | Entry point                                                                             | Useful details                                                                       |
+| ------------------------------------------ | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Usage question or design discussion        | [Discussions](https://github.com/devcodex-labs/vextjs/discussions)                      | Goal, documentation steps tried, and specific question                               |
+| Reproducible defect or documentation error | [Issues](https://github.com/devcodex-labs/vextjs/issues)                                | Version, minimal reproduction, expected and actual results; page URL for docs issues |
+| Code or docs improvement                   | [Contributing guide](https://github.com/devcodex-labs/vextjs/blob/main/CONTRIBUTING.md) | Change scope, reason, and verification results                                       |
+| Production review, migration, or team work | Scoped discussion below                                                                 | Goal, current state, constraints, and desired timing                                 |
+
+For common troubleshooting, start with [Error handling](/guide/error-handling),
+[Frontend troubleshooting](/frontend/troubleshooting), or
+[Deployment](/guide/deployment).
 
 ## Suitable engagements
 
@@ -26,8 +39,10 @@ conversation with the maintainers through
 
 Open a discussion with the VextJS version, Node.js version, adapter, deployment
 shape, and the outcome you need. Do not post credentials, customer data, or
-production secrets. Maintainers can then decide whether to continue through a
-private channel and whether the request is a fit.
+production secrets. Add the operating system, minimal reproduction, expected
+and actual results, and checks already run when relevant. Discuss scope
+before agreeing whether to proceed and through which channel; a public post
+does not mean a service request has been accepted.
 
 <a className="vext-button vext-button--primary" href="https://github.com/devcodex-labs/vextjs/discussions">Start a scoped discussion</a>
 

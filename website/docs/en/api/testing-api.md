@@ -1,27 +1,39 @@
 # Test tools
 
-This page details VextJS's testing tool API, including `createTestApp`, `TestApp`, `TestRequest`, `TestRequestBuilder` and `TestResponse`.
+This page documents `createTestApp`, `TestApp`, `TestRequest`, `TestRequestBuilder`, `TestResponse`, and `createTestJobRunner`. See the [Testing guide](/guide/testing) for a complete business fixture and execution steps; use this page for signatures, defaults, and execution boundaries.
 
 ## Overview
 
-VextJS provides zero-configuration testing tools, imported through the `vextjs/testing` subpath:
+Import runtime values and types through `vextjs/testing`:
 
 ```typescript
-import { createTestApp } from "vextjs/testing";
+import {
+  createTestApp,
+  createTestJobRunner,
+  type CreateTestAppOptions,
+  type TestApp,
+  type TestRequest,
+  type TestRequestBuilder,
+  type TestResponse,
+  type TestResponseHeaderValue,
+  type CreateTestJobRunnerOptions,
+  type TestJobRunner,
+} from "vextjs/testing";
 ```
 
-**Core Design**:
+ESM `import` and CommonJS `require()` are supported, and the root and subpath exports share runtime identity. For example, errors can be checked with `require("vextjs").HttpError`. The root exports only five of the HTTP testing types additionally; see [Type import](#type-import).
 
-- **Zero network I/O**: `TestRequest` does not start the HTTP server internally, directly constructs the `(req, res)` handler through `adapter.buildHandler()`, and uses the Mock object in memory to simulate the request. Faster than `supertest`, can be run in parallel in CI without port conflicts.
-- **Zero Configuration**: Rate limiting is disabled and logging is silent by default. `TestRequest` does not open an HTTP listener; `port: 0` is only an isolated test configuration default.
-- **Chained API**: A chained request constructor similar to `supertest` style, supporting `await` to directly obtain the response.
-- **Safe Exit**: `config._testMode = true` prevents `shutdown()` from calling `process.exit(0)`.
+- **In-memory request**: Builds an adapter handler and simulates Node request/response without listening on TCP. Plugins, dictionary scripts, services, and outbound fetch may still perform real I/O.
+- **Test defaults**: Silent logger, disabled rate limiting and access logs, and a one-second shutdown budget; all can be overridden.
+- **Execution timing**: A builder is PromiseLike; `await` or `.then()` dispatches the request.
+- **Cleanup**: `_testMode` is forced to true, so shutdown does not call `process.exit`; call `close()` even after successful creation.
+- **Scope**: This does not equal CLI bootstrap, real HTTP, frontend rendering/hydration, or database integration.
 
 ---
 
 ## createTestApp
 
-`createTestApp` is a test App factory function that creates a complete test application instance.
+`createTestApp` creates a test app and request handler. It does not supply `/health`, business routes, or a database automatically.
 
 Application dictionaries load before plugins, services, and routes. The default `rootDir/src/locales` can be overridden with `config.locale.directory`; module subdirectories, JSON, and script dictionaries are supported. Missing directories give an empty dictionary, invalid formats fail initialization, and scripts execute as modules. This does not read project configuration files, run a configuration provider, or automatically connect a database. To reload explicitly, call the root export `loadI18n(testApp.app, directory)`; see [Internationalization](/guide/i18n).
 
@@ -33,30 +45,30 @@ async function createTestApp(options?: CreateTestAppOptions): Promise<TestApp>;
 
 ### Basic usage
 
-```typescript
-import { describe, it, expect, afterEach } from "vitest";
+This standalone example needs no business route. Save it as `test/testing-api.mjs` and run `node test/testing-api.mjs` from a project with `vextjs` installed:
+
+```javascript
+// test/testing-api.mjs
+import assert from "node:assert/strict";
 import { createTestApp } from "vextjs/testing";
 
-describe("User Interface", () => {
-  let testApp;
-
-  afterEach(async () => {
-    await testApp?.close();
-  });
-
-  it("GET /users/list should return a list of users", async () => {
-    testApp = await createTestApp();
-
-    const res = await testApp.request
-      .get("/users/list")
-      .query({ page: "1", limit: "10" });
-
-    expect(res.status).toBe(200);
-    expect(res.body.code).toBe(0);
-    expect(Array.isArray(res.body.data)).toBe(true);
-  });
+const testApp = await createTestApp({
+  routes: false,
+  services: false,
+  middlewares: false,
+  config: { adapter: "native" },
 });
+try {
+  const res = await testApp.request.get("/missing");
+  assert.equal(res.status, 404);
+  assert.equal(res.body.code, 404);
+  assert.equal(typeof res.body.requestId, "string");
+} finally {
+  await testApp.close();
+}
 ```
+
+It should exit without assertion failures. The option and request fragments below are independent: import their needed types/assertion tools and prepare their routes first. `/users` is not built in. Close each created app; do not overwrite a variable repeatedly and lose an earlier instance.
 
 ### Return value
 
@@ -106,19 +118,19 @@ defaults may be partial; atomic adapters, stores, callbacks, and arrays remain
 complete values. `createTestApp()` does not load the project's
 `src/config/default.ts`, and its built-in defaults do not include `database`, so
 adding that optional section requires a complete database configuration rather
-than a partial patch.
+than a partial patch. This helper still does not start the built-in MonSQLize plugin; `plugins: true` scans only user plugins. See the [Database guide](/guide/database) for real database verification.
 
 ```typescript
 testApp = await createTestApp({
   config: {
-    adapter: "fastify", // test specific adapter
+    adapter: "fastify", // Requires its installed Fastify peer.
     response: { wrap: false }, // Disable export wrapping
     cors: { enabled: false }, // Disable CORS
   },
 });
 ```
 
-**Testing the default configuration** (automatically applied, no manual settings required):
+**Effective test defaults** (unlisted fields inherit framework defaults; `session.enabled: false` comes from the framework layer):
 
 ```typescript
 {
@@ -139,7 +151,7 @@ testApp = await createTestApp({
 }
 ```
 
-Merge priority from lowest to highest is `DEFAULT_CONFIG` → `test defaults` → `config parameters`. Explicitly setting `rateLimit.enabled`, `accessLog.enabled`, or `session.enabled` to `true` registers the same built-in runtime used by production and development.
+`_testMode` is forced true after merging and cannot be disabled through options. Merge priority from lowest to highest is `DEFAULT_CONFIG` → `test defaults` → `config parameters`. Explicitly setting `rateLimit.enabled`, `accessLog.enabled`, or `session.enabled` to `true` registers the same built-in runtime used by production and development.
 
 `TestRequest` invokes the built handler directly, so its requests never bind or connect to this port.
 
@@ -150,8 +162,10 @@ Merge priority from lowest to highest is `DEFAULT_CONFIG` → `test defaults` �
 Controls whether to automatically scan the `src/plugins/` directory to load plugins.
 
 ```typescript
-//Plug-ins are not loaded by default (unit tests usually do not require real plug-ins)
-testApp = await createTestApp(); // plugins: false// Integration testing may require loading plugins
+// Plugins are not loaded by default.
+testApp = await createTestApp(); // plugins: false
+
+// Integration tests may need real plugins.
 testApp = await createTestApp({ plugins: true });
 ```
 
@@ -159,14 +173,16 @@ testApp = await createTestApp({ plugins: true });
 
 ### `setupPlugins`
 
-Manually register plug-ins instead of automatic scanning. Suitable for scenarios where precise control of test dependencies is required.
+Run a manual setup callback instead of automatic plugin scanning. It can extend the app, register global middleware, and register lifecycle hooks. Injected resources are not automatically given a close handler.
 
 ```typescript
 testApp = await createTestApp({
   setupPlugins: async (app) => {
-    //Only register the plug-ins required for testing
-    app.extend("testCache", new MockCache());
-    app.extend("db", new MockDatabase());
+    const cache = new Map<string, unknown>();
+    app.extend("testCache", cache);
+    app.onClose(() => {
+      cache.clear();
+    });
   },
 });
 ```
@@ -199,22 +215,11 @@ testApp = await createTestApp({
 
 #### TypeScript service file loading mechanism
 
-When `services: true`, `service-loader` scans the `src/services/` directory and automatically loads `.ts` source files. Due to two limitations of Node.js native ESM, the framework uses **esbuild** to automatically handle them:
+Service and user-middleware TypeScript modules use a shared module loader that compiles local dependencies and maps `.js` imports to `.ts` source. npm dependencies still resolve from the project. Temporary products have a project owner and are cleaned afterward. The working directory must be writable; missing modules and invalid exports fail initialization.
 
-| Limitations                       | Description                                                                                                                          |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `ERR_UNKNOWN_FILE_EXTENSION: .ts` | Node.js native ESM does not support direct `import()` `.ts` files                                                                    |
-| `.js → .ts` remapping missing     | TypeScript ESM convention is to write `.js` extension in import, and Node.js/Vite resolver will not automatically fall back to `.ts` |
+Route files instead load through Node's direct `import(fileURL)`. Do not assume that Service compilation automatically compiles routes. On Node 20, an installed package plus Vitest may report `Unknown file extension ".ts"`; use JavaScript routes, a compatible test loader, or a Node environment satisfying native TS type stripping as described in [Testing: Quick start](/guide/testing#quick-start). The real CLI dev/build path has its own compilation flow.
 
-`service-loader` performs the following process for each `.ts` service file:
-
-1. Call `esbuild.build({ bundle: true, packages: 'external' })` to package `.ts` and its local relative dependencies into `.mjs`
-2. Write the compiled product to a temporary file in the same directory as the source file (the name contains `.__vext_compiled__` and will not be scanned repeatedly)
-3. `import()` temporary `.mjs` file, automatically cleaned after completion
-
-:::tip Recommendation for unit testing: use mockServices first
-The `services: false` + `mockServices` solution does not require esbuild compilation, is faster and has better isolation, and is the recommended method for **unit testing**. `services: true` is suitable for **integration tests** that require real service behavior.
-:::
+Multiple test processes sharing the same or overlapping `rootDir` may contend for the owner and report `VEXT_OWNER_BUSY`. Run a shared fixture serially or use separate, nonoverlapping projects. Lack of a TCP port conflict does not imply unconditional parallel safety.
 
 ---
 
@@ -229,7 +234,7 @@ const mockUserService = {
     { id: "2", name: "Bob" },
   ]),
   findById: vi.fn().mockResolvedValue({ id: "1", name: "Alice" }),
-  create: vi.fn().mockImplementation(async (data) => ({
+  create: vi.fn().mockImplementation(async (data: { name: string }) => ({
     id: "3",
     ...data,
   })),
@@ -244,6 +249,8 @@ testApp = await createTestApp({
 });
 ```
 
+This leaves `services` at its default `true`. Add `services: false` when only the mock should run, avoiding construction of the real Service first. A mock does not automatically implement missing business methods; it must satisfy the methods your routes use.
+
 **Merge Logic**:
 
 | `services` | `mockServices` | behavior                                                                                         |
@@ -251,13 +258,13 @@ testApp = await createTestApp({
 |   `true`   |     Valid      | Load the real service first, then use `mockServices` to overwrite the service with the same name |
 |   `true`   |    No value    | Only use real services                                                                           |
 |  `false`   |   has value    | only use `mockServices`                                                                          |
-|  `false`   |    No value    | `app.services` is an empty object `{}`                                                           |
+|  `false`   |    No value    | No automatic load/injection; a plugin can still explicitly provide a service                     |
 
 ---
 
 ### `routes`
 
-Controls whether to automatically load routing files in the `src/routes/` directory.
+Controls whether to load `rootDir/src/routes/`. The request chain is prepared from final configuration and middleware allowlist before loading; file prefixes still apply. `routes: false` does not register a test route.
 
 ```typescript
 //Load the real route (default, integration test)
@@ -271,7 +278,7 @@ testApp = await createTestApp({ routes: false });
 
 ### `middlewares`
 
-Controls whether to automatically load user middleware in the `src/middlewares/` directory.
+Controls loading user middleware from `rootDir/src/middlewares/` according to `config.middlewares`. Default `true` does not enable the whole directory; an empty allowlist loads none, and routes referring to undeclared names fail.
 
 ```typescript
 //Load user middleware (default)
@@ -282,7 +289,7 @@ testApp = await createTestApp({ middlewares: false });
 ```
 
 :::tip
-The built-in middlewares (requestId/cors/bodyParser/responseWrapper/errorHandler) are always registered regardless of the `middlewares` setting. This option only controls user-defined middleware in the `src/middlewares/` directory.
+This option controls only the user-middleware directory. Built-in requestId, CORS, bodyParser, response wrapper, Session, CSRF, and rate limiting follow their own configuration; they are not all unconditionally registered.
 :::
 
 ---
@@ -292,12 +299,26 @@ The built-in middlewares (requestId/cors/bodyParser/responseWrapper/errorHandler
 The project root directory is used to locate `src/routes`, `src/services`, `src/plugins` and other directories.
 
 ```typescript
-import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-testApp = await createTestApp({
-  rootDir: join(__dirname, "../../"), // Customize the project root directory
-});
+// For a file at test/http.test.ts:
+const rootDir = fileURLToPath(new URL("./fixtures/http/", import.meta.url));
+testApp = await createTestApp({ rootDir });
 ```
+
+---
+
+### `devOverlay`
+
+Pass `(error: unknown) => string` to render an HTML error when request Accept includes `text/html`. If the callback throws, normal error handling takes over. This does not start frontend builds, Fast Refresh, or a browser, and it does not affect JSON requests. Test error hiding with an explicit Accept header and `response.hideInternalErrors` setting.
+
+### Initialization and resource boundary
+
+Order: configuration merge → app / i18n / Session / rateLimit runtime / adapter / fetch → plugins → user middleware → Services → mock override → routes → built-in request chain and error handling → onReady → handler / TestRequest.
+
+`onReady` is awaited, but an individual hook error is logged by the app and execution continues; do not assume initialization rejects. Assert readiness side effects directly. This helper omits production bootstrap's config files, providers, preload, built-in DB, frontend artifact checks, and process signal flow.
+
+On initialization failure, no `close()` has been returned. Custom setup that fails after allocating resources must clean up what it acquired; do not assume every failure path was rolled back as a whole.
 
 ---
 
@@ -318,15 +339,14 @@ interface TestApp {
 The underlying `VextApp` instance, which can be used to directly access application capabilities:
 
 ```typescript
-const testApp = await createTestApp();
-
-//Access configuration
+// Assume testApp exists and is closed in finally/teardown.
+// Access configuration.
 console.log(testApp.app.config.port);
 
-//Access service
+// Access a service.
 const user = await testApp.app.services.user.findById("1");
 
-//Access log
+// Access the logger.
 testApp.app.logger.info("under testing");
 ```
 
@@ -348,13 +368,17 @@ close(): Promise<void>;
 
 ```typescript
 import { afterEach } from "vitest";
+import type { TestApp } from "vextjs/testing";
 
-let testApp;
+let testApp: TestApp | undefined;
 
 afterEach(async () => {
   await testApp?.close();
+  testApp = undefined;
 });
 ```
+
+`close()` waits for app shutdown. The default one-second budget applies to the whole shutdown, not each hook. Closing an already closed instance does not repeat cleanup. It does not reset all process-level module caches or delete external test data.
 
 ---
 
@@ -396,24 +420,24 @@ Each method returns `TestRequestBuilder`, which supports chain configuration and
 
 ```typescript
 // GET request
-const res = await testApp.request.get("/users/list");
+const res1 = await testApp.request.get("/users/list");
 
 // POST request
-const res = await testApp.request.post("/users").send({
+const res2 = await testApp.request.post("/users").send({
   name: "Alice",
   email: "alice@example.com",
 });
 
 // PUT request
-const res = await testApp.request.put("/users/1").send({
+const res3 = await testApp.request.put("/users/1").send({
   name: "Alice Updated",
 });
 
 // DELETE request
-const res = await testApp.request.delete("/users/1");
+const res4 = await testApp.request.delete("/users/1");
 
-// OPTIONS request (CORS preflight)
-const res = await testApp.request.options("/users");
+// OPTIONS request; a real preflight also needs Origin and Access-Control-Request-Method.
+const res5 = await testApp.request.options("/users");
 ```
 
 ---
@@ -433,14 +457,14 @@ interface TestRequestBuilder extends PromiseLike<TestResponse> {
 ```
 
 :::tip
-`TestRequestBuilder` implements the `PromiseLike` interface, so you can directly use `await` to execute the request without calling an additional `.execute()` method.
+`TestRequestBuilder` is PromiseLike, so `await` executes a request without `.execute()`. Each `await` or `.then()` runs a new request; the builder does not cache a Promise result and does not provide the full Promise `catch`/`finally` interface.
 :::
 
 ---
 
 ### `set(key, value)`
 
-Set a single request header.
+Set one request header. Names are lowercased, and setting the same name again replaces its previous value.
 
 ```typescript
 set(key: string, value: string): this;
@@ -499,21 +523,23 @@ expect(res.status).toBe(200);
 expect(res.body.data).toHaveLength(10);
 ```
 
-Calling `query()` multiple times merges parameters:
+Calling `query()` again **replaces** the previous object:
 
 ```typescript
 const res = await testApp.request
   .get("/search")
   .query({ keyword: "hello" })
   .query({ page: 1 });
-// Equivalent to GET /search?keyword=hello&page=1
+// Equivalent to GET /search?page=1; keyword was replaced.
 ```
+
+An existing query string in `path` remains and the new query object is appended with `&`; duplicate keys may result and are parsed by application rules. The type does not accept arrays; encode them in the path yourself. Multiple `query()` calls do not create multi-value parameters.
 
 ---
 
 ### `send(body)`
 
-Set the request body. Automatically serialize to JSON and set `Content-Type: application/json`.
+Set or replace the request body. Strings are sent as-is; other non-undefined values use `JSON.stringify`. If no Content-Type is supplied, the default is `application/json`. Buffer, Stream, and FormData are not automatically encoded as uploads; use a real HTTP client for those transports.
 
 ```typescript
 send(body: unknown): this;
@@ -576,7 +602,7 @@ const res = await testApp.request
 ```
 
 :::tip
-`send()` automatically sets `Content-Type: application/json` if it is not already set. If another type is required, call `type()` before `send()` to override it.
+`send()` defaults to `Content-Type: application/json` if unset. `type()` works before or after `send()` and takes precedence over Content-Type set through `set()` or `headers()` when executing. If `send()` created the default type, a later `set()` does not override that separate type value; use `type()`. A Content-Type declaration does not encode an object as form-urlencoded or XML.
 :::
 
 ---
@@ -662,11 +688,10 @@ expect(res.header("content-type")).toContain("application/json");
 // Check custom response headers
 expect(res.headers["x-request-id"]).toBeDefined();
 
-// Check CORS headers
-expect(res.headers["access-control-allow-origin"]).toBeDefined();
+// To check CORS, enable it and supply an allowed Origin; then assert the expected header value.
 ```
 
-`Set-Cookie` is preserved as an array. Prefer `res.cookies` or `res.headerValues("set-cookie")` when asserting cookies:
+Multiple `Set-Cookie` values are preserved without comma splitting. The following two-cookie assertion assumes that the route actually sets two cookies. Prefer `res.cookies` or `res.headerValues("set-cookie")`:
 
 ```typescript
 expect(res.cookies).toHaveLength(2);
@@ -674,11 +699,21 @@ expect(res.headerValues("set-cookie")).toEqual(res.cookies);
 expect(res.header("content-type")).toContain("application/json");
 ```
 
+### `cookies` / `header(name)` / `headerValues(name)`
+
+| Member                              | Return                                              | When missing |
+| ----------------------------------- | --------------------------------------------------- | ------------ |
+| `cookies: string[]`                 | All Set-Cookie values                               | `[]`         |
+| `header(name): string \| undefined` | First value, case-insensitive                       | `undefined`  |
+| `headerValues(name): string[]`      | All values, including single-valued header as array | `[]`         |
+
+These helpers do not maintain a session automatically. To continue one, send the relevant Set-Cookie `name=value` pairs in a later Cookie request header and keep test sessions isolated.
+
 ---
 
 ### `body`
 
-Automatically parsed JSON response body. If the response's `Content-Type` is `application/json`, `body` is the parsed JavaScript object/array; otherwise it is `undefined`.
+When Content-Type includes `application/json` or `+json`, JSON parsing is attempted; the result can also be a primitive or null. For other types or parse failure, `body` retains the same string as `text`, not undefined. HEAD and 204 empty bodies are usually `""`.
 
 ```typescript
 body: any;
@@ -705,7 +740,7 @@ expect(res.body.data[0].name).toBe("Alice");
 const res = await testApp.request.get("/users/nonexistent-id");
 
 expect(res.body).toEqual({
-  code: -1,
+  code: 404,
   message: "User does not exist",
   requestId: expect.any(String),
 });
@@ -739,482 +774,119 @@ console.log(res.text);
 // '{"code":0,"data":[...],"requestId":"..."}'
 
 // text response
-const res2 = await testApp.request.get("/health");
+// Assume /plain has a handler calling res.text("OK").
+const res2 = await testApp.request.get("/plain");
 expect(res2.text).toBe("OK");
 ```
 
 ---
 
+## createTestJobRunner
+
+```typescript
+function createTestJobRunner(
+  options: CreateTestJobRunnerOptions,
+): Promise<TestJobRunner>;
+
+interface CreateTestJobRunnerOptions extends Omit<
+  CreateTestAppOptions,
+  "routes"
+> {
+  jobs: Record<string, VextJobDefinition> | VextJobDefinition[];
+}
+
+interface TestJobRunner {
+  app: VextApp;
+  registry: VextJobRegistry;
+  run(jobName: string, options?: VextJobRunOptions): Promise<VextJobRunResult>;
+  close(): Promise<void>;
+}
+```
+
+| Member/rule        | Behavior                                                                                               |
+| ------------------ | ------------------------------------------------------------------------------------------------------ |
+| `jobs`             | Required input definitions; does not scan `src/jobs`                                                   |
+| Names              | Object uses `definition.name` first, then object key; unnamed array jobs use `job1`, `job2`, and so on |
+| Duplicates         | Registry creation throws for duplicate names                                                           |
+| Other options      | Follow `CreateTestAppOptions` but force `routes: false`; Services/plugins can still have side effects  |
+| `app` / `registry` | Test app and jobs; registry supports `list/get/has/toJSON`                                             |
+| `run()`            | Executes a job, validates payload, applies retry/timeout; does not start scheduler or worker           |
+| `close()`          | Closes the test app; await in-flight runs and handle cancellation first                                |
+
+`run` options include payload, signal, runId, trigger, scheduledAt, and idempotencyKey. Results include jobName, runId, status, attempts, durationMs, and optional result/error. Status is success, failed, cancelled, or timeout. Check result status; unknown jobs may still reject directly. Cancellation and timeout cooperate through AbortSignal rather than forcibly interrupting a handler that ignores it. `close()` does not cancel every running job. See [Jobs API](/api/jobs#runjobapp-registry-name-options).
+
+Save this separately as `test/job-api.mjs` and run it with Node:
+
+```javascript
+// test/job-api.mjs
+import assert from "node:assert/strict";
+import { defineJob } from "vextjs";
+import { createTestJobRunner } from "vextjs/testing";
+
+const runner = await createTestJobRunner({
+  services: false,
+  middlewares: false,
+  config: { adapter: "native" },
+  jobs: { ping: defineJob({ handler: () => ({ ok: true }) }) },
+});
+try {
+  const result = await runner.run("ping");
+  assert.equal(result.status, "success");
+  assert.deepEqual(result.result, { ok: true });
+} finally {
+  await runner.close();
+}
+```
+
+This helper does not create a real scheduler process, write persistent run records, or verify Store leases. Test scheduling, distributed claiming, and recovery separately using the [Jobs guide](/guide/jobs).
+
 ## Usage mode
 
-### Integration testing
-
-Load the real routes, services, and middleware, and verify the complete request-response process:
-
-```typescript
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { createTestApp } from "vextjs/testing";
-import type { TestApp } from "vextjs";
-
-describe("User CRUD", () => {
-  let testApp: TestApp;
-
-  beforeEach(async () => {
-    testApp = await createTestApp({
-      plugins: true, // Load real plugins (such as database)
-    });
-  });
-
-  afterEach(async () => {
-    await testApp.close();
-  });
-
-  it("Create user", async () => {
-    const res = await testApp.request
-      .post("/users")
-      .set("Authorization", "Bearer test-admin-token")
-      .send({
-        name: "Alice",
-        email: "alice@example.com",
-      });
-
-    expect(res.status).toBe(201);
-    expect(res.body.code).toBe(0);
-    expect(res.body.data).toMatchObject({
-      name: "Alice",
-      email: "alice@example.com",
-    });
-    expect(res.body.data.id).toBeDefined();
-  });
-
-  it("Query user list", async () => {
-    const res = await testApp.request
-      .get("/users/list")
-      .query({ page: 1, limit: 10 });
-
-    expect(res.status).toBe(200);
-    expect(res.body.code).toBe(0);
-    expect(Array.isArray(res.body.data)).toBe(true);
-  });
-
-  it("404 should be returned if the user does not exist", async () => {
-    const res = await testApp.request.get("/users/nonexistent");
-
-    expect(res.status).toBe(404);
-    expect(res.body.message).toBe("The user does not exist");
-  });
-
-  it("Failed parameter verification should return 422", async () => {
-    const res = await testApp.request
-      .post("/users")
-      .set("Authorization", "Bearer test-admin-token")
-      .send({
-        name: "", // does not satisfy string:1-50
-        email: "invalid-email", // does not meet the email format
-      });
-
-    expect(res.status).toBe(422);
-    expect(res.body.errors).toBeDefined();
-    expect(res.body.errors.length).toBeGreaterThan(0);
-  });
-});
-```
-
----
-
-### Unit Test (Mock Services)
-
-Do not load real services, use mock instead, focus on testing routing logic:
-
-```typescript
-import { describe, it, expect, afterEach, vi } from "vitest";
-import { createTestApp } from "vextjs/testing";
-
-describe("User routing (mock service)", () => {
-  let testApp;
-
-  const mockUserService = {
-    findAll: vi.fn().mockResolvedValue([
-      { id: "1", name: "Alice" },
-      { id: "2", name: "Bob" },
-    ]),
-    findById: vi.fn().mockImplementation(async (id) => {
-      if (id === "1") return { id: "1", name: "Alice" };
-      return null;
-    }),
-    create: vi.fn().mockImplementation(async (data) => ({
-      id: "3",
-      ...data,
-      createdAt: new Date().toISOString(),
-    })),
-  };
-
-  afterEach(async () => {
-    await testApp?.close();
-    vi.clearAllMocks();
-  });
-
-  it("GET /users/list call findAll", async () => {
-    testApp = await createTestApp({
-      mockServices: { user: mockUserService },
-    });
-    const res = await testApp.request
-      .get("/users/list")
-      .query({ page: "1", limit: "10" });
-
-    expect(res.status).toBe(200);
-    expect(mockUserService.findAll).toHaveBeenCalledOnce();
-  });
-
-  it("GET /users/:id returns the user if it exists", async () => {
-    testApp = await createTestApp({
-      mockServices: { user: mockUserService },
-    });
-
-    const res = await testApp.request.get("/users/1");
-
-    expect(res.status).toBe(200);
-    expect(res.body.data.name).toBe("Alice");
-    expect(mockUserService.findById).toHaveBeenCalledWith("1");
-  });
-
-  it("GET /users/:id returns 404 when it does not exist", async () => {
-    testApp = await createTestApp({
-      mockServices: { user: mockUserService },
-    });
-
-    const res = await testApp.request.get("/users/999");
-
-    expect(res.status).toBe(404);
-  });
-});
-```
-
----
-
-### Test middleware
-
-Verify the behavior of middleware such as authentication and permissions:
-
-```typescript
-import { describe, it, expect, afterEach } from "vitest";
-import { createTestApp } from "vextjs/testing";
-
-describe("Authentication Middleware", () => {
-  let testApp;
-
-  afterEach(async () => {
-    await testApp?.close();
-  });
-
-  it("No token should return 401", async () => {
-    testApp = await createTestApp();
-
-    const res = await testApp.request.post("/users").send({
-      name: "Alice",
-      email: "alice@example.com",
-    });
-
-    expect(res.status).toBe(401);
-    expect(res.body.message).toContain("authentication");
-  });
-
-  it("Invalid token should return 401", async () => {
-    testApp = await createTestApp();
-
-    const res = await testApp.request
-      .post("/users")
-      .set("Authorization", "Bearer invalid-token")
-      .send({
-        name: "Alice",
-        email: "alice@example.com",
-      });
-
-    expect(res.status).toBe(401);
-  });
-
-  it("valid token should pass normally", async () => {
-    testApp = await createTestApp();
-
-    const res = await testApp.request
-      .post("/users")
-      .set("Authorization", "Bearer valid-admin-token")
-      .send({
-        name: "Alice",
-        email: "alice@example.com",
-      });
-
-    expect(res.status).not.toBe(401);
-  });
-});
-```
-
----
-
-### Test different Adapters
-
-Verify that the behavior is consistent after the Adapter is switched:
-
-```typescript
-import { describe, it, expect, afterEach } from "vitest";
-import { createTestApp } from "vextjs/testing";
-
-const adapters = ["native", "hono", "fastify", "express", "koa"] as const;
-
-describe.each(adapters)("Adapter: %s", (adapter) => {
-  let testApp;
-
-  afterEach(async () => {
-    await testApp?.close();
-  });
-
-  it("GET /health should return 200", async () => {
-    testApp = await createTestApp({
-      config: { adapter },
-    });
-
-    const res = await testApp.request.get("/health");
-    expect(res.status).toBe(200);
-  });
-
-  it("POST JSON should parse body correctly", async () => {
-    testApp = await createTestApp({
-      config: { adapter },
-    });
-
-    const res = await testApp.request.post("/echo").send({ message: "hello" });
-
-    expect(res.status).toBe(200);
-    expect(res.body.data.message).toBe("hello");
-  });
-});
-```
-
----
-
-### Test custom plug-ins
-
-Use `setupPlugins` to register test-specific plugins:
-
-```typescript
-import { describe, it, expect, afterEach } from "vitest";
-import { createTestApp } from "vextjs/testing";
-
-describe("Redis cache plug-in", () => {
-  let testApp;
-
-  afterEach(async () => {
-    await testApp?.close();
-  });
-
-  it("Return directly when cache hits", async () => {
-    const mockCache = new Map();
-    mockCache.set("user:1", JSON.stringify({ id: "1", name: "Cached Alice" }));
-
-    testApp = await createTestApp({
-      setupPlugins: async (app) => {
-        app.extend("userCache", {
-          get: async (key) => mockCache.get(key) ?? null,
-          set: async (key, value, ttl) => mockCache.set(key, value),
-          del: async (key) => mockCache.delete(key),
-        });
-      },
-    });
-
-    // Assuming that the route handler will read app.userCache, cached data should be returned
-    const res = await testApp.request.get("/users/1");
-    expect(res.status).toBe(200);
-  });
-});
-```
-
----
-
-### Test error handling
-
-```typescript
-import { describe, it, expect, afterEach } from "vitest";
-import { createTestApp } from "vextjs/testing";
-
-describe("Error handling", () => {
-  let testApp;
-
-  afterEach(async () => {
-    await testApp?.close();
-  });
-
-  it("404 routing should return standard format", async () => {
-    testApp = await createTestApp();
-
-    const res = await testApp.request.get("/nonexistent-path");
-
-    expect(res.status).toBe(404);
-    expect(res.body).toMatchObject({
-      code: expect.any(Number),
-      message: expect.any(String),
-      requestId: expect.any(String),
-    });
-  });
-
-  it("Validation failure should return an error list", async () => {
-    testApp = await createTestApp();
-
-    const res = await testApp.request
-      .post("/users")
-      .set("Authorization", "Bearer valid-token")
-      .send({}); // Required fields are missing
-
-    expect(res.status).toBe(422);
-    expect(res.body.errors).toBeDefined();
-    expect(Array.isArray(res.body.errors)).toBe(true);
-
-    for (const error of res.body.errors) {
-      expect(error).toHaveProperty("field");
-      expect(error).toHaveProperty("message");
-    }
-  });
-
-  it("500 error hide details in production mode", async () => {
-    testApp = await createTestApp({
-      config: {
-        response: { hideInternalErrors: true },
-      },
-      mockServices: {
-        user: {
-          findAll: vi
-            .fn()
-            .mockRejectedValue(new Error("Database connection failed")),
-        },
-      },
-    });
-
-    const res = await testApp.request.get("/users/list");
-
-    expect(res.status).toBe(500);
-    expect(res.body.message).toBe("Internal Server Error");
-    // Internal error messages should not be exposed
-    expect(res.body.message).not.toContain("Database connection failed");
-  });
-});
-```
-
----
-
-### Test export packaging
-
-```typescript
-describe("Export Packaging", () => {
-  it("wrap: true when the response contains code/data/requestId", async () => {
-    const testApp = await createTestApp({
-      config: { response: { wrap: true } },
-    });
-
-    const res = await testApp.request.get("/health");
-
-    expect(res.body).toHaveProperty("code", 0);
-    expect(res.body).toHaveProperty("data");
-    expect(res.body).toHaveProperty("requestId");
-
-    await testApp.close();
-  });
-
-  it("wrap: false when the response is original data", async () => {
-    const testApp = await createTestApp({
-      config: { response: { wrap: false } },
-    });
-
-    const res = await testApp.request.get("/health");
-
-    // Raw data, no code/data packaging
-    expect(res.body).not.toHaveProperty("code");
-    expect(res.body).toHaveProperty("status", "ok");
-
-    await testApp.close();
-  });
-});
-```
+| Goal                                        | Configuration and assertions                                                                                                            |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Real routes and Services                    | Keep relevant scanning and supply dependencies; this is not full production bootstrap                                                   |
+| Mock Service                                | Set `services: false`, provide a mock matching the business interface, and assert arguments/results                                     |
+| Auth/middleware                             | Declare `config.middlewares` allowlist and route references; test valid, missing, and invalid credentials                               |
+| Different adapters                          | Select an installed adapter with `config.adapter`; Koa also needs its router peer; see [Adapters](/guide/adapters)                      |
+| Custom plugin                               | Use `setupPlugins` with a contract-compliant object and close resources through `onClose`; a Map mock does not verify Redis integration |
+| Business, validation, internal errors       | Trigger each path explicitly and assert HTTP status, code, message, and errors; set `hideInternalErrors` and Accept explicitly          |
+| `response.wrap`                             | Create separate apps with wrap true and false; errors do not become success envelopes                                                   |
+| Session/Cookie                              | Extract relevant Set-Cookie `name=value` and set Cookie explicitly on the next request; there is no automatic cookie jar                |
+| Logs, rate limiting, CSRF, security headers | Explicitly enable features disabled by test defaults, then test positive/negative requests and headers                                  |
+
+Runnable CRUD, middleware, mock, and Service unit tests are in [Testing examples](/guide/testing#practical-example). Adapter transport, SSE, WebSocket, uploads, socket disconnects, and real TLS need separate network verification.
 
 ---
 
 ## Best Practices
 
-### 1. Always call close()
+- Close a successfully created app in `finally` or `afterEach`/`afterAll`. Use `TestApp | undefined` to handle creation failure.
+- Give stateful tests independent data. Read-only cases can share an instance, but serialize module loading for a shared `rootDir`.
+- Constrain mocks to real public interfaces. A plain Error's valid `status`/`statusCode` can also be normalized; use `HttpError` or `app.throw` for business codes and type identity.
+- Assert the target branch explicitly. “Status is not 401” can misread a 500 as success. State input conditions and expected results in test names.
+- Use [real CLI verification](/guide/testing#4-complete-production-path-checks-with-the-real-cli) for production config, preload, DB, frontend, and build/start.
 
-```typescript
-afterEach(async () => {
-  await testApp?.close();
-});
-```
+## Common issues
 
-Prevent resource leaks from causing the test process to hang. Use the `?.` optional chain to prevent `testApp` from reporting an error when it is not initialized.
-
-### 2. Create TestApp independently for each test
-
-```typescript
-// ✅ Recommendation: each test independent app
-it("test 1", async () => {
-  testApp = await createTestApp();
-  // ...
-});
-
-it("test 2", async () => {
-  testApp = await createTestApp();
-  // ...
-});
-
-// ❌ Avoid: Sharing apps (tests may affect each other)
-// beforeAll(async () => {
-// testApp = await createTestApp();
-// });
-```
-
-### 3. Mock external dependencies
-
-```typescript
-testApp = await createTestApp({
-  services: false,
-  mockServices: {
-    user: mockUserService,
-    email: mockEmailService,
-  },
-});
-```
-
-In unit testing, dependencies such as databases and external APIs are mocked, and only the code under test itself is tested.
-
-### 4. Use vi.fn() to verify the call
-
-```typescript
-const mockService = {
-  create: vi.fn().mockResolvedValue({ id: "1" }),
-};
-
-testApp = await createTestApp({ mockServices: { user: mockService } });
-
-await testApp.request.post("/users").send({ name: "Alice" });
-
-expect(mockService.create).toHaveBeenCalledWith(
-  expect.objectContaining({ name: "Alice" }),
-);
-```
-
-### 5. Test description is in Chinese
-
-```typescript
-describe('User Management Interface', () => {
-  it('Successful user creation should return 201', async () => { ... });
-  it('Duplicate mailbox should return 409', async () => { ... });
-  it('Unauthenticated should return 401', async () => { ... });
-});
-```
+| Symptom                                    | What to check                                                                                                           |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| Route returns 404                          | Does `rootDir/src/routes` exist, is scanning disabled, is the file prefix duplicated? This helper adds no health route. |
+| Unknown file extension `.ts`               | Native TS route import prerequisites; Service compilation does not imply route compilation.                             |
+| `VEXT_OWNER_BUSY`                          | Concurrent loads of the same or parent/child `rootDir`; serialize or isolate fixtures.                                  |
+| Real dependency connects before mock       | `services` is still true by default, so real services load before the mock override.                                    |
+| DB or project config does not apply        | The helper does not load project config/providers/built-in DB; supply dependencies explicitly or use the real CLI.      |
+| Query argument disappeared                 | Repeated `query()` replaces; provide one complete object.                                                               |
+| Text body is not undefined                 | Non-JSON or parse failure keeps text; HEAD/204 gives an empty string.                                                   |
+| Test hangs                                 | Await/close, response completion, and external resources; the builder has no separate network-request timeout.          |
+| In-memory request passes, production fails | Real port/proxy/upload/long connection/config/frontend are outside this result's scope.                                 |
 
 ---
 
 ## Type import
 
 ```typescript
-// runtime value
-import { createTestApp } from "vextjs/testing";
+// Runtime values.
+import { createTestApp, createTestJobRunner } from "vextjs/testing";
 
 // Type (imported from main entrance)
 import type {
@@ -1227,5 +899,5 @@ import type {
 ```
 
 :::tip
-Test tools are imported through the `vextjs/testing` subpath (runtime value), and types can be imported from the `vextjs` main entry. This is designed to prevent test dependencies (such as mock-related code) from polluting the packaging volume of the production code.
+Import runtime testing values through `vextjs/testing`. The five HTTP types above may come from the main `vextjs` entry. Import `TestResponseHeaderValue`, `CreateTestJobRunnerOptions`, and `TestJobRunner` from `vextjs/testing`; do not import the `createTestApp` or `createTestJobRunner` runtime values from the root entry.
 :::

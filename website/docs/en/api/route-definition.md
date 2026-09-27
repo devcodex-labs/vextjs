@@ -2,6 +2,8 @@
 
 This page details the route definition API of VextJS, including `defineRoutes`, routing options, parameter validation, middleware references and document configuration.
 
+Use this page to look up contracts and limits; follow the [Routing guide](/guide/routing) for a complete workflow. The project must provide handlers, business services, and middleware mentioned in fragments. HTTP registrations belong inside the factory. See [HTTP and routing specification](/specification/http-and-routing) for normative constraints.
+
 ## defineRoutes
 
 `defineRoutes` is the core function for creating route files. It receives a factory callback in which the route is registered via the `app` object.
@@ -19,7 +21,10 @@ export default defineRoutes((app) => {
 ### Function signature
 
 ```typescript
-function defineRoutes(factory: RouteFactory): RouteDefinition;
+function defineRoutes<TFactory extends RouteFactory>(
+  factory: TFactory &
+    (ReturnType<TFactory> extends PromiseLike<unknown> ? never : unknown),
+): RouteDefinition;
 
 type RouteFactory = (app: VextApp) => void;
 ```
@@ -31,15 +36,22 @@ statically projectable route set.
 
 ### Working principle
 
-1. When `defineRoutes(factory)` is called, a **collector** (route collector) is created internally
-2. `factory(collector)` is executed, and `app.get/post/...` in the user code actually calls the collector method.
-3. Each route is pushed into the internal `routes` array
-4. Return the `RouteDefinition` object
-5. `router-loader` scans the `src/routes/` directory and calls `register()` on the `default export` of each file to register with the underlying adapter
+1. During module evaluation, `defineRoutes(factory)` checks the synchronous function and registration syntax, then returns a `RouteDefinition`. It has not executed the factory yet, so `routes` is empty.
+2. The loader reads the default export, supplies source information, and executes the factory with a facade backed by the real app.
+3. HTTP methods on that facade collect routes; services, config, logger, and other capabilities forward to the real app. The HTTP collection entry closes when the factory finishes, and collection from a failing factory is cleared.
+4. The loader validates route identity, middleware references, and configuration, prepares the request chain, then registers routes through the adapter. Application code does not call `register()`.
 
-:::tip
-In the factory callback, `app` not only has HTTP methods (`get/post/put/...`), but also can access complete capabilities such as `app.services`, `app.config`, `app.throw`, `app.logger`, etc. These properties are injected by `router-loader` before executing the factory.
-:::
+`defineRoutes` returns a route definition, not the app. Its factory parameter is a facade, not a snapshot of app properties. Inline synchronous arrow functions or function expressions work, as do bindings that can be statically resolved to such functions.
+
+### Arguments, return value, and failure boundary
+
+| Item           | Contract                                                                                                                                  |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Factory        | One ordinary identifier parameter, block body, synchronous and non-generator; HTTP registrations are direct top-level statements          |
+| Factory return | Must be undefined; Promises, thenables, and other values are rejected                                                                     |
+| Return object  | `RouteDefinition`, whose collection and registration are loader-managed                                                                   |
+| Handler        | May be synchronous or async independently of factory sync requirement                                                                     |
+| Failure        | Non-functions, invalid registration forms, late registrations, duplicate routes, or invalid configuration fail at their respective stages |
 
 ---
 
@@ -195,7 +207,12 @@ interface RouteOptions {
         autoCommit?: boolean;
       };
   timeout?: number | false;
+  bodyParser?: VextBodyParserConfig;
   multipart?: {
+    enabled?: boolean;
+    maxFileSize?: number;
+    maxFiles?: number;
+    allowedMimeTypes?: string[];
     files?: Record<
       string,
       string | { description?: string; required?: boolean }
@@ -211,31 +228,50 @@ interface RouteOptions {
 }
 ```
 
+### Fields and omission behavior
+
+| Field             | When omitted                                            | Reference                                              |
+| ----------------- | ------------------------------------------------------- | ------------------------------------------------------ |
+| `validate`        | No automatic route input validation                     | [validate](#validate)                                  |
+| `responses`       | No declarative business JSON serializer                 | [Response schema](#responses--runtime-response-schema) |
+| `middlewares`     | No custom route middleware reference                    | [middlewares](#middlewares)                            |
+| `docs`            | Use framework-inferred documentation metadata           | [docs](#docs)                                          |
+| `cache`           | No response cache for this route                        | [cache](#cache)                                        |
+| `frontend`        | Default dynamic page policy                             | [Frontend freshness](#frontend-freshness)              |
+| `auth`            | No route auth guard; existing middleware still applies  | [auth](#auth)                                          |
+| `csrf`            | Follow global CSRF; `false` skips it                    | [CSRF](#csrf)                                          |
+| `securityHeaders` | Follow global header policy; `false` skips it           | [override](#override)                                  |
+| `session`         | Follow global Session setting                           | [session](#session)                                    |
+| `timeout`         | No route deadline; legacy `override.timeout` still read | [override](#override)                                  |
+| `bodyParser`      | Follow global body parser                               | [bodyParser](#bodyparser)                              |
+| `multipart`       | Follow global multipart                                 | [multipart](#multipart)                                |
+| `override`        | Follow the respective global settings                   | [override](#override)                                  |
+
 ### Frontend freshness
 
 `RouteOptions.frontend` keeps page freshness on the existing route declaration:
 
 ```ts
-frontend: {
-  mode: "dynamic" | "static" | "revalidate",
-  revalidate?: number, // seconds; required by revalidate mode
-  staticParams?: Array<Record<string, string | number | boolean>>,
-  clientOnly?: boolean,
-  hydration?: "full" | "none",
+interface VextRouteFrontendOptions {
+  mode?: "dynamic" | "static" | "revalidate";
+  revalidate?: number; // seconds; required by revalidate mode
+  staticParams?: ReadonlyArray<Record<string, string | number | boolean>>;
+  clientOnly?: boolean;
+  hydration?: "full" | "none";
   seo?: {
-    title?: string,
-    description?: string,
-    canonical?: string,
-    originKey?: string,
-    index?: boolean,
-  },
-  tags?: string[],
-  page?: string,
+    title?: string;
+    description?: string;
+    canonical?: string;
+    originKey?: string;
+    index?: boolean;
+  };
+  tags?: ReadonlyArray<string>;
+  page?: string;
   staticBudget?: {
     maxParams?: number;
     maxDurationMs?: number;
     maxBytes?: number;
-  },
+  };
 }
 ```
 
@@ -244,13 +280,18 @@ frontend: {
 route document/data/assets while intentionally skipping the server page body;
 it is not PPR or a second page route.
 
+For static generation, explicitly set `frontend.page`. The builder passes `{ params }` from `staticParams` directly to the page; it does not run route handlers, authentication, or service queries as if handling a business request. Keep pages requiring handler-prepared data on dynamic SSR. See [Rendering modes](/frontend/rendering-modes).
+
 `hydration: "none"` does the opposite of `clientOnly`: it requires and keeps
 the SSR page body but removes the Vext/React browser runtime, hydration data,
 and route JS preload. It cannot be combined with `clientOnly` or disabled SSR.
 `seo` is static, JSON-safe route metadata and is merged before per-render SEO.
+
+### Static projection boundary
+
 Build-indexed paths and route metadata use a finite static grammar so the build
 index and runtime cannot diverge. The index accepts literals, same-file `const`
-bindings, and TypeScript `as const` / simple `as Type` / `satisfies` wrappers.
+bindings, imports resolvable to source modules, and TypeScript `as const` / simple `as Type` / `satisfies` wrappers.
 A route-options helper call is rejected because the index does not execute the
 helper body and cannot know whether it adds, removes, or replaces contract
 fields. Inline the helper's final object or store that final object in a
@@ -262,7 +303,7 @@ statement in the `defineRoutes` callback. Conditional or nested registration
 fails the static projection because the build index cannot guarantee whether
 runtime control flow executes it.
 
-Imported values, computed expressions, and template literals with
+The index follows resolvable source imports and re-exports without executing user helpers or arbitrary runtime module code. Opaque imported values, computed expressions, and template literals with
 interpolation are not executed. If a route path, `validate` location, or
 response schema cannot be projected, build/doctor/typegen fails with file,
 HTTP method, and route context instead of silently omitting the route or
@@ -271,6 +312,8 @@ request-dependent metadata. See
 [SEO, Sitemap, and Robots](/frontend/seo-sitemap).
 
 ### Complete example
+
+The following is a composition fragment inside a `defineRoutes` factory. Supply the `auth` middleware, its declaration, and the business `handler` in your project.
 
 ```typescript
 app.put(
@@ -348,7 +391,7 @@ request contract.
 
 These descriptions will enter the OpenAPI schema while retaining constraints such as required, enumeration, and length.
 
-### Verify location
+### Validation locations
 
 | Location | Data Source   | Description                              |
 | -------- | ------------- | ---------------------------------------- |
@@ -404,9 +447,9 @@ app.get(
 `schema-dsl` will automatically do **type conversion**. For example, `'2'` (string) in the query parameter `?page=2` will be automatically converted to `2` (number), provided that the schema is declared as `'number'` type.
 :::
 
-### Get the verified data
+### Read validated data
 
-Use `req.valid(location)` to obtain the verified and type-converted data:
+Use `req.valid(location)` to obtain validated and type-converted data:
 
 ```typescript
 app.post(
@@ -437,7 +480,7 @@ const body = req.valid("body");
 An explicit generic remains available only as an escape hatch for dynamic or
 external schemas and overrides the inferred contract.
 
-### Verification failure response
+### Validation failure response
 
 For `query`, `header`, `cookie`, or `body`, validation failure returns HTTP
 `422` with a structured response such as the following. A `validate.param`
@@ -555,6 +598,39 @@ registered in config.middlewares whitelist.
 - `auth: { required: false }` makes identity optional; without roles, scopes, permissions, or `check`, OpenAPI marks the route as public.
 - `auth: false` marks the route as explicitly public and disables legacy OpenAPI security inference from `middlewares`.
 
+### VextAuthRequirement
+
+```typescript
+interface VextAuthRequirement {
+  required?: boolean;
+  roles?: string[];
+  scopes?: string[];
+  permissions?: VextPermissionRequirement[];
+  mode?: "any" | "all";
+  security?: string | string[] | Array<Record<string, string[]>>;
+  check?: (
+    req: VextRequest,
+    auth: VextAuthContext,
+  ) => boolean | Promise<boolean>;
+}
+
+type VextPermissionRequirement =
+  | string
+  | {
+      action: string;
+      resource?: string | ((req: VextRequest) => string | undefined);
+      context?:
+        | Record<string, unknown>
+        | ((req: VextRequest) => Record<string, unknown> | undefined);
+    };
+```
+
+`required` defaults to `true`. Omitted or empty roles, scopes, and permissions add no check for that group. `mode` defaults to `"any"` within each group; different declared groups must all pass. Then `check(req, auth)` runs: false denies, and an exception follows the provider-error path. A permission string is an action; an object may also supply resource and context.
+
+With `required: false` and no further authorization rule, anonymous requests are allowed, but an invalid credential recorded as `req.auth.error` is still rejected. The guard runs before automatic route validation, so `check` cannot assume `req.valid()` has data. `security` affects documentation only, not these runtime checks.
+
+The fixed `demo-token` below only illustrates the contract; a real application must verify credentials. Declare the middleware and its allowlist, then register the route inside a factory.
+
 ```typescript
 // src/middlewares/auth.ts
 import { auth, defineMiddleware } from "vextjs";
@@ -570,7 +646,7 @@ export default defineMiddleware(
         roles: ["admin"],
         scopes: ["posts:write"],
         can(action, resource) {
-          return action === "post:update" && resource === "post-1";
+          return action === "post:update" && resource === "POST:/posts/:id";
         },
       };
     },
@@ -587,17 +663,19 @@ const updatePostOptions = {
   auth: {
     roles: ["admin"],
     scopes: ["posts:write"],
-    permissions: [{ action: "post:update", resource: "POST:/api/posts/:id" }],
+    permissions: [{ action: "post:update", resource: "POST:/posts/:id" }],
     mode: "all",
     security: "bearerAuth",
   },
   docs: { summary: "Update post" },
 } satisfies RouteOptions;
 
-app.post("/posts/:id", updatePostOptions, handler);
+app.post("/:id", updatePostOptions, handler);
 ```
 
 The build index accepts the final inline object or a same-file `const` such as `updatePostOptions`. It rejects route-options helper calls because it does not execute helper bodies. Keep each route's complete guard contract in one of these statically projectable forms; shared runtime authorization logic still belongs in middleware or the permission provider.
+
+Inside `src/routes/posts.ts`, the file prefix `/posts` and subpath `/:id` make `POST /posts/:id`. The permission resource is an application convention; the framework does not derive it from the URL. Update both the auth provider and route declaration if you change that string.
 
 ### Runtime auth, OpenAPI security, and Docs access
 
@@ -626,38 +704,59 @@ Guard failures use stable error codes:
 
 ## cache
 
-Route-level response cache configuration. Response caching occurs on the server side and caches interface response content; it is not custom middleware, nor is it the browser `Cache-Control` response header.
+Route-level response caching is configured with `RouteOptions.cache`. It occurs on the server and is distinct from the browser `Cache-Control` header.
 
 ```typescript
-import { route } from "vext";
+// src/routes/cache-demo.ts
+import { defineRoutes } from "vextjs";
 
-route({
-  method: "GET",
-  path: "/posts",
-  cache: {
-    ttl: 30_000, // milliseconds
-    methods: ["GET"],
-    headers: ["accept-language"],
-    partitionKey: (req) => req.user?.tenantId ?? "public",
-  },
-  handler: async () => {
-    return await listPosts();
-  },
+export default defineRoutes((app) => {
+  app.get(
+    "/",
+    { cache: { ttl: 30_000, vary: ["accept-language"] } },
+    (_req, res) => {
+      res.json({ generatedAt: Date.now() });
+    },
+  );
 });
 ```
 
-Commonly used writing methods:
+With response caching enabled, repeated GET `/cache-demo` reuses the response within the TTL. A different query, vary header, or partition produces a different entry.
 
-| Configuration                  | Description                                                                                                                      |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| `cache: false`                 | Disable response caching for this route                                                                                          |
-| `cache: 30000`                 | Enables response caching with a TTL of 30000 milliseconds                                                                        |
-| `cache: { ttl: 30000 }`        | Use full configuration object                                                                                                    |
-| `headers: ["accept-language"]` | Specifies the request headers that participate in caching key; it is not recommended to include all request headers in key       |
-| `partitionKey`                 | Generate user, tenant or region isolation dimensions to prevent different visitors from sharing the same cached response         |
-| `allowCookieCache`             | Allow requests with a `Cookie` header to participate in cache; keep disabled unless the cookie input is part of a safe cache key |
+| Setting                   | Type/unit                          | Behavior                                                                             |
+| ------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------ |
+| `cache`                   | false / number / RouteCacheOptions | Omitted means no cache for this route; number is TTL in milliseconds                 |
+| `ttl`                     | number, milliseconds               | Required in the public object type; use a positive number                            |
+| `key`                     | string or request function         | Custom key; default includes method, path, query, and vary                           |
+| `condition`               | request function returning boolean | False skips caching                                                                  |
+| `vary`                    | string[] or `"*"`                  | Request headers in the key, e.g. `accept-language`                                   |
+| `partitionKey`            | string or request function         | User/tenant partition; use verified identity                                         |
+| `allowAuthorizationCache` | boolean, default false             | Allow unpartitioned Authorization requests to cache                                  |
+| `allowCookieCache`        | boolean, default false             | Controls writing Cookie-origin responses; existing cache reads have a separate limit |
+| `cacheControl`            | boolean, default true              | Whether to emit Cache-Control                                                        |
+| `tags`                    | string[]                           | Tags for `app.cache.invalidate(tag)`                                                 |
+
+If object `ttl` is missing or zero, runtime tries a positive global default TTL; a negative value disables this route's cache. Use `cache: false` or numeric `cache: 0` to disable, not `{ ttl: 0 }`. Typed configuration should supply an explicit positive TTL.
+
+`config.cache.enabled: false` disables route caching. Authentication and authorization run before partitioned cache lookup. Authorization requests bypass by default unless a nonempty partition or explicit allowance is present. The current Cookie default only prevents writing origin responses; an existing public cache entry may still be read. To exclude Cookie requests entirely, use `condition: (req) => req.headers.cookie === undefined` or disable caching.
 
 See the [Response Caching Guide](/guide/cache) for details.
+
+---
+
+## responses — runtime response schema
+
+```typescript
+interface RuntimeResponseConfig {
+  schema: Record<string, unknown> | string;
+}
+
+type RuntimeResponses = Record<string | number, RuntimeResponseConfig>;
+```
+
+Declare this map at top-level `RouteOptions.responses`. Selectors support exact status (`201`), family (`2xx`), or `default`. The final status after `response:before` chooses exact → family → default. Vext compiles each JSON schema once during route registration and reuses it. The same closed schema projects into OpenAPI, route manifests, static build indexing, and generated client types.
+
+Schemas describe business data passed to `res.json()`, without duplicating the response envelope. Undeclared properties are removed recursively; missing required values fail before committing bytes. HEAD, exact 204, raw JSON, text, redirect, file/download, stream, and render/SSR bypass this serializer. See [OpenAPI response contracts](/guide/openapi#responses--runtime-response-contracts-and-docs-metadata).
 
 ---
 
@@ -739,7 +838,7 @@ app.post(
             createdAt: "2026-01-01T00:00:00Z",
           },
         },
-        422: { description: "Request parameter verification failed" },
+        422: { description: "Request parameter validation failed" },
         409: { description: "Email has been registered" },
       },
     },
@@ -824,30 +923,6 @@ app.get(
   handler,
 );
 ```
-
-### Runtime response schema
-
-```typescript
-interface RuntimeResponseConfig {
-  schema: Record<string, unknown> | string;
-}
-
-type RuntimeResponses = Record<string | number, RuntimeResponseConfig>;
-```
-
-Declare this map as top-level `RouteOptions.responses`. Selectors support an
-exact status (`201`), a family (`2xx`), or `default`; the final status after
-`response:before` chooses exact → family → default. Vext compiles each JSON
-schema once during route registration and reuses it across requests. The same
-closed schema is projected to OpenAPI, route manifests, static build indexing,
-and generated client types.
-
-Schemas describe the business data passed to `res.json()`, not a manually
-duplicated envelope. Undeclared properties are removed recursively. Missing
-required values fail before bytes are committed. HEAD, exact 204, raw JSON,
-text, redirect, file/download, stream, and render/SSR responses bypass this
-serializer. See [OpenAPI response contracts](/guide/openapi#responses--runtime-response-contracts-and-docs-metadata)
-for lifecycle and raw JSON Schema details.
 
 ### Documented response metadata
 
@@ -956,10 +1031,10 @@ app.post(
 | `files[].description` | `string`                           | Field description (for OpenAPI documentation)                                                       |
 | `files[].required`    | `boolean`                          | Whether at least one file for this field is required at runtime (default `false`)                   |
 
-When a required file field is missing, Vext returns `400` with the missing field names. Optional fields and undeclared upload fields are accepted; they are still limited by `maxFiles`, `maxFileSize`, and `allowedMimeTypes`.
+For multipart requests using the built-in parser, a missing required file field returns `400` with its name. Optional and undeclared upload fields are accepted subject to `maxFiles`, `maxFileSize`, and `allowedMimeTypes`. Non-multipart requests skip those file checks; if the endpoint requires a file, also inspect `req.files` in the handler.
 
 :::warning note
-`multipart.files` and `validate.body` are mutually exclusive. When configured at the same time, `multipart.files` takes priority in OpenAPI document generation.
+Built-in multipart parsing puts files in `req.files`, but does not put ordinary text form fields in `req.body`. With both `multipart.files` and `validate.body`, OpenAPI describes multipart first, yet runtime validation still checks the current `req.body`. A required body field therefore fails with `422` even when a form submitted a same-named text field through only the built-in parser. For mixed files and text, use a custom parser that fills `req.body` and coordinates body reading, or send text in a separate JSON request. See [Request files and form fields](/guide/uploads#reqfiles-and-form-fields) and [Custom upload ownership](/guide/uploads#memory-adapters-and-custom-uploads).
 :::
 
 ---
@@ -980,9 +1055,25 @@ app.post(
 
 ---
 
+## bodyParser
+
+`bodyParser?: VextBodyParserConfig` overrides the global body-parser settings for a route. An already installed body parser consumes it; this option does not install one when global parsing is disabled.
+
+```typescript
+const rawRouteOptions = { bodyParser: { enabled: false } };
+```
+
+Once a `bodyParser` object is declared, it takes precedence over legacy `override.maxBodySize`; an omitted size in that object falls back to the global value. Without that object, `override.maxBodySize` is read. After disabling built-in parsing, handlers must not assume `req.body` is parsed. See the [Configuration guide](/guide/configuration).
+
+## csrf
+
+`csrf?: false` is a skip switch only. When omitted, the global CSRF setting applies. It does not enable CSRF or establish an authenticated identity. Decide whether Cookie/Session routes may skip it based on how they are called; see [Cookies and Session](/guide/cookies-session).
+
+---
+
 ## override
 
-Route-level configuration override, overrides the global configuration in `src/config/default.ts`.
+Route-level override. `override.rateLimit` adjusts an already enabled global limiter; it does not enable rate limiting. Its `window` is in seconds, while `timeout` is in milliseconds.
 
 ```typescript
 app.post(
@@ -1043,11 +1134,11 @@ interface RouteDefinition {
 }
 ```
 
-| Field        | Type            | Description                                    |
-| ------------ | --------------- | ---------------------------------------------- |
-| `routes`     | `RouteRecord[]` | List of collected route records                |
-| `sourceFile` | `string`        | Source file path (injected by router-loader)   |
-| `register()` | `Function`      | Register the route with the underlying adapter |
+| Field        | Type            | Description                                                                         |
+| ------------ | --------------- | ----------------------------------------------------------------------------------- |
+| `routes`     | `RouteRecord[]` | Empty on creation, filled after loader executes the factory                         |
+| `sourceFile` | `string`        | Source file path (injected by router-loader)                                        |
+| `register()` | `Function`      | Internal compatibility entry, not the loader's complete preparation/validation flow |
 
 ### RouteRecord
 
@@ -1069,19 +1160,18 @@ interface RouteRecord {
 Type definition of route processing function:
 
 ```typescript
-type VextHandler = (
-  req: VextRequest,
-  res: VextResponse,
-) => Promise<void> | void;
+type VextHandler<
+  TValidated extends VextValidatedData = VextDefaultValidatedData,
+> = (req: VextRequest<TValidated>, res: VextResponse) => Promise<void> | void;
 ```
 
-Handler is the last link in the middleware chain and does not call `next()`.
+The handler is the last link in the middleware chain and does not call `next()`. Three-part routes infer validated-data types from `options.validate`. An explicit generic changes TypeScript typing only; it does not add runtime validation.
 
 ### Basic example
 
 ```typescript
 const handler: VextHandler = async (req, res) => {
-  const users = await app.services.user.findAll();
+  const users = await req.app.services.user.findAll();
   res.json(users);
 };
 ```
@@ -1112,103 +1202,7 @@ If you want to actively return clear HTTP errors such as `404`, `401`, `409`, et
 
 ## Multiple route registration
 
-Multiple routes can be registered in a routing file:
-
-```typescript
-// src/routes/users.ts
-import { defineRoutes } from "vextjs";
-
-export default defineRoutes((app) => {
-  // GET /users/list
-  app.get(
-    "/list",
-    {
-      validate: {
-        query: { page: "number:1-", limit: "number:1-100" },
-      },
-      docs: { summary: "User List" },
-    },
-    async (req, res) => {
-      const { page, limit } = req.valid("query");
-      const result = await app.services.user.findAll({ page, limit });
-      res.json(result);
-    },
-  );
-
-  // GET /users/:id
-  app.get(
-    "/:id",
-    {
-      validate: {
-        param: { id: "string:1-" },
-      },
-      docs: { summary: "Get user details" },
-    },
-    async (req, res) => {
-      const { id } = req.valid("param");
-      const user = await app.services.user.findById(id);
-      if (!user) app.throw(404, "User does not exist");
-      res.json(user);
-    },
-  );
-
-  // POST /users
-  app.post(
-    "/",
-    {
-      validate: {
-        body: { name: "string:1-50", email: "email" },
-      },
-      middlewares: ["auth"],
-      auth: { required: true, security: "bearerAuth" },
-      docs: { summary: "Create user" },
-    },
-    async (req, res) => {
-      const data = req.valid("body");
-      const user = await app.services.user.create(data);
-      res.json(user, 201);
-    },
-  );
-
-  // PUT /users/:id
-  app.put(
-    "/:id",
-    {
-      validate: {
-        param: { id: "string:1-" },
-        body: { name: "string:1-50?", email: "email?" },
-      },
-      middlewares: ["auth"],
-      auth: { required: true, security: "bearerAuth" },
-      docs: { summary: "Update user" },
-    },
-    async (req, res) => {
-      const { id } = req.valid("param");
-      const data = req.valid("body");
-      const user = await app.services.user.update(id, data);
-      res.json(user);
-    },
-  );
-
-  // DELETE /users/:id
-  app.delete(
-    "/:id",
-    {
-      validate: {
-        param: { id: "string:1-" },
-      },
-      middlewares: ["auth"],
-      auth: { required: true, security: "bearerAuth" },
-      docs: { summary: "Delete user" },
-    },
-    async (req, res) => {
-      const { id } = req.valid("param");
-      await app.services.user.delete(id);
-      res.status(204).json(null);
-    },
-  );
-});
-```
+A factory can declare multiple HTTP methods and subpaths. Each registration is a direct top-level statement in its block. Different methods may share a path; the same normalized method and path cannot be registered twice. For a complete business example, follow the [Routing guide](/guide/routing#complete-example). First-time readers can run that guide's dependency-free introductory example.
 
 ---
 
@@ -1216,7 +1210,7 @@ export default defineRoutes((app) => {
 
 ### Do not call HTTP methods directly on the app
 
-The `app` returned by `defineRoutes` is a collector, not a real application instance. Calling the HTTP method directly on the application instance throws an error:
+`defineRoutes` returns a `RouteDefinition`; the factory parameter is an app facade with a closable HTTP collection entry. HTTP methods on the root app are placeholders and throw if called directly:
 
 ```typescript
 // ❌ Incorrect usage
@@ -1233,30 +1227,24 @@ export default defineRoutes((app) => {
 
 ### The routing file must be default export
 
-Build-time consumers accept a finite default-export grammar. `defineRoutes`
-must be a named import from `vextjs` (an import alias is allowed), and the
-factory must be an inline synchronous arrow or function expression:
+Build-time consumers must resolve the default export to `defineRoutes` imported by name from `vextjs` (an alias is allowed). A named export alone is not a route entry; property/namespace calls and opaque helpers do not meet this identity rule. Prefer an inline synchronous arrow or function expression in a direct default export. A synchronous block-body factory may also be bound first:
 
 ```typescript
-import { defineRoutes, defineRoutes as routes } from "vextjs";
+// src/routes/binding-demo.ts
+import { defineRoutes, type VextApp } from "vextjs";
 
-// ✅ Direct default export
-export default defineRoutes((app) => { ... });
+const register = (app: VextApp) => {
+  app.get("/", (_req, res) => {
+    res.json({ ok: true });
+  });
+};
 
-// ✅ Alias plus inline function expression
-export default routes(function (app) { ... });
-
-// ✅ Same-file top-level binding
-const routeDefinition = defineRoutes((app) => { ... });
-export { routeDefinition as default };
-
-// ❌ Named-only definitions are not route-file identity
-export const ignored = defineRoutes((app) => { ... });
+export default defineRoutes(register);
 ```
 
-Re-exports, imported route definitions, property/namespace callees, callback
-identifiers, and files without a supported default export fail with the route
-file in the diagnostic.
+Creating a definition first and using `export { routeDefinition as default }` is also supported. Re-exports work when fully resolvable: for example, `src/routes/account.ts` can use `export { default } from "../features/account.js"`; `/account` remains the route prefix while the referenced module defines it. The target must be in analyzable source and its exports and bindings resolvable; arbitrary dynamic imports are not supported.
+
+Expression-body `(app) => app.get(...)`, async factories, registration inside conditions/loops/nested helpers, computed or extracted HTTP methods, and non-undefined factory returns are unsupported.
 
 ### Routing path normalization
 
@@ -1270,3 +1258,9 @@ The framework automatically handles the following path edge cases:
 | `/`          | `/`       | `/`           |
 | `/`          | `/health` | `/health`     |
 | `/api/users` | _(empty)_ | `/api/users`  |
+
+The static index also checks entry prefixes: `users.ts` and `users/index.ts` cannot both be route entries. A normalized method/path pair cannot repeat, including case and trailing-slash variants.
+
+## Related specification
+
+- [HTTP and routing specification](/specification/http-and-routing): Rule IDs for route modules, factories, validation, and middleware.

@@ -52,7 +52,7 @@ export const docsHref = (path) => `${basePath}${path}`;
           <div className="vext-console__line vext-console__line--typing"><span className="vext-console__prompt">$</span><span className="vext-console__typed" data-vext-typewriter="npx vextjs create my-app">npx vextjs create my-app</span></div>
           <div className="vext-console__line"><span className="vext-console__ok">create</span><span>vext project "my-app"</span></div>
           <div className="vext-console__line"><span className="vext-console__muted">preset</span><span>TypeScript / React / native adapter</span></div>
-          <div className="vext-console__line"><span className="vext-console__muted">write</span><span>client / routes / services / config</span></div>
+          <div className="vext-console__line"><span className="vext-console__muted">write</span><span>frontend / routes / services / config</span></div>
           <div className="vext-console__line"><span className="vext-console__route">deps</span><span>install vextjs and dev scripts</span></div>
           <div className="vext-console__line"><span className="vext-console__ok">done</span><span>Project created successfully</span></div>
           <div className="vext-console__line"><span className="vext-console__muted">next</span><span>cd my-app && npm run dev</span></div>
@@ -78,7 +78,7 @@ export const docsHref = (path) => `${basePath}${path}`;
   </a>
   <a href={docsHref("/benchmark.html")}>
     <strong>Perf</strong>
-    <span>Understand current results, methodology, and adapter tradeoffs</span>
+    <span>Read the historical sample, method, and adapter tradeoffs</span>
   </a>
   <a href={docsHref("/guide/deployment.html")}>
     <strong>Ship</strong>
@@ -107,22 +107,22 @@ export const docsHref = (path) => `${basePath}${path}`;
   <div className="vext-reload">
     <article className="vext-tier-card vext-tier-card--active">
       <span className="vext-capability__mark">T1 / code</span>
-      <h3>Route code hot swap</h3>
+      <h3>Changes to existing backend files</h3>
       <p>
-        {"Business code such as "}
+        {"An existing file in a soft scope such as "}
         <code>src/routes/</code>
         {
-          " uses a targeted replacement path while the dev service process and connection state stay alive."
+          " usually compiles and reloads affected modules; failures may escalate to a cold restart."
         }
       </p>
-      <strong>Keeps the process alive</strong>
+      <strong>Normally keeps the application worker alive</strong>
     </article>
     <article className="vext-tier-card">
       <span className="vext-capability__mark">T2 / struct</span>
-      <h3>Service and model structural reload</h3>
+      <h3>Added, removed, or fully reloaded files</h3>
       <p>
         {
-          "Changes in services, models, locale resources, and similar structures trigger local reloads instead of pushing every edit to a cold restart."
+          "Adding or removing routes, services, middleware, Models, or locale resources in a soft scope rescans compile entries and updates runtime state."
         }
       </p>
       <strong>Reloads the affected graph</strong>
@@ -132,7 +132,7 @@ export const docsHref = (path) => `${basePath}${path}`;
       <h3>Runtime-boundary cold start</h3>
       <p>
         {
-          "Configuration, plugin, and middleware changes perform a cold start so runtime boundaries are rebuilt correctly without sacrificing safety."
+          "Changes to configuration, plugins, preload entries, or startup dependencies cold restart the application worker; middleware normally remains in the soft scope."
         }
       </p>
       <strong>Rebuilds runtime boundaries</strong>
@@ -145,12 +145,12 @@ export const docsHref = (path) => `${basePath}${path}`;
     <p className="vext-kicker">Performance Stack</p>
     <h2 className="vext-title">
       {
-        "Performance is not a wrapper phrase; it is a set of engineering choices from the HTTP path to production guardrails."
+        "Framework capabilities from HTTP handling through build and deployment."
       }
     </h2>
     <p className="vext-copy">
       {
-        "The homepage keeps the framework's real engineering surface visible: Native fast path, route-core, schema/OpenAPI, CLI, and production delivery capabilities."
+        "Start with routing, validation, and typed contracts. Enable frontend, documentation, and runtime features as the application needs them; consult the corresponding guides for their prerequisites and limits."
       }
     </p>
   </div>
@@ -205,7 +205,7 @@ export const docsHref = (path) => `${basePath}${path}`;
       <h3>Production safety capabilities</h3>
       <p>
         {
-          "Rate limiting, structured errors, graceful shutdown, heartbeat monitoring, and multi-process deployment complete the delivery path."
+          "Enable rate limiting, structured errors, graceful shutdown, and multi-process monitoring when needed, then verify them in the target environment."
         }
       </p>
     </article>
@@ -217,7 +217,7 @@ export const docsHref = (path) => `${basePath}${path}`;
     <div className="vext-matrix__panel">
       <p className="vext-kicker">Runtime Flexibility</p>
       <h2 className="vext-title">
-        {"Adapters are flexibility, not the homepage's main character."}
+        {"Choose an HTTP adapter for your integration needs."}
       </h2>
       <p>
         {
@@ -247,20 +247,27 @@ export const docsHref = (path) => `${basePath}${path}`;
       <div className="vext-adapter-row">
         <strong>Fastify</strong>
         <span>
-          {"Mature high-performance ecosystem for complex plugin scenarios."}
+          {
+            "Mature high-performance ecosystem; check Vext adapter boundaries before integrating native plugins."
+          }
         </span>
         <em>plugin</em>
       </div>
       <div className="vext-adapter-row">
         <strong>Express</strong>
         <span>
-          {"Compatible with migration from traditional Node.js projects."}
+          {
+            "When migrating Express projects, adapt to the Vext request and middleware contracts."
+          }
         </span>
         <em>classic</em>
       </div>
       <div className="vext-adapter-row">
         <strong>Koa</strong>
-        <span>Fits onion-model flow and reuse of existing Koa code.</span>
+        <span>
+          Supports onion-model flow; verify how existing Koa middleware
+          integrates.
+        </span>
         <em>flow</em>
       </div>
     </div>
@@ -270,29 +277,36 @@ export const docsHref = (path) => `${basePath}${path}`;
 <section className="vext-section">
   <div className="vext-production">
     <div>
-      <p className="vext-kicker">Production Ready</p>
+      <p className="vext-kicker">Production Operations</p>
       <h2 className="vext-title">
-        {"Secure, stable, shippable, and not stuck at the demo layer."}
+        {
+          "Verify runtime and deployment capabilities in the target environment."
+        }
       </h2>
       <p className="vext-copy">
         {
-          "The Vext documentation entry should let teams quickly judge whether it can enter real server-side projects: rate limiting, graceful shutdown, rolling restart, cluster, i18n, structured errors, and OpenAPI all need to be visible."
+          "Before deployment, check feature switches, platform support, and timeout budgets. Verify rate-limit failures, shutdown, and worker replacement. Configuration support does not mean the application has passed production acceptance."
         }
       </p>
     </div>
     <div className="vext-production__signals">
       <div className="vext-signal">
         <strong>Rate Limit</strong>
-        <span>Built-in rate limiting reduces abuse risk.</span>
+        <span>
+          Disabled by default; after enabling it, verify quotas and storage
+          failures.
+        </span>
       </div>
       <div className="vext-signal">
         <strong>Graceful</strong>
-        <span>The shutdown flow protects connections and requests.</span>
+        <span>
+          Waits for requests and resource cleanup within the shutdown budget.
+        </span>
       </div>
       <div className="vext-signal">
         <strong>Cluster</strong>
         <span>
-          {"Multi-process mode and heartbeats fit production supervision."}
+          {"Multi-process mode and heartbeats support production supervision."}
         </span>
       </div>
       <div className="vext-signal">
@@ -337,7 +351,7 @@ export const docsHref = (path) => `${basePath}${path}`;
       <strong>Understand the benchmarks</strong>
       <span>
         {
-          "Review current measurements, comparison limits, adapter choices, and reproduction steps."
+          "Review the versioned historical sample, adapter comparison, and method for measuring a new baseline."
         }
       </span>
     </a>
@@ -367,6 +381,7 @@ export const docsHref = (path) => `${basePath}${path}`;
         <div>
           <h2>Resources</h2>
           <a href={docsHref("/api/config.html")}>API Reference</a>
+          <a href={docsHref("/specification/")}>Development specifications</a>
           <a href={docsHref("/examples/hello-world.html")}>Examples</a>
           <a href={docsHref("/benchmark.html")}>Benchmark</a>
           <a href={docsHref("/resources/support-and-services.html")}>Support &amp; services</a>

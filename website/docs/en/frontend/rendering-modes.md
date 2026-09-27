@@ -2,6 +2,8 @@
 
 Vext supports a mixed full-stack frontend model without mixing server files into the browser bundle.
 
+This page helps projects that have completed [Full-Stack Quick Start](/frontend/getting-started) choose a rendering strategy. All modes below require `frontend.enabled: true`. See [Routing and Pages](/frontend/routing-and-pages) for how route URLs relate to page files.
+
 ## Default: SSR plus Hydration
 
 Most pages should use server rendering:
@@ -14,6 +16,8 @@ Use this when the first screen needs data, SEO-friendly HTML, shared layouts, or
 
 The default `frontend.render.streaming: "buffered"` path uses `renderToString` and preserves the existing fallback behavior. `frontend.render.timeoutMs` is checked after the synchronous render returns or throws. With `fallback: "client"`, Vext returns the client shell; with `fallback: "error"`, the SSR error is surfaced to the normal error path.
 
+This is the configuration parser's default; the full-stack scaffold explicitly sets `streaming: "auto"`. A timeout around synchronous rendering is not a hard timeout that can preempt CPU work.
+
 ## Opt-in Streaming SSR
 
 Set `frontend.render.streaming: "auto"` when a page should flush its document shell and Suspense fallback before delayed boundaries finish:
@@ -21,6 +25,7 @@ Set `frontend.render.streaming: "auto"` when a page should flush its document sh
 ```ts
 export default {
   frontend: {
+    enabled: true,
     render: {
       streaming: "auto",
       timeoutMs: 3000,
@@ -75,38 +80,49 @@ Roadmap](/frontend/boundaries-and-roadmap) for the decision rule.
 
 Freshness remains a route option; it does not create a second page or route
 DSL. The default is `mode: "dynamic"`. Use `mode: "static"` with concrete
-`staticParams` to materialize known paths during the build:
+`staticParams`, an explicit `page`, and known public paths to materialize HTML and data files during the build. Create these two files:
 
 ```ts
+// src/routes/posts.ts
 import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
   app.get(
-    "/posts/:slug",
+    "/:slug",
     {
+      validate: { param: { slug: "string" } },
       frontend: {
         mode: "static",
+        page: "posts/detail",
         staticParams: [{ slug: "hello" }, { slug: "release-notes" }],
         tags: ["posts"],
-        staticBudget: { maxParams: 20, maxBytes: 2 * 1024 * 1024 },
+        staticBudget: { maxParams: 20, maxBytes: 2097152 },
       },
     },
-    async (_req, res) => res.render("posts/detail"),
+    (req, res) => res.render("posts/detail", { params: req.valid("param") }),
   );
 });
 ```
 
-Use `mode: "revalidate"` with a positive `revalidate` interval in seconds
-for a persisted freshness entry. Vext single-flights concurrent refreshes,
-atomically replaces successful output, and keeps last-known-good output if a
-refresh fails. `tags` allow explicit invalidation. `clientOnly: true`
-preserves route, document, data, and asset behavior but intentionally omits the
-server page body. These policies are not PPR.
+```tsx
+// src/frontend/pages/posts/detail.tsx
+export default function PostPage(props: { params: { slug: string } }) {
+  return <main>Post: {props.params.slug}</main>;
+}
+```
+
+The builder renders the page directly with `{ params }`; it does not execute the route handler, authentication middleware, or service query. `frontend.page` specifies the static generation target. Do not assume it can be inferred from an arbitrary `res.render()` call. If the page depends on user data or database results injected by a handler, use dynamic SSR or provide public content as build input safe for the page to read. Build-time artifacts and runtime route freshness storage are separate paths; static generation is not an early request to the whole business API.
+
+Use `mode: "revalidate"` with a positive `revalidate` interval in seconds for persisted runtime freshness entries. Vext single-flights concurrent refreshes, atomically replaces successful output, and keeps last-known-good output on refresh failure. This storage reuses only public GET/HEAD render payloads; authenticated or session-bearing requests bypass it. Server code can invalidate a tag with `invalidateFrontendFreshness(rootDir, { tag })`; browser `revalidate()` operates on the browser navigation cache. Do not confuse them. See [Render Data and Cache](/frontend/render-data-and-cache).
+
+`clientOnly: true` preserves route, document, data, and asset behavior but intentionally omits the server page body. These policies are not PPR. The current browser entry still calls `hydrateRoot` for an empty body and may report a mismatch before recovering. Do not accept this as error-free CSR; the same limit applies to disabling SSR and buffered client fallback. Keep SSR for now when possible, and see [CSR and SPA Fallback](./csr-and-spa-fallback#current-limitation-of-an-empty-shell) for the limitation and comparison check.
 
 ## Server-only HTML without Hydration
 
 Use the existing route policy when an SSR page should ship HTML and CSS without
 the Vext or React browser runtime:
+
+This is a route snippet inside an existing `defineRoutes` factory. It assumes `src/frontend/pages/legal/terms.tsx` already default-exports a page component. The final URL also depends on the containing route file's prefix.
 
 ```ts
 app.get(
@@ -128,8 +144,7 @@ Navigation to or from this route uses a full document request. Static mode
 writes HTML without a `__vext.page.json` sidecar.
 
 `hydration: "none"` requires SSR and cannot be combined with
-`clientOnly: true` or a per-render `ssr: false` override. It is a page-level
-policy, not Selective/Partial Hydration, an Islands architecture, or PPR.
+`clientOnly: true`, global SSR disablement, or a per-render `ssr: false` override. It also disables streaming. It is a page-level policy, not Selective/Partial Hydration, an Islands architecture, or PPR.
 
 ## Hydrated Interactions
 
@@ -141,17 +156,20 @@ Use [Hydration](/frontend/hydration) when you need to debug mismatches, measure 
 
 Client-router sub-apps are explicit. Configure `frontend.spaFallback.scopes[]` only for paths that should receive a browser shell.
 
+Merge these fields into an existing configuration and create the `app/shell` page first. See [CSR and SPA Fallback](/frontend/csr-and-spa-fallback) for a complete path:
+
 ```ts
-frontend: {
-  spaFallback: {
-    scopes: [
-      { basePath: "/app", page: "app/shell", ssr: false },
-    ],
+export default {
+  frontend: {
+    enabled: true,
+    spaFallback: {
+      scopes: [{ basePath: "/app", page: "app/shell", ssr: true }],
+    },
   },
-}
+};
 ```
 
-Use this for highly interactive islands of the product, admin consoles with client routing, or embedded tools. It is not the default page model.
+Use this for highly interactive product areas, admin consoles, or embedded tools. It is not the default page model. To try an empty shell, change `ssr` to `false` with the hydration-mismatch limitation above in mind.
 
 ## Render Data Cache
 
@@ -169,3 +187,7 @@ Use [Render Data and Cache](/frontend/render-data-and-cache) for cache keys, inv
 | Authenticated admin shell         | SSR for entry, optional scoped CSR inside   |
 | Highly interactive client routing | `spaFallback.scopes[]` for that route range |
 | API-only service                  | Disable frontend                            |
+
+## Verify the Selected Mode
+
+For the static example, run `npm run build` and inspect `dist/client/posts/hello/index.html` and `dist/client/posts/release-notes/index.html` in the default output directory. Each should contain its slug. `static-manifest.json` should list both paths and their data files. If page mapping or dynamic parameters are absent, or `staticBudget` is exceeded, correct the configuration and rebuild. Then run `npm start -- --port 3000` and check `/posts/hello` at runtime. Stop the service afterward. For observations specific to first streaming bytes, no hydration, and CSR, see [SSR](/frontend/ssr), [Hydration Validation](/frontend/hydration-validation), and [CSR and SPA Fallback](/frontend/csr-and-spa-fallback).

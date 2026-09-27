@@ -1,8 +1,77 @@
 # Response caching
 
-VextJS provides declarative route-level response caching, configured through the `cache` field of the route options. When the cache is hit, parameter verification and handler execution are skipped, and the cached JSON response is returned directly.
+VextJS provides declarative route-level response caching through the `cache` route option. Route middleware and the authentication Guard run first; on a cache hit, parameter validation and the handler are skipped and the cached result is returned. This suits public queries that tolerate brief staleness, not endpoints whose handlers must execute side effects every time.
+
+This page focuses on JSON APIs. `res.render()` has separate render-cache integration; see [Render Data and Cache](/frontend/render-data-and-cache). Do not apply these settings uncritically to arbitrary HTML, streams, or personal data.
+
+## Complete two-file example and verification
+
+In the API project from [Quick Start](/guide/quick-start), merge the following configuration and add the route. The counter only shows when the handler executes; it lives in one process and resets on restart, so it is not persistent business data.
+
+```typescript
+// src/config/default.ts
+import type { VextUserConfig } from "vextjs";
+
+export default {
+  host: "127.0.0.1",
+  port: 3000,
+  adapter: "native",
+  frontend: { enabled: false },
+  cache: { enabled: true, maxEntries: 100 },
+} satisfies VextUserConfig;
+```
+
+```typescript
+// src/routes/cache-demo.ts
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  let executions = 0;
+  app.get(
+    "/",
+    {
+      cache: {
+        ttl: 60_000,
+        tags: ["cache-demo"],
+        vary: ["accept-language"],
+        condition: (req) =>
+          req.query.refresh === undefined && req.headers.cookie === undefined,
+      },
+    },
+    (req, res) => {
+      executions += 1;
+      res.json({
+        executions,
+        language: req.headers["accept-language"] ?? "default",
+      });
+    },
+  );
+  app.post("/invalidate", {}, async (_req, res) => {
+    await app.cache.invalidate("cache-demo");
+    res.json({ invalidated: true });
+  });
+});
+```
+
+After `npm run dev`, send these requests in order from another terminal. On Windows PowerShell, use `curl.exe`:
+
+```bash
+curl -i http://127.0.0.1:3000/cache-demo
+curl -i http://127.0.0.1:3000/cache-demo
+curl -i -X POST http://127.0.0.1:3000/cache-demo/invalidate
+curl -i http://127.0.0.1:3000/cache-demo
+curl -i 'http://127.0.0.1:3000/cache-demo?refresh='
+```
+
+The first two requests return 200 with `data.executions: 1` and MISS/HIT headers respectively. Invalidation returns 200 with `data.invalidated: true`; the next GET is a MISS with count 2; the refresh request bypasses cache and has count 3. Use the same process and finish within 60 seconds to compare this sequence.
+
+Try different `Accept-Language` values to verify separate entries; swapping the order of identical query parameters should hit the same entry. Cookie requests bypass this example through its condition, while Authorization requests bypass by default request policy, so they do not demonstrate public cache hits. The invalidation endpoint is for local demonstration only; protect it in a business deployment.
+
+After development verification, stop dev, run `npm run build -- --typecheck` and `npm start`, and repeat the requests. The production process starts its counter from zero. Do not run two services on port 3000 at the same time.
 
 ## Basic usage
+
+The `db` and `handler` references below stand for application code. These snippets explain options and cannot start on their own. Use the complete example above for first verification.
 
 ### Numeric abbreviation
 
@@ -30,8 +99,8 @@ app.get(
       ttl: 120_000, // cache for 120 seconds
       vary: ["accept-language"], // Different languages are cached separately
       tags: ["products"], // Tags (for batch invalidation)
-      condition: (req) => !req.query.refresh, // condition cache
-      cacheControl: true, //Set the Cache-Control header (default true)
+      condition: (req) => req.query.refresh === undefined, // bypass when refresh is present
+      cacheControl: true, // Set Cache-Control (default true)
     },
   },
   async (req, res) => {
@@ -52,17 +121,17 @@ app.get("/realtime", { cache: false }, async (req, res) => {
 
 ### RouteOptions.cache
 
-| Field                     | Type                        | Default Value           | Description                                                                                               |
-| ------------------------- | --------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------- |
-| `ttl`                     | `number`                    | —                       | Cache validity period, in milliseconds, must be > 0                                                       |
-| `key`                     | `string \| (req) => string` | Automatically generated | Custom cache key; `partitionKey` and `vary` will still participate in the final underlying key            |
-| `condition`               | `(req) => boolean`          | —                       | The caching logic is only used when `true` is returned                                                    |
-| `vary`                    | `string[] \| "*"`           | `[]`                    | Request headers that participate in caching key; `"*"` means that all request headers are involved        |
-| `partitionKey`            | `string \| (req) => string` | —                       | User, tenant or other business partition, used for isolation zone authentication or multi-tenant response |
-| `allowAuthorizationCache` | `boolean`                   | `false`                 | Whether to still allow caching of requests with `Authorization` when there is no `partitionKey`           |
-| `allowCookieCache`        | `boolean`                   | `false`                 | Whether to allow requests with a `Cookie` header to participate in cache                                  |
-| `cacheControl`            | `boolean`                   | `true`                  | Whether to set the `Cache-Control` response header                                                        |
-| `tags`                    | `string[]`                  | `[]`                    | Cache tag, used for `app.cache.invalidate(tag)` batch invalidation                                        |
+| Field                     | Type                                             | Default Value           | Description                                                                                               |
+| ------------------------- | ------------------------------------------------ | ----------------------- | --------------------------------------------------------------------------------------------------------- |
+| `ttl`                     | `number`                                         | —                       | Cache validity period, in milliseconds, must be > 0                                                       |
+| `key`                     | `string \| (req) => string`                      | Automatically generated | Custom cache key; `partitionKey` and `vary` will still participate in the final underlying key            |
+| `condition`               | `(req) => boolean`                               | —                       | The caching logic is only used when `true` is returned                                                    |
+| `vary`                    | `string[] \| "*"`                                | `[]`                    | Request headers that participate in caching key; `"*"` means that all request headers are involved        |
+| `partitionKey`            | `string \| (req) => string \| null \| undefined` | —                       | Trusted user/tenant partition; handle an empty result with `condition`                                    |
+| `allowAuthorizationCache` | `boolean`                                        | `false`                 | Whether to still allow caching of requests with `Authorization` when there is no `partitionKey`           |
+| `allowCookieCache`        | `boolean`                                        | `false`                 | Whether a Cookie-bearing origin result can be written; reading existing entries has separate limits below |
+| `cacheControl`            | `boolean`                                        | `true`                  | Whether to set the `Cache-Control` response header                                                        |
+| `tags`                    | `string[]`                                       | `[]`                    | Cache tag, used for `app.cache.invalidate(tag)` batch invalidation                                        |
 
 ### Global configuration (config.cache)
 
@@ -73,7 +142,7 @@ app.get("/realtime", { cache: false }, async (req, res) => {
 export default {
   cache: {
     enabled: true, // Whether to enable route-level response caching (default true)
-    defaultTtl: 60_000, //The default value when the route does not specify ttl, in milliseconds
+    defaultTtl: 60_000, // Runtime TTL fallback; typed route objects should still specify ttl
     maxEntries: 1000, // Memory quick configuration: maximum number of cache entries
     maxMemory: 50 * 1024 * 1024, // Memory quick configuration: maximum memory usage bytes
     cleanupInterval: 30_000, // Memory quick configuration: periodic cleaning interval, 0 means only lazy cleaning
@@ -88,13 +157,15 @@ The response cache runtime is handled by `response-cache-kit`, and the underlyin
 | Field             | Type      | Default Value | Description                                                                                                                                                            |
 | ----------------- | --------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `enabled`         | `boolean` | `true`        | Whether to enable route-level response caching. When set to `false`, the cache middleware will not be installed and the Redis/MultiLevel connection will not be opened |
-| `defaultTtl`      | `number`  | `60000`       | The default TTL when the route does not specify `ttl`, in milliseconds                                                                                                 |
+| `defaultTtl`      | `number`  | `60000`       | Runtime TTL fallback; typed route cache objects still require `ttl`                                                                                                    |
 | `maxEntries`      | `number`  | `1000`        | Memory mode quick configuration, effective when `cacheHub` is not configured or is Memory                                                                              |
 | `maxMemory`       | `number`  | —             | Memory mode quick configuration, maximum memory usage bytes                                                                                                            |
 | `cleanupInterval` | `number`  | `0`           | Memory mode quick configuration, periodic cleaning interval; `0` means lazy cleaning only during access                                                                |
 | `cacheHub`        | `object`  | Memory        | Underlying runtime configuration: Memory, Redis, MultiLevel, lease, distributed                                                                                        |
 
 #### Memory cacheHub
+
+`ttl` is required in the public type for `cache: { ttl: 60_000 }`. At runtime a missing or zero object TTL may be filled by the global fallback, so **`cache: { ttl: 0 }` does not reliably disable caching**. Use `cache: false` or numeric `cache: 0`. In Memory mode, matching fields inside `cacheHub` override the outer convenience settings.
 
 ```typescript
 export default {
@@ -135,6 +206,7 @@ export default {
         onTimeout: "fetch",
       },
       distributed: {
+        redisUrl: "redis://localhost:6379",
         channel: "vext:response-cache",
       },
     },
@@ -157,7 +229,11 @@ npm install ioredis
 | `scanCount`     | `number`            | cache-hub default value  | SCAN batch size                                        |
 | `deleteCommand` | `"del" \| "unlink"` | `del`                    | Delete command; large value recommended `unlink`       |
 | `lease`         | `boolean \| object` | `false`                  | Cross-process coordination with key back to the source |
-| `distributed`   | `boolean \| object` | `false`                  | Distributed pattern/tag failure broadcast              |
+| `distributed`   | `boolean \| object` | `false`                  | Distributed pattern/tag invalidation broadcast         |
+
+Response caching chooses its Redis target by `client` → `url` → `redis://localhost:6379`; it does not automatically read `VEXT_REDIS_URL` or `REDIS_URL`. A supplied client is owned by its caller; the framework closes a connection it creates from a URL at app shutdown.
+
+The current Vext response-cache namespace is fixed as `vext-route-cache`; there is no public `config.cache.namespace`. Separate applications or environments should use separate Redis databases or instances. Changing `metaKeyPrefix`, broadcast channel, or one route key does not isolate every response entry or the scope of `clear()`.
 
 #### MultiLevel cacheHub
 
@@ -185,21 +261,23 @@ export default {
 
 MultiLevel uses the memory of this process as L1 and Redis as L2. It is suitable for services that want to reduce the reading pressure of Redis but still need to share the cache across processes.
 
-| Field                      | Type                                   | Default Value           | Description                                                       |
-| -------------------------- | -------------------------------------- | ----------------------- | ----------------------------------------------------------------- |
-| `mode`                     | `"multi-level"`                        | Required                | Enable L1 Memory + L2 Redis                                       |
-| `memory`                   | `object`                               | `{}`                    | L1 Memory configuration                                           |
-| `redis`                    | `object`                               | `{}`                    | L2 Redis configuration                                            |
-| `writePolicy`              | `"both" \| "local-first-async-remote"` | `both`                  | Write policy                                                      |
-| `backfillOnRemoteHit`      | `boolean`                              | cache-hub default value | Whether to backfill L1 after L2 hits                              |
-| `remoteTimeout`            | `number`                               | cache-hub default value | L2 operation timeout in milliseconds                              |
-| `remoteInvalidationErrors` | `"ignore" \| "throw"`                  | cache-hub default value | L2 invalidation error handling                                    |
-| `lease`                    | `boolean \| object`                    | `false`                 | Use the Redis layer for cross-process back-to-source coordination |
-| `distributed`              | `boolean \| object`                    | `false`                 | Distributed failure broadcast                                     |
+| Field                      | Type                                   | Default Value | Description                                                                                  |
+| -------------------------- | -------------------------------------- | ------------- | -------------------------------------------------------------------------------------------- |
+| `mode`                     | `"multi-level"`                        | Required      | Enable L1 Memory + L2 Redis                                                                  |
+| `memory`                   | `object`                               | `{}`          | L1 Memory configuration                                                                      |
+| `redis`                    | `object`                               | `{}`          | L2 Redis configuration                                                                       |
+| `writePolicy`              | `"both" \| "local-first-async-remote"` | `both`        | Write policy                                                                                 |
+| `backfillOnRemoteHit`      | `boolean`                              | `true`        | Whether to backfill L1 after L2 hits                                                         |
+| `remoteTimeout`            | `number`                               | `50`          | L2 get/exists/getMany read wait limit in milliseconds; does not cover writes or invalidation |
+| `remoteInvalidationErrors` | `"ignore" \| "throw"`                  | `ignore`      | L2 batch/tag invalidation handling; L2 single-key delete errors are still ignored            |
+| `lease`                    | `boolean \| object`                    | `false`       | Use the Redis layer for cross-process back-to-source coordination                            |
+| `distributed`              | `boolean \| object`                    | `false`       | Distributed failure broadcast                                                                |
 
 #### lease and distributed
 
 `lease` is used to reduce multi-process cache breakdown: after the same key expires, one process obtains the lease and executes the handler, and other processes wait briefly for the cache to be written. By default, the system continues to return to the source after waiting timeout, with priority given to ensuring availability.
+
+The following fragments are fields inside `cache.cacheHub` in Redis or MultiLevel mode. Lease uses the cache's Redis layer; it does not invalidate other processes' L1 entries.
 
 ```typescript
 lease: {
@@ -216,39 +294,53 @@ lease: {
 distributed: {
   redisUrl: "redis://localhost:6379",
   channel: "vext:response-cache",
-  instanceId: "api-1",
+  // Omit instanceId so the runtime assigns a unique ID per instance.
 }
 ```
 
+The distributed connection chooses `redis` or `redisUrl` independently; it does not inherit outer `cacheHub.client/url` or `cacheHub.redis.url`, and defaults to localhost:6379 when neither is supplied. Check the broadcast address when using remote Redis. If you set `instanceId` manually, every instance needs a different value or it may ignore another instance's message as its own.
+
+`invalidate(tag)` and `clear()` invalidate the local instance before publishing. Return does not mean every subscriber has processed the message. `app.cache.delete(key)` is not broadcast, so another instance's MultiLevel L1 may retain the old value until expiry. Use tags and correctly configured distributed invalidation when coordinating a group; broadcast is not a strongly consistent transaction.
+
 ## Caching behavior
 
-By default only GET / HEAD requests are processed, and successful responses sent via `res.json()` are captured. `res.text()`, streaming responses, downloads and redirects do not write to the response cache.
+By default, only GET/HEAD requests are processed, and successful 2xx responses sent with `res.json()` are captured, excluding 204. `res.render()` has a dedicated cache path in the Frontend guide. Ordinary `res.text()`, streams, downloads, and redirects do not write through the JSON cache path.
 
 ### Response header
 
-| header          | value               | description                                           |
-| --------------- | ------------------- | ----------------------------------------------------- |
-| `X-Cache`       | `HIT`               | cache hit                                             |
-| `X-Cache`       | `MISS`              | Cache miss (first request or expiration)              |
-| `Cache-Control` | `public, max-age=N` | N=TTL seconds when MISS, N=remaining seconds when HIT |
+| header          | value               | description                                                          |
+| --------------- | ------------------- | -------------------------------------------------------------------- |
+| `X-Cache`       | `HIT`               | Existing entry or concurrent reuse; does not prove storage succeeded |
+| `X-Cache`       | `MISS`              | Miss or some bypass paths; does not prove a write happened           |
+| `Cache-Control` | `public, max-age=N` | N=TTL seconds on MISS, remaining seconds on HIT                      |
+
+These headers apply only to responses entering the relevant cache flow. `cacheControl: false` disables the generated `public` header, not server caching, and does not remove a header set by application code. Responses with `private` or `no-store` are not written to server storage.
+
+`partitionKey` isolates only server cache, not browser, proxy, or CDN caches. Set a suitable HTTP cache policy for personalized responses; a partition does not make the default `public` appropriate. `private`/`no-store` prevent storage but are not enough by themselves to prevent concurrent reuse; see [Concurrent origin fetches](#concurrent-origin-fetches).
 
 ### Cache Key algorithm
 
-The default key is a versioned JSON tuple containing the request method, path, sorted query tuples and normalized `vary` header tuples. Tuple boundaries prevent delimiter collisions; `partitionKey` remains an additional isolation dimension in the underlying cache key.
+The actual storage path currently uses the underlying `createVextLegacyKey`: method plus normalized URL, then partition and vary request headers. The versioned JSON tuple from `defaultCacheKey()` is currently used for flow key/Hook records, not as the stored key to delete. Prefer tag invalidation over depending on an internal key format.
 
 ```
-GET /products → ["v2","GET","/products",[],[]]
-GET /products?limit=10&page=2 → ["v2","GET","/products",[["limit","10"],["page","2"]],[]]
-GET /products (Accept-Language: zh-CN) → ["v2","GET","/products",[],[["accept-language",["zh-CN"]]]]
+GET /products                              → GET:/products
+GET /products?limit=10&page=2              → GET:/products?limit=10&page=2
+GET /products (Accept-Language: zh-CN)     → GET:/products|accept-language=zh-CN
 ```
 
 - Query parameters are automatically sorted (`?b=2&a=1` ≡ `?a=1&b=2`)
 - Requests with `Authorization` are not cached by default unless `partitionKey` is configured or `allowAuthorizationCache: true` is explicitly set
-- Requests with `Cookie` are not cached by default unless `allowCookieCache: true` is explicitly set
+- An origin result for a Cookie-bearing request is not written by default; reading an existing entry has the limitation below
 - When you need to differentiate cache by user or tenant, use `partitionKey` first
 - When using a custom `key`, `partitionKey` and `vary` will still be appended to the underlying key
 
+:::warning Cookie read limitation
+In the current implementation, `allowCookieCache: false` prevents writing an origin response but does not prevent a Cookie-bearing request from reading an existing public entry. Test “anonymous request populates cache → Cookie-bearing request”; a cold-cache test alone misses this behavior. To bypass all Cookie requests, explicitly set `condition: (req) => req.headers.cookie === undefined`, or disable caching for the route. The complete example above includes this condition.
+:::
+
 ### Scenarios without caching
+
+The following list includes both early bypass and responses that are not written. “Not written” does not prove concurrent requests cannot share a result; see [Concurrent origin fetches](#concurrent-origin-fetches).
 
 - `204 No Content` response
 - Non-2xx status codes (3xx/4xx/5xx)
@@ -256,8 +348,9 @@ GET /products (Accept-Language: zh-CN) → ["v2","GET","/products",[],[["accept-
 - Response header contains `Cache-Control: no-store` or `private`
 - The request header contains `Cache-Control: no-store` or `no-cache`
 - With `Authorization` and no `partitionKey` / `allowAuthorizationCache` configured
-- With `Cookie` and no `allowCookieCache` configured
-- Response not sent via `res.json()`
+- An origin result with Cookie and no `allowCookieCache` (does not guarantee bypass of an existing entry)
+- A response outside JSON or dedicated render-cache capture
+- A Session with pending changes that prevents storage of the current response
 - `cache: false` explicitly disabled
 - `cache: 0` or negative value
 - `condition` returns `false`
@@ -276,7 +369,7 @@ app.post("/products", {}, async (req, res) => {
 });
 
 // Delete the specified default key
-await app.cache.delete('["v2","GET","/products",[],[]]');
+await app.cache.delete("GET:/products");
 
 //Clear all caches
 await app.cache.clear();
@@ -286,7 +379,18 @@ const stats = app.cache.stats();
 // → { entries: 42, hits: 128, misses: 31, hitRate: 0.805 }
 ```
 
-`app.cache.clear()` clears the current vext response cache namespace. In Redis/MultiLevel mode, it will not perform a full Redis database clear.
+`app.cache.clear()` clears the current Vext response-cache namespace. In Redis/MultiLevel mode it does not clear the whole Redis database, although Vext applications sharing the same database may affect each other. Memory cache and statistics cover only the current runtime instance; cluster worker memory statistics are not automatically aggregated. The numeric statistics above are illustrative.
+
+`delete()` needs the exact final key: do not copy the no-query example for keys with query, vary, partition, or custom key. Prefer tag invalidation for a group of variants. Complete the business write before invalidating the corresponding tag; these steps are not automatically one database transaction, so the business must handle failure and concurrent refill.
+
+Redis adapter `stats()` currently returns all-zero placeholders, which do not prove Redis has no entries. MultiLevel statistics cover this process's L1, not L1+L2 or the cluster. Distinguish existing-entry hits from concurrent reuse when evaluating actual caching.
+
+### Store failure boundaries
+
+- A cache-read error is treated as a miss. A write error does not create a new business error response, but storage did not succeed; `X-Cache: MISS` or `cache:write` alone does not prove persistence.
+- MultiLevel `remoteTimeout` does not cover writes, invalidation, or refill TTL lookup. `writePolicy: "both"` waits for L2, while `local-first-async-remote` writes L1 then L2 asynchronously; remote failure may leave inconsistent layers.
+- Redis deletion, tag invalidation, and broadcast publication can throw. MultiLevel single-key deletion ignores L2 errors; batch/tag invalidation follows `remoteInvalidationErrors`. A successful call does not universally prove every replica was invalidated.
+- `lease.onTimeout: "fetch"` controls what to do when waiting for a lease owner times out; it does not imply that a connection error while acquiring a lease automatically fetches from origin. Do not assume all cache failures degrade transparently.
 
 ## Vary Headers
 
@@ -316,7 +420,7 @@ Allow all request headers to participate in the cache key:
 app.get("/debug", { cache: { ttl: 10_000, vary: "*" } }, handler);
 ```
 
-`vary: "*"` will significantly increase the number of cache entries and is generally only recommended for debugging, proxy pass-through, or interfaces that really require strong isolation.
+`vary: "*"` can greatly increase entry count. Prefer listing the headers that actually affect content. It does not replace authentication, authorization, or a trusted partition.
 
 ## Conditional caching
 
@@ -329,7 +433,7 @@ app.get(
     cache: {
       ttl: 60_000,
       // Skip cache when taking refresh parameter
-      condition: (req) => !req.query.refresh,
+      condition: (req) => req.query.refresh === undefined,
     },
   },
   handler,
@@ -337,8 +441,8 @@ app.get(
 ```
 
 ```bash
-curl /data # Go to cache
-curl /data?refresh=1 # Skip the cache and execute the handler directly
+curl http://localhost:3000/data           # Use cache
+curl 'http://localhost:3000/data?refresh=' # Bypass even with an empty value
 ```
 
 ## Custom Key
@@ -363,16 +467,18 @@ When you need to generate key according to request parameters:
 
 ```typescript
 app.get(
-  "/profile",
+  "/products",
   {
     cache: {
       ttl: 300_000,
-      key: (req) => `profile:${req.headers["x-user-id"] ?? "anonymous"}`,
+      key: (req) => JSON.stringify(["products", req.query.category ?? "all"]),
     },
   },
   handler,
 );
 ```
+
+A custom key replaces the default method/path/query combination; only partition and vary are still appended. This function is safe only if category is the sole input affecting content. Include pagination, sorting, or other parameters when relevant, or distinct requests can incorrectly share a result. Keeping the default key is usually simpler.
 
 ## Partition Key
 
@@ -385,7 +491,14 @@ app.get(
     cache: {
       ttl: 60_000,
       key: "tenant:products",
-      partitionKey: (req) => req.headers["x-tenant-id"],
+      condition: (req) =>
+        typeof req.auth?.claims.tenantId === "string" &&
+        req.auth.claims.tenantId.length > 0,
+      partitionKey: (req) =>
+        typeof req.auth?.claims.tenantId === "string"
+          ? encodeURIComponent(req.auth.claims.tenantId)
+          : undefined,
+      cacheControl: false,
       tags: ["products"],
     },
     middlewares: ["auth"],
@@ -395,7 +508,9 @@ app.get(
 );
 ```
 
-In the above example, even if multiple tenants access the same URL, different cache partitions will be written. Requests with `Authorization` will bypass the cache by default; Vext will only allow it to enter the response cache after `partitionKey` is configured.
+This is a partial route configuration. First register `auth` middleware as described in [Authentication and Security](/guide/security); it must validate credentials and populate trusted `claims.tenantId`. All viewers within a tenant must also be allowed to see the same list. Do not trust client-supplied `x-tenant-id` or `x-user-id`. The encoded partition enters the key, and the condition prevents caching without a trusted tenant. An Authorization request needs a nonempty partition, or an explicit allow option, to be cache eligible.
+
+Automatic `public` headers are disabled here. Still verify that proxies do not independently cache personal or tenant responses. Authentication and authorization must run before caching. Declaring `partitionKey` does not authenticate, authorize, or prove that a response belongs to that partition.
 
 If you confirm that the response is not relevant to the user, you can also enable it explicitly:
 
@@ -414,45 +529,42 @@ app.get(
 
 Most business interfaces recommend using `partitionKey` instead of directly opening `allowAuthorizationCache`.
 
-## Concurrently send back to the source
+## Concurrent origin fetches
 
-After the same cache key expires, if 100 requests arrive at the same time, Vext will execute the handler only once through the single-flight mechanism of `response-cache-kit`, and the remaining requests will wait for the same return-to-origin result to avoid cache breakdown. The request that actually executes the handler is `MISS`; the request that waits and reuses the same result will output `HIT`.
+In one process, concurrent requests that pass the pre-request policy and have the same final key use `response-cache-kit` single-flight to share an origin result. The requester fetching from origin reports `MISS`; waiters reusing that result report `HIT`. Early bypass, failed origin fetches, and separate workers/instances change execution counts. Cross-process coordination requires a lease; expiry or `onTimeout: "fetch"` can still cause multiple origin fetches and cannot guarantee exactly-once business execution.
+
+:::warning Not stored does not mean not shared concurrently
+The current implementation merges in-flight origin fetches with the same key even if the final response is not stored because of `private`, `no-store`, or `Set-Cookie`. Waiters may receive the first body's result with `HIT`. Under default `cacheControl: true`, such waiter responses may also lose the original `private`/`no-store` header; the first response's `Set-Cookie` is not replayed.
+
+For private data, session creation/mutation, or endpoints that must run independently on each call, use `cache: false` or a `condition` that excludes the request before cache entry. A header set only in the handler cannot prevent this in-flight sharing. The opening example returns shareable demonstration data and excludes Cookie requests up front.
+:::
+
+Cache Hooks trace flow, but `cache:miss` currently fires before the underlying lookup, so a final HIT may have emitted it first. `cache:write` means a response was captured, not that storage succeeded. Combine final responses and runtime statistics when measuring hits; event counts alone are not an accurate hit rate.
 
 ## Safety precautions
 
 :::warning
 **Authentication routing + cache**: Requests with `Authorization` will not be written to the response cache by default. When you need to cache authentication interfaces, use `partitionKey` to explicitly isolate users or tenants.
 
-The framework detects this scenario and issues a warning on startup. Solution:
+The framework can warn when a cached route declares auth or has middleware with auth in its name without partition or authorization-cache settings. A warning does not prove the identity source is trusted or replace isolation tests. Choose a policy:
 
 - Use `partitionKey` to isolate by user/tenant
 - Use `condition` to exclude requests that should not be cached
-- Set `allowAuthorizationCache: true` only if the acknowledgment response is not relevant to the user
+- Set `allowAuthorizationCache: true` only when the response is truly independent of the user
 
 :::
 
 ```typescript
-// Recommendation: Use partitionKey for tenant isolation
+// Partial example: auth must verify credentials and provide a trusted subject.
 app.get(
   "/my-orders",
   {
     cache: {
       ttl: 60_000,
-      partitionKey: (req) => req.headers["x-user-id"],
-    },
-    middlewares: ["auth"],
-    auth: { required: true, security: "bearerAuth" },
-  },
-  handler,
-);
-
-//Also: authenticated users do not go through the cache
-app.get(
-  "/products",
-  {
-    cache: {
-      ttl: 60_000,
-      condition: (req) => !req.headers.authorization,
+      condition: (req) => Boolean(req.auth?.subject),
+      partitionKey: (req) =>
+        req.auth?.subject ? encodeURIComponent(req.auth.subject) : undefined,
+      cacheControl: false,
     },
     middlewares: ["auth"],
     auth: { required: true, security: "bearerAuth" },
@@ -460,3 +572,18 @@ app.get(
   handler,
 );
 ```
+
+For an endpoint that serves both anonymous and authenticated users, after middleware reliably establishes identity, `condition: (req) => !req.auth?.isAuthenticated && req.headers.cookie === undefined && !req.headers.authorization` can cache only anonymous requests. On a login-required endpoint it would exclude every successful request; `cache: false` is clearer.
+
+## Troubleshooting and verification
+
+| Symptom                            | Check                                                                                      | Recheck                                                                 |
+| ---------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| Always MISS                        | Global enabled, TTL, Authorization/Cookie/Cache-Control, condition, status, and Set-Cookie | Repeat a public example request without Cookie                          |
+| Changed parameters return old data | Custom key omits pagination, filters, or identity dimensions                               | Request distinct inputs and inspect bodies                              |
+| `{ ttl: 0 }` still caches          | Object TTL may be filled by a global default                                               | Set `cache: false` and confirm every request runs the handler           |
+| Data changed but remains cached    | Business write, matching invalidation tag, or process-local Memory                         | Confirm MISS after invalidation, then HIT on the next request           |
+| Tenant data crosses boundaries     | Trusted identity source, nonempty partition, custom key, shared Redis scope                | Verify with two validated identities, not forged identity headers       |
+| CDN serves another user's data     | Server partition does not control an external shared cache                                 | Disable shared caching and inspect actual HTTP headers and proxy policy |
+
+Continue with [Middleware order](/guide/middleware), [Hooks](/guide/hooks), [Cookies and Sessions](/guide/cookies-session), and [Route API](/api/route-definition).

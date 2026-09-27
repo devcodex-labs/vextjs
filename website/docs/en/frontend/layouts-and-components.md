@@ -1,5 +1,7 @@
 # Layouts and Components
 
+This continues the `admin/dashboard` page from [Project Structure](/frontend/project-structure) by adding root and admin layouts and a reusable menu. First understand `res.render` in [Routing and Pages](/frontend/routing-and-pages).
+
 ## Table of Contents
 
 - [Automatic Layout Chain](#automatic-layout-chain)
@@ -8,10 +10,11 @@
 - [Reusable Shells](#reusable-shells)
 - [Shared Components](#shared-components)
 - [SSR-safe Components](#ssr-safe-components)
+- [Verify Layouts](#verify-layouts)
 
 ## Automatic Layout Chain
 
-Vext layouts are React components named `layout.tsx` under `src/frontend/pages/**`.
+Vext layouts are components named `layout` under the page directory; `layout.tsx` is the default form used here.
 
 ```text
 src/frontend/pages/
@@ -21,47 +24,68 @@ src/frontend/pages/
     dashboard.tsx
 ```
 
-For `res.render("admin/dashboard")`, Vext can apply the root layout and then the admin layout. The page is rendered inside that chain.
+For `res.render("admin/dashboard")`, the automatic chain runs from the root layout to the admin layout and then the page. Layout IDs are directories relative to the page root: `"."` for the root and `"admin"` for the admin layout, not `"layout"` or `"admin/layout"`.
 
 Use layouts for stable page shells: nav, sidebars, account menus, breadcrumbs, and admin chrome.
 
 ## Explicit Layout Selection
 
-`options.layout` controls layout behavior.
+The third `res.render` argument, `options.layout`, controls this render. Global `frontend.render.layout` can currently be configured, but the renderer does not consume it yet; use per-render `layout: false` to disable layouts.
 
-| Value             | Meaning                                  |
-| ----------------- | ---------------------------------------- |
-| `true` or omitted | Use the automatic directory layout chain |
-| `false`           | Disable layouts for this render          |
-| `string`          | Use one named layout                     |
-| `string[]`        | Use explicit layouts from outer to inner |
+| Value             | Meaning                                                                    |
+| ----------------- | -------------------------------------------------------------------------- |
+| `true` or omitted | Use the automatic directory layout chain                                   |
+| `false`           | Disable layouts for this render                                            |
+| `string`          | Use one named layout                                                       |
+| `string[]`        | Select layouts applied in registry order, not reordered by the input array |
 
 ```ts
 res.render("admin/dashboard", props, {
-  layout: ["layout", "admin/layout"],
+  layout: [".", "admin"],
 });
 ```
 
 Use explicit layout selection when two routes in different directories share the same shell, or when an error page should use a minimal shell.
 
+The call above is an option snippet inside a handler; the application provides `props`. An unregistered layout ID is filtered out. It neither creates a layout nor reports “layout missing,” so inspect the final page to confirm the expected shell appears.
+
 ## Layout Data Shape
 
-Pass layout data through the third render argument.
+Pass layout data through the third render argument. This replaces the render call in the existing `admin/dashboard` handler; the handler defines these values locally, while a real application may obtain them from services.
 
 ```ts
-res.render(
-  "admin/dashboard",
-  { stats },
-  {
-    layoutData: {
-      root: { user },
-      admin: { menu, permissions },
-    },
+const stats = { totalUsers: 42 };
+const user = { name: "Ada" };
+const menu = [{ label: "Dashboard", href: "/admin/dashboard" }];
+const permissions = { canRead: true };
+res.render("admin/dashboard", stats, {
+  layoutData: {
+    ".": { user },
+    admin: { menu, permissions },
   },
-);
+});
 ```
 
 Keep layout data small and serializable. Prefer IDs, labels, URLs, and permission flags over raw ORM records.
+
+Each layout reads the data under its ID through `props.data`; page props are not merged into the layout automatically. For example, the root layout can be:
+
+```tsx
+// src/frontend/pages/layout.tsx
+import type { ReactNode } from "react";
+
+export default function RootLayout(props: {
+  children?: ReactNode;
+  data?: { user?: { name: string } };
+}) {
+  return (
+    <div data-layout="root">
+      <header>{props.data?.user?.name}</header>
+      {props.children}
+    </div>
+  );
+}
+```
 
 ## Reusable Shells
 
@@ -69,15 +93,19 @@ When several layouts share UI, move the UI to `src/frontend/components/**`.
 
 ```tsx
 // src/frontend/components/AdminShell.tsx
+import type { ReactNode } from "react";
+
 export function AdminShell(props: {
   menu: Array<{ label: string; href: string }>;
-  children: React.ReactNode;
+  children?: ReactNode;
 }) {
   return (
     <div className="admin-shell">
       <aside>
         {props.menu.map((item) => (
-          <a href={item.href}>{item.label}</a>
+          <a key={item.href} href={item.href}>
+            {item.label}
+          </a>
         ))}
       </aside>
       <main>{props.children}</main>
@@ -89,10 +117,17 @@ export function AdminShell(props: {
 Then import it from a layout:
 
 ```tsx
+// src/frontend/pages/admin/layout.tsx
+import type { ReactNode } from "react";
 import { AdminShell } from "@components/AdminShell";
 
-export default function AdminLayout(props: { children: React.ReactNode }) {
-  return <AdminShell menu={[]}>{props.children}</AdminShell>;
+export default function AdminLayout(props: {
+  children?: ReactNode;
+  data?: { menu?: Array<{ label: string; href: string }> };
+}) {
+  return (
+    <AdminShell menu={props.data?.menu ?? []}>{props.children}</AdminShell>
+  );
 }
 ```
 
@@ -106,7 +141,7 @@ export function StatusBadge(props: { status: "open" | "closed" }) {
 }
 ```
 
-Put page-specific components near the page only if they are not shared. Put common UI in `src/frontend/components/**`.
+A component used by only one page can live in that page file. Place a separate component file under `src/frontend/components/**`. The page directory scans files with matching extensions as pages; do not treat it as an arbitrary component directory.
 
 ## SSR-safe Components
 
@@ -118,3 +153,9 @@ The first render runs on the server and then hydrates in the browser. Avoid firs
 - Move browser-only work into `useEffect`.
 
 This keeps SSR HTML and browser hydration consistent.
+
+## Verify Layouts
+
+Run `npm run build`, then `npm start -- --port 3000` after success. Open `/admin/dashboard` and check for `Ada` in the root layout, the admin menu link, and the original page content. Set that `res.render` call to `layout: false`, rebuild and restart, then confirm the shells disappear but page content remains. Restore the option and stop the verification service. If menu data does not appear, check the `layoutData` key and layout `props.data`, then confirm that layout was selected.
+
+For interaction consistency, see [Hydration Validation](/frontend/hydration-validation). See [Data Flow](/frontend/data-flow) for server data boundaries.

@@ -16,17 +16,17 @@ Vext JSCSS turns a TypeScript object into a generated CSS class at build time. U
 
 Choose the smallest tool that fits the job:
 
-| Need                                                                | Start with | Why                                                                  |
-| ------------------------------------------------------------------- | ---------- | -------------------------------------------------------------------- |
-| Reset, typography, page-wide tokens                                 | CSS file   | One intentional global stylesheet is easiest to inspect.             |
-| A component with fixed local rules                                  | CSS Module | The class map is simple and local.                                   |
-| A component with variants, CSS variables, or generated nested rules | Vext JSCSS | A typed rule object becomes extracted CSS and a class-name function. |
+| Need                                                                | Start with         | Why                                                                                                                            |
+| ------------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| Reset, typography, page-wide tokens                                 | CSS file           | One intentional global stylesheet is easiest to inspect.                                                                       |
+| A component with fixed local rules                                  | JSCSS or plain CSS | Default production SSR currently has a CSS Module naming limitation; see [Styles and Assets](./styles-and-assets#css-modules). |
+| A component with variants, CSS variables, or generated nested rules | Vext JSCSS         | A typed rule object becomes extracted CSS and a class-name function.                                                           |
 
 Vext does not compile Sass or SCSS source files. If a team keeps Sass, compile it to CSS before Vext sees it. JSCSS is not a Sass replacement; it is the built-in path for typed, component-level generated CSS.
 
 ## Build your first component style
 
-This is the recommended first path: define a named recipe in a `*.style.ts` file, then call the recipe from React's `className`.
+In an application that has completed [Full-Stack Quick Start](./getting-started), define a named recipe in a `*.style.ts` file, then call it from React's `className`. The following example includes the style, component, page, and route; leave the default JSCSS setting enabled.
 
 ### 1. Define the button recipe
 
@@ -71,7 +71,7 @@ Create `src/frontend/components/Button.tsx`.
 
 ```tsx
 import type { ReactNode } from "react";
-import { button } from "../styles/button.style";
+import { button } from "../styles/button.style.js";
 
 export function Button(props: {
   intent?: "primary" | "danger";
@@ -91,13 +91,27 @@ export function Button(props: {
 
 ### 3. Render it from a page
 
+Create the page and an explicit HTTP route. Relative TypeScript imports in the default NodeNext template use the `.js` extension; framework aliases retain the template's existing mapping.
+
 ```tsx
+// src/frontend/pages/settings.tsx
 import { Button } from "@components/Button";
 
 export default function SettingsPage() {
   return <Button intent="danger">Delete project</Button>;
 }
 ```
+
+```ts
+// src/routes/settings.ts
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  app.get("/", {}, (_req, res) => res.render("settings"));
+});
+```
+
+`/settings` should show the danger-styled button. This example demonstrates appearance only; the button has no delete behavior.
 
 ## How extraction reaches the browser
 
@@ -107,7 +121,7 @@ Run the normal production build:
 npm run build
 ```
 
-Vext discovers matching `*.style.ts`, `*.style.js`, and `*.css.ts` files under `src/frontend/**`, evaluates their declarations during the build, and writes the collected rules to generated JSCSS CSS. The generated browser entry references that CSS, and the final client asset manifest carries it into the rendered document.
+By default, Vext scans `**/*.style.ts`, `**/*.style.js`, and `**/*.css.ts` under `frontend.root` (`src/frontend` by default). During a Node build step it executes matching modules and their dependencies and writes their rules into generated JSCSS CSS. Scanning is not limited to files imported by a page. The generated browser entry references the CSS, and the client asset manifest carries it into the document. Customize the scan with `frontend.styles.jscss.files`.
 
 You do not import an Emotion or styled-components runtime for this path. The `className` returned by `style()` or `recipe()` is the bridge from React to extracted CSS.
 
@@ -138,6 +152,8 @@ Numbers become pixel values where CSS expects a length. Unitless properties such
 
 Nested selectors use `&`; at-rules stay inside the same object.
 
+This replaces the preceding style declaration and reuses that file's `style` import:
+
 ```ts
 export const card = style(
   {
@@ -157,6 +173,8 @@ Use a recipe for a finite set of visual choices. Keep selection names meaningful
 <Button intent={isDestructive ? "danger" : "primary"}>Save</Button>
 ```
 
+This is a component usage snippet: the application supplies `isDestructive` from props or state. Recipe selection currently resolves string keys; an unknown choice does not generate a new rule. Do not treat arbitrary runtime strings as declared variants or assume compile-time exhaustiveness over every variant name.
+
 ## CSS variables: build-time declarations and browser changes
 
 `createVar()` creates a semantic CSS custom-property reference. `setVar()` returns an object that can be placed in a JSCSS rule; it does not mutate the browser document by itself.
@@ -175,11 +193,13 @@ export const panel = style(
 );
 ```
 
-The example above emits an initial declaration and `var(--vext-accent, #4f46e5)` in extracted CSS. For a value that must change after hydration, use the normal browser CSS API from an event handler or effect—not from a style module or SSR render:
+The example emits an initial declaration on the panel element and a `var(--vext-accent, #4f46e5)` reference. To change it after hydration, update that element from an event handler or effect. Here `element` is the panel HTMLElement and `accent` is imported from the style module:
 
 ```ts
-document.documentElement.style.setProperty(accent.name, "#7c3aed");
+element.style.setProperty(accent.name, "#7c3aed");
 ```
+
+Do not access the DOM at style-module scope or during SSR rendering. Setting the same variable on the root alone does not override the panel's own declaration. For a global theme, define the variable on the root, let components inherit it, then change it with `document.documentElement.style.setProperty`. `createVar()` returns a variable descriptor: use it directly as a JSCSS property value, or use its `ref` when a string is needed. Do not interpolate the entire object into a CSS string.
 
 ## Configuration choices
 
@@ -197,12 +217,16 @@ See [Frontend Configuration](/frontend/configuration) for the complete field ref
 
 ## Troubleshooting
 
-| Symptom                                    | Check                                                                                      | Recovery                                                                                |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| No generated class CSS                     | The file is below `src/frontend/**` and matches `*.style.ts`, `*.style.js`, or `*.css.ts`. | Rename or move the file, then run `npm run build` again.                                |
-| `string` is not assignable to a JSCSS rule | A `style()` result was nested inside `recipe().base` or `recipe().variants`.               | Pass raw rule objects to the recipe, as in the first example.                           |
-| A theme change does nothing                | `setVar()` was treated as a DOM update.                                                    | Use `document.documentElement.style.setProperty(variable.name, value)` in browser code. |
-| A style module fails during build          | The module reads browser globals or request/server state at module scope.                  | Keep it declarative; move browser work to an effect or event handler.                   |
-| You need Sass syntax                       | Vext has no first-class Sass/SCSS compiler.                                                | Compile Sass externally to CSS, or use CSS Modules/JSCSS.                               |
+| Symptom                                    | Check                                                                                                          | Recovery                                                                                                                                  |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| No generated class CSS                     | The file is below `src/frontend/**` and matches `*.style.ts`, `*.style.js`, or `*.css.ts`.                     | Rename or move the file, then run `npm run build` again.                                                                                  |
+| `string` is not assignable to a JSCSS rule | A `style()` result was nested inside `recipe().base` or `recipe().variants`.                                   | Pass raw rule objects to the recipe, as in the first example.                                                                             |
+| A theme change does nothing                | `setVar()` was treated as a DOM update, or only the root was changed while the element declares its own value. | Call `setProperty` on the actual target element in a browser event/effect; first choose a single declaration location for a global theme. |
+| A style module fails during build          | The module reads browser globals or request/server state at module scope.                                      | Keep it declarative; move browser work to an effect or event handler.                                                                     |
+| You need Sass syntax                       | Vext has no first-class Sass/SCSS compiler.                                                                    | Compile Sass externally to CSS, or use CSS Modules/JSCSS.                                                                                 |
 
 Next: compare [Styles and Assets](/frontend/styles-and-assets) for the other supported styling paths, or read [Frontend Configuration](/frontend/configuration) when you need to tune JSCSS extraction.
+
+## Verify the Example
+
+After `npm run build` succeeds, run `npm start -- --port 3000` and open `/settings`. Check the class in SSR HTML, the corresponding rule in browser CSS, and the danger button's actual color. A class string alone does not prove the CSS was loaded. For variable updates, check the target element's computed style. A file outside the build scan is not turned into extracted CSS merely because `style()` is called at runtime. Stop the service when finished.

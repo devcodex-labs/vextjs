@@ -73,7 +73,7 @@ manifest.entries 的核心字段：
 
 ## 同一快照与阶段
 
-manifest 和 rules 顶层共享 documentationRevision、rollout、verification、frameworkVersion。documentationRevision 是源路径/内容 hash 及相关构建合同输入的 SHA-256；框架版本号不能代替文档修订号。任何一边的 revision 不同都不能联接，即使 docId 恰好相同。
+manifest 和 rules 顶层共享 documentationRevision、rollout、verification、frameworkVersion。documentationRevision 是源路径/内容 hash 及相关构建合同输入的 SHA-256；框架版本号不能代替文档修订号。任何一边的 revision 不同都不能联接，即使 docId 恰好相同。frameworkVersion 来自当前源码树的 package manifest；它和站点通道均不能证明未发布文档快照描述的全部行为已进入公开安装包。将页面作为特定版本的证据前，先核对已安装版本的发布说明或源码身份。
 
 | 项目                     | 接入要求                                                  |
 | ------------------------ | --------------------------------------------------------- |

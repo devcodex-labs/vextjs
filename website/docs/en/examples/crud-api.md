@@ -7,6 +7,11 @@ The release contract for this page is the checked-in
 project. It is a TypeScript Todo API backed by an isolated MongoDB database and
 the raw MonSQLize instance exposed only as `app.db`.
 
+Start a reachable MongoDB instance. From the repository root, run `npm ci`
+and `npm run build` first. The database name below is illustrative; choose
+your own isolated test database. This app defaults to port 3100, unlike the
+in-memory teaching variant below, which uses port 3000.
+
 ```powershell
 cd examples/crud-api
 $env:MONGODB_URI = "mongodb://127.0.0.1:27017/vext_crud_example"
@@ -22,13 +27,30 @@ registry key `app.db.model("todos")`. The application explicitly keeps global
 rate limiting off and enables OpenAPI/Vext Docs.
 
 Its real endpoints are `GET /`, `GET /todos`, `POST /todos`,
-`GET /todos/:id`, `PATCH /todos/:id`, and `DELETE /todos/:id`. Every required
-path `id` uses `string:1-!`: missing/invalid path parameters return HTTP 400
-before the handler runs and appear as `required: true` in OpenAPI. Body and
-query validation failures remain HTTP 422.
+`GET /todos/:id`, `PATCH /todos/:id`, and `DELETE /todos/:id`. A required
+path `id` uses `string:1-!` and appears as `required: true` in OpenAPI.
+After a parameterized route matches, invalid parameters return HTTP 400;
+body and query validation failures return HTTP 422. An unmatched path is a
+different case: `GET /todos` enters the list route and cannot test a
+"missing id returns 400" claim.
 
-Release validation installs, typechecks, builds, starts, and exercises the
-actual Mongo-backed CRUD lifecycle; a mock database is not accepted.
+`npm test` currently checks the example's source contract; it does not run
+Mongo CRUD. Make real requests to verify the database flow. A mock database
+does not prove a real connection. With the app running, use another
+PowerShell terminal:
+
+```powershell
+$created = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:3100/todos -ContentType 'application/json' -Body '{"title":"Docs check"}'
+$id = $created.data.id
+Invoke-RestMethod -Uri "http://127.0.0.1:3100/todos/$id"
+Invoke-RestMethod -Method Patch -Uri "http://127.0.0.1:3100/todos/$id" -ContentType 'application/json' -Body '{"completed":true}'
+Invoke-RestMethod -Method Delete -Uri "http://127.0.0.1:3100/todos/$id"
+```
+
+Expect 201 on create, 200 on read and update, and 200 with `deleted: true`
+on delete. Reading the same ID again should return 404; an empty title
+should return 422. `/openapi.json` and `/docs` should include Todo routes.
+Stop the example when done and clean up only your test records.
 
 ## Extended In-memory/Auth Tutorial
 
@@ -50,7 +72,6 @@ crud-api/
   │ │ └── users.ts
   │ ├── services/
   │ │ └── user.ts
-  │ └── index.ts
   ├── test/
   │ └── users.test.ts
   ├── package.json
@@ -60,10 +81,17 @@ crud-api/
 ## 1. Initialize project
 
 ```bash
-npx vextjs create crud-api
+npx vextjs create crud-api --template api --skip-install
 cd crud-api
 pnpm install
+pnpm add -D vitest
 ```
+
+Keep the API template's `package.json` and `tsconfig`. Add `"test": "vitest
+run"` and `"typecheck": "tsc --noEmit"` scripts. Write the files below to
+their commented paths. This variant uses a local Map: each process has its
+own state, restarts reset it, and it has no cross-process uniqueness or
+persistence guarantee.
 
 ## 2. Configuration
 
@@ -102,8 +130,8 @@ export default {
       bearerAuth: {
         type: "http",
         scheme: "bearer",
-        bearerFormat: "JWT",
-        description: "Use Bearer Token authentication",
+        bearerFormat: "demo-token",
+        description: "Authenticate with a Bearer token",
       },
     },
   },
@@ -125,21 +153,16 @@ import { auth, defineMiddleware } from "vextjs";
 /**
  * Simple authentication middleware
  *
- * A JWT library (such as jose) should be used for token validation in production environments.
- * This is simplified to static token verification for demonstration purposes.
+ * A fixed token is used only for local teaching. This is not JWT or a
+ * production identity system. Integrate a real auth service for production.
  */
 export default defineMiddleware(
   auth({
     provider: "crud-demo",
     verify(token) {
-      if (!token || token === "undefined") return false;
-
-      // Simple example: token format is "user-{id}-{role}"
-      // Production code should verify a real JWT with jose/jsonwebtoken.
-      const parts = token.split("-");
-      if (parts.length < 3 || parts[0] !== "user") return false;
-
-      const [, userId, role] = parts;
+      if (token !== "user-1-admin") return false;
+      const userId = "1";
+      const role = "admin";
       return {
         subject: `user:${userId}`,
         userId,
@@ -286,7 +309,7 @@ export default class UserService {
     const now = new Date().toISOString();
 
     const user: User = {
-      ID,
+      id,
       name: data.name,
       email: data.email,
       age: data.age,
@@ -333,7 +356,9 @@ export default class UserService {
 
     const updated: User = {
       ...user,
-      ...data,
+      ...Object.fromEntries(
+        Object.entries(data).filter(([, value]) => value !== undefined),
+      ),
       updatedAt: new Date().toISOString(),
     };
 
@@ -417,8 +442,8 @@ export default defineRoutes((app) => {
     {
       validate: {
         query: {
-          page: "number:1-", // Page number, minimum value 1
-          limit: "number:1-100", //Number of items per page, 1-100
+          page: "integer:1-!", // Required integer page, at least 1
+          limit: "integer:1-100!", // Required integer, 1–100 items per page
           keyword: "string?", // Search keyword (optional)
         },
       },
@@ -461,7 +486,7 @@ export default defineRoutes((app) => {
     "/:id",
     {
       validate: {
-        param: { id: "string:1-" },
+        param: { id: "string:1-!" },
       },
       docs: {
         summary: "Get user details",
@@ -491,8 +516,8 @@ export default defineRoutes((app) => {
     {
       validate: {
         body: {
-          name: "string:1-50", // required, length 1-50
-          email: "email", // required, email format
+          name: "string:1-50!", // required, length 1–50
+          email: "email!", // required, email format
           age: "number:0-200?", // optional, 0-200
           role: "enum:admin,user?", // optional, enumeration value
         },
@@ -513,7 +538,7 @@ export default defineRoutes((app) => {
               updatedAt: "2026-03-05T00:00:00.000Z",
             },
           },
-          422: { description: "Parameter verification failed" },
+          422: { description: "Parameter validation failed" },
           401: { description: "Not authenticated" },
           409: { description: "Email has been registered" },
         },
@@ -541,7 +566,7 @@ export default defineRoutes((app) => {
     "/:id",
     {
       validate: {
-        param: { id: "string:1-" },
+        param: { id: "string:1-!" },
         body: {
           name: "string:1-50?", // optional
           email: "email?", // optional
@@ -554,7 +579,7 @@ export default defineRoutes((app) => {
           "Update the specified user's information. Bearer Token authentication is required. Just pass in the fields that need to be updated.",
         responses: {
           200: { description: "Update successful" },
-          422: { description: "Parameter verification failed" },
+          422: { description: "Parameter validation failed" },
           401: { description: "Not authenticated" },
           404: { description: "User does not exist" },
           409: { description: "The mailbox is already used by another user" },
@@ -584,7 +609,7 @@ export default defineRoutes((app) => {
     "/:id",
     {
       validate: {
-        param: { id: "string:1-" },
+        param: { id: "string:1-!" },
       },
       docs: {
         summary: "Delete user",
@@ -614,17 +639,12 @@ export default defineRoutes((app) => {
 });
 ```
 
-## 6. Entry file
+## 6. Startup entry
 
-```typescript
-// src/index.ts
-import { bootstrap } from "vextjs";
-
-bootstrap().catch((err) => {
-  console.error("Startup failed:", err);
-  process.exit(1);
-});
-```
+Use the template's `vext dev/build/start` scripts. The CLI manages startup,
+so no additional `src/index.ts` is needed. Run `pnpm typecheck` and
+`pnpm build` before `pnpm start`. See [Services](/guide/services) for service
+type generation and manual extension.
 
 ## 7. Test
 
@@ -639,7 +659,9 @@ describe("User CRUD", () => {
   const AUTH_TOKEN = "user-1-admin"; // Impersonate administrator token
 
   beforeEach(async () => {
-    testApp = await createTestApp();
+    testApp = await createTestApp({
+      config: { middlewares: [{ name: "auth" }] },
+    });
   });
 
   afterEach(async () => {
@@ -671,14 +693,16 @@ describe("User CRUD", () => {
       expect(res.body.data.items[0].name).toBe("Alice");
     });
 
-    it("Paging parameter verification failed and 422 should be returned", async () => {
+    it("returns 422 when pagination parameters fail validation", async () => {
       const res = await testApp.request
         .get("/users/list")
         .query({ page: 0, limit: 10 }); // The minimum value of page is 1
 
       expect(res.status).toBe(422);
     });
-  });describe("GET /users/:id", () => {
+  });
+
+  describe("GET /users/:id", () => {
     it("User details should be returned if present", async () => {
       const res = await testApp.request.get("/users/1");
 
@@ -694,7 +718,7 @@ describe("User CRUD", () => {
       const res = await testApp.request.get("/users/999");
 
       expect(res.status).toBe(404);
-      expect(res.body.message).toBe("The user does not exist");
+      expect(res.body.message).toBe("User does not exist");
     });
   });
 
@@ -804,7 +828,8 @@ describe("User CRUD", () => {
     });
   });
 
-  //──Delete ─────────────────────────────────────describe("DELETE /users/:id", () => {
+  // ── Delete ────────────────────────────────────
+  describe("DELETE /users/:id", () => {
     it("The user should be deleted successfully after authentication", async () => {
       const res = await testApp.request
         .delete("/users/2")
@@ -850,6 +875,16 @@ describe("User CRUD", () => {
 
 ## 8. Run
 
+`createTestApp` does not read the project's `default.ts`, so the test above
+passes its middleware whitelist explicitly. These source routes are imported
+directly by Node; use Node.js 22.18+ or equivalent default type stripping.
+Installing Vitest alone does not let Node 20 import TypeScript routes.
+See [Testing](/guide/testing) for loaders and compiled-output alternatives.
+Each test app creates its own UserService and seed data; it does not write to
+the repository Todo example's MongoDB database. Also test missing required
+name/email, omitted or fractional pagination, invalid tokens, and unchanged
+fields when an update omits them.
+
 ### Development mode
 
 ```bash
@@ -871,7 +906,7 @@ pnpm test
 ## 9. Interface testing
 
 ```bash
-#HealthCheck
+# Health check
 curl http://localhost:3000/
 # → {"code":0,"data":{"status":"ok","users":3,...},"requestId":"..."}
 
@@ -879,7 +914,7 @@ curl http://localhost:3000/
 curl "http://localhost:3000/users/list?page=1&limit=10"
 # → {"code":0,"data":{"items":[...],"total":3,"page":1,"limit":10,"totalPages":1},"requestId":"..."}
 
-#Search for users
+# Search for users
 curl "http://localhost:3000/users/list?page=1&limit=10&keyword=alice"
 # → {"code":0,"data":{"items":[{"id":"1","name":"Alice",...}],...},"requestId":"..."}
 
@@ -887,14 +922,14 @@ curl "http://localhost:3000/users/list?page=1&limit=10&keyword=alice"
 curl http://localhost:3000/users/1
 # → {"code":0,"data":{"id":"1","name":"Alice","email":"alice@example.com",...},"requestId":"..."}
 
-#Create user (authentication required)
+# Create user (authentication required)
 curl -X POST http://localhost:3000/users \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer user-1-admin" \
   -d '{"name":"Diana","email":"diana@example.com","age":25}'
 # → 201 {"code":0,"data":{"id":"4","name":"Diana",...},"requestId":"..."}
 
-#Update user (authentication required)
+# Update user (authentication required)
 curl -X PUT http://localhost:3000/users/1 \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer user-1-admin" \
@@ -910,9 +945,9 @@ curl -X DELETE http://localhost:3000/users/2 \
 curl -X POST http://localhost:3000/users \
   -H "Content-Type: application/json" \
   -d '{"name":"Test","email":"test@example.com"}'
-# → 401 {"code":-1,"message":"Authentication token not provided","requestId":"..."}
+# → 401 {"code":"AUTH_REQUIRED","message":"Authentication required","requestId":"..."}
 
-# Parameter verification failed
+# Parameter validation failed
 curl -X POST http://localhost:3000/users \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer user-1-admin" \
@@ -946,22 +981,22 @@ app.throw(404, 'User does not exist') in handler
   → throw HttpError
   → error-handler middleware capture
   → Convert to standard error response
-  → {"code":-1,"message":"User does not exist","requestId":"..."}
+  → {"code":404,"message":"User does not exist","requestId":"..."}
   → HTTP 404
 ```
 
 ### Design patterns
 
-| Mode                         | Description                                                                                  |
-| ---------------------------- | -------------------------------------------------------------------------------------------- |
-| **Three-stage routing**      | `app.method(path, options, handler)` — Declarative configuration                             |
-| **Service layer separation** | Business logic is encapsulated in `src/services/`, routing is only arranged                  |
-| **Middleware whitelist**     | Route-level middleware must be declared in `config.middlewares`                              |
-| **Auth guard**               | `auth()` fills `req.auth`; `RouteOptions.auth` protects routes and drives OpenAPI security   |
-| **Declarative validation**   | `validate` uses schema-dsl DSL syntax, automatic type conversion                             |
-| **Unified error handling**   | `app.throw()` throws an error, and the framework automatically converts to a standard format |
-| **Export packaging**         | All successful responses are automatically packaged as `{ code: 0, data, requestId }`        |
-| **OpenAPI Auto-Generation**  | Automatically generate API documentation from `validate` and `docs` configurations           |
+| Mode                         | Description                                                                                   |
+| ---------------------------- | --------------------------------------------------------------------------------------------- |
+| **Three-stage routing**      | `app.method(path, options, handler)` — Declarative configuration                              |
+| **Service layer separation** | Business logic is encapsulated in `src/services/`, routing is only arranged                   |
+| **Middleware whitelist**     | Route-level middleware must be declared in `config.middlewares`                               |
+| **Auth guard**               | `auth()` fills `req.auth`; `RouteOptions.auth` protects routes and drives OpenAPI security    |
+| **Declarative validation**   | `validate` uses schema-dsl DSL syntax, automatic type conversion                              |
+| **Unified error handling**   | `app.throw()` throws an error, and the framework automatically converts to a standard format  |
+| **Response wrapping**        | This example's successful JSON responses use `{ code: 0, data, requestId }`; 204 has no body. |
+| **OpenAPI Auto-Generation**  | Automatically generate API documentation from `validate` and `docs` configurations            |
 
 ## Next step
 

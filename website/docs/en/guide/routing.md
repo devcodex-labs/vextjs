@@ -1,12 +1,89 @@
-# routing
+# Routing
 
-VextJS uses **conventional file routing** + **three-stage routing definition** to automatically map file paths to URL prefixes, and declare specific routes inside the file through `defineRoutes()`.
+VextJS combines **convention-based file routing** with route declarations inside `defineRoutes()`. A route file maps to a URL prefix; its factory declares the methods and paths beneath that prefix.
+
+Start with a runnable route, then learn file mapping, request validation, and business integration. For the full fields and defaults, see the [Route Definition API](/api/route-definition); for binding rules, see the [HTTP and Routing Specification](/specification/http-and-routing).
+
+The `route-demo.ts` below is a complete, standalone file for an existing VextJS project. Other snippets that mention `app`, `req`, `res`, or `handler` belong inside their respective factory or handler. The business example declares its service and authentication prerequisites separately.
+
+## Run a route first
+
+### 1. Create the route file
+
+Prerequisite: a VextJS project created according to [Quick Start](/guide/quick-start), with dependencies installed and `npm run dev` working. Create this file; it needs no database, custom service, or authentication middleware.
+
+```typescript
+// src/routes/route-demo.ts
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  app.get(
+    "/:id",
+    { validate: { param: { id: "integer:1-!" } } },
+    (req, res) => {
+      const { id } = req.valid("param");
+      res.json({ id, valueType: typeof id });
+    },
+  );
+
+  app.post(
+    "/",
+    { validate: { body: { name: "string:1-50!" } } },
+    (req, res) => {
+      const { name } = req.valid("body");
+      res.json({ name }, 201);
+    },
+  );
+});
+```
+
+### 2. Verify paths and validation
+
+Run `npm run dev` from the project root. In another terminal, use the actual port shown on startup. Save these two request files in the project root so that JSON quoting works consistently across shells:
+
+`route-valid.json`:
+
+```json
+{ "name": "Alice" }
+```
+
+`route-invalid.json`:
+
+```json
+{}
+```
+
+Run these commands from the same directory. In Windows PowerShell, use `curl.exe` in place of `curl`:
+
+```bash
+curl -i http://localhost:3000/route-demo/42
+curl -i http://localhost:3000/route-demo/not-a-number
+curl -i -X POST http://localhost:3000/route-demo -H "Content-Type: application/json" --data-binary @route-valid.json
+curl -i -X POST http://localhost:3000/route-demo -H "Content-Type: application/json" --data-binary @route-invalid.json
+```
+
+| Request                        | Expected result                                                             |
+| ------------------------------ | --------------------------------------------------------------------------- |
+| GET `/route-demo/42`           | 200; with default wrapping, `data` is `{ "id": 42, "valueType": "number" }` |
+| GET `/route-demo/not-a-number` | 400; path validation fails before the handler runs                          |
+| POST with a valid name         | 201; with default wrapping, `data.name` is `Alice`                          |
+| POST with an empty object      | 422; the required body field is missing and the handler does not run        |
+
+The file prefix is `/route-demo`, so write `"/"` or `"/:id"` inside the file; do not add `/route-demo` again. The response wrapper depends on app configuration, and exact validation messages can vary with the validator and locale.
+
+### 3. Integrate business logic
+
+After the minimal route works, pass business operations to a [service](/guide/services). Add validation, middleware, authentication, and response declarations as needed.
+
+The local `app.get(...)` snippets below belong inside `defineRoutes((app) => { ... })`. Names such as `handler`, `user`, `data`, and `app.services.*` stand for application code; VextJS does not create those business capabilities automatically.
+
+The factory must be synchronous; handlers may be async. Register routes with direct top-level statements in the factory body, not inside loops, conditionals, or async callbacks. Statically resolvable function bindings and default re-exports are supported; see the [factory rules](/specification/http-and-routing#vext-http-002).
 
 ## Basic concepts
 
 ### File routing mapping
 
-Each file in the `src/routes/` directory is automatically mapped to a URL prefix:
+Route files under `src/routes/` that pass the loader rules map to URL prefixes. The table shows alternative layouts: `users.ts` and `users/index.ts` cannot coexist.
 
 | File path                  | URL prefix        |
 | -------------------------- | ----------------- |
@@ -22,7 +99,7 @@ Each file in the `src/routes/` directory is automatically mapped to a URL prefix
 VextJS routing is defined using **three-part** `(path, options, handler)` or **two-part** `(path, handler)`:
 
 ```typescript
-// Three-stage formula: path + options + handler
+// Three-part form: path + options + handler
 app.get(
   "/list",
   {
@@ -36,17 +113,17 @@ app.get(
   },
 );
 
-//Two paragraphs: path + handler (no options)
+// Two-part form: path + handler (no options)
 app.get("/health", async (_req, res) => {
   res.json({ status: "ok" });
 });
 ```
 
-The second parameter `options` in the three-part expression is a declarative configuration object, including:
+The second parameter, `options`, is a declarative configuration object. Common fields follow; for response, cache, upload, and other fields, see [RouteOptions](/api/route-definition#routeoptions).
 
 | Field         | Description                                                   |
 | ------------- | ------------------------------------------------------------- |
-| `validate`    | Parameter validation rules (query / body / param / header)    |
+| `validate`    | Validation rules (query / body / param / header / cookie)     |
 | `middlewares` | Route-level middleware reference                              |
 | `auth`        | Route protection contract; inline or same-file final `const`  |
 | `session`     | Route-level Session opt-in, opt-out, or behavior override     |
@@ -56,98 +133,39 @@ The second parameter `options` in the three-part expression is a declarative con
 
 ## How to write routing files
 
-Each route file uses `defineRoutes()` to export route definitions:
+Each route file default-exports the result of `defineRoutes()`. Verify the path and validation with the standalone example above before moving business operations into a service. Do not put the database connection, authentication implementation, and an entire CRUD application into your first route.
 
-```typescript
-// src/routes/users.ts
-import { defineRoutes } from "vextjs";
+Use the two-part form for a simple endpoint such as a health check. Use the three-part form for validation, middleware, access protection, or response declarations. A factory can declare multiple methods, but each registration must be a direct statement in its body. For loading rules, see “Route loading priority” and “Exclusion rules” below. For the exact signature, see the [defineRoutes API](/api/route-definition#defineroutes).
 
-export default defineRoutes((app) => {
-  //GET /users
-  app.get(
-    "/",
-    {
-      docs: { summary: "Get user list" },
-    },
-    async (req, res) => {
-      const users = await app.services.user.findAll();
-      res.json(users);
-    },
-  );
+To create, read, update, and delete a resource, see [Business route composition](#complete-example). That section names the service and authentication prerequisites explicitly.
 
-  // GET /users/:id
-  app.get(
-    "/:id",
-    {
-      validate: { param: { id: "string!" } },
-      docs: { summary: "Get user details" },
-    },
-    async (req, res) => {
-      const { id } = req.valid("param");
-      const user = await app.services.user.findById(id);
-      if (!user) app.throw(404, "user.not_found");
-      res.json(user);
-    },
-  );
+## Route loading priority
 
-  // POST /users
-  app.post(
-    "/",
-    {
-      validate: {
-        body: {
-          name: "string:1-50!",
-          email: "email!",
-          age: "number?",
-        },
-      },
-      middlewares: ["auth"],
-      auth: { required: true, security: "bearerAuth" },
-      docs: { summary: "Create User" },
-    },
-    async (req, res) => {
-      const data = req.valid("body");
-      const user = await app.services.user.create(data);
-      res.json(user, 201);
-    },
-  );
+When routes might conflict, `router-loader` applies these rules:
 
-  // PUT /users/:id
-  app.put(
-    "/:id",
-    {
-      validate: {
-        param: { id: "string!" },
-        body: { name: "string:1-50?", email: "email?" },
-      },
-      middlewares: ["auth"],
-      auth: { required: true, security: "bearerAuth" },
-      docs: { summary: "Update user" },
-    },
-    async (req, res) => {
-      const { id } = req.valid("param");
-      const data = req.valid("body");
-      const user = await app.services.user.update(id, data);
-      res.json(user);
-    },
-  );
+1. **Static paths take precedence over dynamic paths**: `/users/list` before `/users/:id`.
+2. **Files sort alphabetically** for deterministic loading.
+3. **Both file prefixes and final route identities are checked**: the static index rejects `routes/users.ts` alongside `routes/users/index.ts`. Runtime checks also reject duplicate normalized HTTP method and full path pairs, including case and trailing-slash variants. Different final paths do not bypass the file-prefix restriction.
+4. **HEAD precedes GET at the same path, and specific paths precede wildcard paths**. Do not rely on filename order to override an existing route.
 
-  // DELETE /users/:id
-  app.delete(
-    "/:id",
-    {
-      validate: { param: { id: "string!" } },
-      middlewares: ["auth"],
-      auth: { required: true, security: "bearerAuth" },
-      docs: { summary: "Delete user" },
-    },
-    async (req, res) => {
-      const { id } = req.valid("param");
-      await app.services.user.delete(id);
-      res.status(204).json(null);
-    },
-  );
-});
+## Exclusion rules
+
+Supported route sources are `.ts`, `.js`, and `.mjs`. A `.cjs` route source fails loading; it is neither supported nor silently excluded. The loader skips:
+
+- Test files: `*.test.ts` and `*.spec.ts`
+- Type declarations: `*.d.ts`
+- Files or directories starting with `_` or `.`
+- `node_modules` directories
+- Generated temporary files containing `.__vext_compiled__`
+
+These skipped files are not startup errors. Runtime loading, route diagnostics, and manifest generation use the same exclusion policy. The `_` prefix can hold shared route utilities:
+
+```
+src/routes/
+├── _utils.ts          # not loaded as a route
+├── _types.ts          # shared types
+├── users.ts
+└── orders.ts
 ```
 
 ## HTTP method
@@ -235,193 +253,75 @@ export default defineRoutes((app) => {
 
 ## Request object (req)
 
-The first parameter `req` of the routing handler is the unified `VextRequest` object of the framework, which is decoupled from the underlying Adapter:
+Handlers read HTTP input through `req`. For business input, prefer `req.valid()` for locations declared in the validation schema: it contains validated, converted values. Raw `req.params/query/body/headers/cookies` remain available.
 
-### Common attributes
+<a id="common-attributes"></a>
+<a id="reqvalid--get-the-verified-data"></a>
 
-```typescript
-app.post("/example", async (req, res) => {
-  req.method; // 'POST'
-  req.url; // '/example?foo=bar'
-  req.path; // '/example'
-  req.query; // { foo: 'bar' }
-  req.body; // Request body (parsed by body-parser middleware)
-  req.params; // path parameters { id: '123' }
-  req.headers; // Request headers (lowercase key)
-  req.cookies; // Parsed cookies (readonly, first-wins)
-  req.cookie("theme"); // Read one cookie value
-  req.session; // Available when global or route-level Session is enabled
-  req.requestId; //Request unique identifier (automatically generated or transparently transmitted from X-Request-Id)
-  req.ip; // Client IP
-  req.protocol; // 'http' | 'https'
-  req.app; // VextApp instance (can access services, logger, throw, etc.)
-});
-```
+| Data             | Declaration       | Handler read          |
+| ---------------- | ----------------- | --------------------- |
+| Path parameters  | `validate.param`  | `req.valid("param")`  |
+| Query parameters | `validate.query`  | `req.valid("query")`  |
+| Request headers  | `validate.header` | `req.valid("header")` |
+| Cookies          | `validate.cookie` | `req.valid("cookie")` |
+| Request body     | `validate.body`   | `req.valid("body")`   |
 
-### `req.valid()` — Get the verified data
-
-When the route is configured with the `validate` option, use `req.valid()` to obtain the data after verification and type conversion:
+Only declared locations produce validation results; an undeclared location returns `undefined`. Field optionality comes from the schema; a TypeScript generic cannot substitute for runtime validation. The `id` example above converts a string into a number. A handler can apply business defaults to optional fields:
 
 ```typescript
-app.get(
-  "/search",
-  {
-    validate: {
-      query: {
-        keyword: "string!",
-        page: "number:1-", // Automatically convert query string to number
-        limit: "number:1-100",
-      },
-    },
-  },
-  async (req, res) => {
-    const { keyword, page, limit } = req.valid("query");
-    // keyword: string, page: number, limit: number — type converted
-    const results = await app.services.search.query(keyword, page, limit);
-    res.json(results);
-  },
-);
+// Inside a handler with validate.query declared
+const { page = 1, limit = 20 } = req.valid("query");
 ```
 
-`req.valid()` supports five positions:
+For method, URL, raw input, request ID, IP, protocol, cookies, session, and app instance, see [request members](/api/context#public-member-list). See [req.valid()](/api/context#validlocation) for signatures and inferred types. Enable Session before accessing it. See [Uploads](/guide/uploads) for file reads and regular field limits.
 
-| Parameters | Data source   | Description             |
-| ---------- | ------------- | ----------------------- |
-| `'query'`  | `req.query`   | URL query parameters    |
-| `'body'`   | `req.body`    | Request body            |
-| `'param'`  | `req.params`  | Path dynamic parameters |
-| `'header'` | `req.headers` | Request headers         |
-| `'cookie'` | `req.cookies` | Parsed Cookie values    |
+<a id="reqonclose--connection-close-hook"></a>
 
-:::tip Automatic type inference
-When the route declares `validate`, the handler receives the inferred type from
-that same schema:
-
-```typescript
-const { id } = req.valid("param");
-// The type of id is string
-```
-
-:::
-
-### `req.onClose()` — Connection close hook
-
-Callback when the registration request is closed (triggered when the client disconnects), commonly used in SSE/long connection scenarios:
-
-```typescript
-req.onClose(() => {
-  // Clean up resources
-});
-```
+Use [req.onClose()](/api/context#onclosehandler) to clean up timers and other resources for long connections or streams. It runs on normal response completion **or** early connection closure, at most once per callback. Registering after completion runs the callback immediately. A callback does not imply an abnormal disconnect, and normal completion does not abort `req.signal`. Check [signal](/api/context#signal) separately when cancelling downstream work.
 
 ## Response object (res)
 
-The second parameter `res` of the route handler is the framework-unified `VextResponse` object:
+Call `res.json(data)` in a handler to send ordinary JSON business data. Pass 201 for creation and use 204 for a successful deletion with no body. Merely returning `data` does not send a response.
 
-### `res.json()` — JSON response
-
-```typescript
-//Default 200
-res.json({ name: "Alice" });
-// → { "code": 0, "data": { "name": "Alice" }, "requestId": "xxx" }
-
-//Specify status code
-res.json(user, 201);
-
-// 204 No Content (the message body is automatically not sent)
-res.status(204).json(null);
-```
-
-:::info response wrapper
-When the `response-wrapper` middleware is enabled (enabled by default), `res.json()` will automatically wrap the response into a unified format:
-
-```json
-{
-  "code": 0,
-  "data": { "...": "Your business data" },
-  "requestId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-}
-```
-
-Error responses are returned uniformly by the global error handler:
-
-```json
-{
-  "code": 404,
-  "message": "User does not exist",
-  "requestId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-}
-```
-
-:::
-
-### `res.text()` — plain text response
+<a id="resjson--json-response"></a>
+<a id="chain-call"></a>
 
 ```typescript
-res.text("Hello World");
-res.text("Not Found", 404);
-```
-
-### `res.stream()` — streaming response
-
-```typescript
-import { createReadStream } from "node:fs";
-
-app.get("/download/report", async (_req, res) => {
-  const stream = createReadStream("/path/to/report.csv");
-  res.stream(stream, "text/csv");
-});
-```
-
-### `res.download()` — File download
-
-```typescript
-app.get("/export", async (_req, res) => {
-  const stream = createReadStream("/path/to/data.xlsx");
-  res.download(
-    stream,
-    "report.xlsx",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  );
-});
-```
-
-`download()` automatically writes a safe `Content-Disposition`: ASCII filenames use `filename` directly, while non-ASCII or unsafe filenames get a fallback plus a UTF-8 `filename*`.
-
-### `res.redirect()` — Redirect
-
-```typescript
-res.redirect("/new-location"); // 302 temporary redirect
-res.redirect("/new-location", 301); // 301 permanent redirect
-```
-
-### Chain call
-
-`res.status()` and `res.setHeader()` support chained calls:
-
-```typescript
+res.json({ name: "Alice" }); // Default 200
 res.status(201).setHeader("X-Custom-Header", "value").json(data);
+// After successful deletion: res.status(204).json(null);
 ```
 
-### `res.statusCode` — Read status code
+Each line is an alternative for a different request; do not send them in sequence for one request. By default, `config.response.wrap: true` wraps JSON as `{ code: 0, data, requestId }`; a 204 response has no body. See [JSON response](/api/context#jsondata-status) for fields, defaults, and behavior with wrapping disabled.
 
-In the after-middleware stage of the onion model, the final response status code can be read:
+<a id="restext--plain-text-response"></a>
+<a id="resstream--streaming-response"></a>
+<a id="resdownload--file-download"></a>
+<a id="resredirect--redirect"></a>
+<a id="resstatuscode--read-status-code"></a>
 
-```typescript
-const timing: VextMiddleware = async (req, res, next) => {
-  const start = Date.now();
-  await next();
-  console.log(
-    `${req.method} ${req.path} → ${res.statusCode} (${Date.now() - start}ms)`,
-  );
-};
-```
+Choose other response methods according to the task; the request and response API has exact parameters and examples:
 
-## Parameter verification
+| Task                      | Method and consideration                                                                          | Reference                                                                        |
+| ------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Return text               | `res.text(content, status?)`                                                                      | [Text](/api/context#textcontent-status)                                          |
+| Send a file stream or SSE | `res.stream()` takes a Node.js readable stream; set Content-Type and clean up resources as needed | [Stream](/api/context#streamreadable-contenttype)                                |
+| Offer an attachment       | `res.download()` sets a safe Content-Disposition and supports UTF-8 filenames                     | [Download](/api/context#downloadreadable-filename-contenttype)                   |
+| Redirect                  | `res.redirect()` defaults to 302; choose another supported status when appropriate                | [Redirect](/api/context#redirecturl-status)                                      |
+| Set status and headers    | Call before sending; methods can chain                                                            | [status](/api/context#statuscode), [setHeader](/api/context#setheadername-value) |
+| Observe the result        | Read-only `res.statusCode` after `await next()` in middleware                                     | [Status code](/api/context#statuscode-read-only)                                 |
+
+To constrain JSON output fields, see top-level `responses` under “OpenAPI documentation configuration.” Use `app.throw()` for errors; do not pass error responses as successful data to `res.json()`.
+
+## Parameter validation
 
 VextJS integrates [schema-dsl](https://github.com/devcodex-labs/schema-dsl), declares validation rules in the route `options.validate`, and the framework automatically performs validation and generates OpenAPI documents.
 
-### DSL syntax quick check
+### DSL syntax at a glance
+
+The introduction uses `integer:1-!` and `string:1-50!`: `!` makes a field required, and the range constrains its value or length. Use `?` (or omit the required marker) for an optional field. Declare the rule in route options and read the converted result in the handler.
+
+For strings, numbers, email, URL, booleans, dates, and enums, see the [DSL syntax guide](/guide/validation#detailed-explanation-of-dsl-syntax) and [route validation reference](/api/route-definition#dsl-syntax-quick-check). A schema does not decide whether an email is already registered or whether a user owns a resource; implement those business and authorization checks separately.
 
 | DSL expression         | Meaning                                  |
 | ---------------------- | ---------------------------------------- |
@@ -438,7 +338,7 @@ VextJS integrates [schema-dsl](https://github.com/devcodex-labs/schema-dsl), dec
 | `'admin\|user\|guest'` | Enumeration value                        |
 | `'date!'`              | Required date string                     |
 
-### Verify location
+### Validation locations
 
 ```typescript
 app.post(
@@ -465,11 +365,11 @@ app.post(
 );
 ```
 
-Validation runs in this order: `param` → `query` → `header` → `body`. An invalid path `param` returns HTTP `400`; failure at another location returns HTTP `422` immediately.
+Validation runs in this order: `param` → `query` → `header` → `cookie` → `body`. An invalid path `param` returns HTTP 400 immediately; failure at another location returns HTTP 422 immediately.
 
-### Verification error response
+### Validation error response
 
-When verification fails, the framework automatically returns a structured error message:
+When validation fails, the framework returns a structured error response:
 
 ```json
 {
@@ -485,22 +385,24 @@ When verification fails, the framework automatically returns a structured error 
 
 ## Routing level middleware
 
-Specify middleware for routes via `options.middlewares`. Middleware must first be registered in the `middlewares` whitelist of `config/default.ts`:
+Use `options.middlewares` to attach middleware to a route. This is a composition snippet: first create the `audit-log` and `response-label` files described in [Define middleware](/guide/middleware#define-middleware), then allowlist them in configuration. `handler` represents your own business handler.
 
 ```typescript
 // src/config/default.ts
 export default {
   middlewares: [
     "audit-log",
-    { name: "rate-limit", options: { window: 60_000, max: 120 } },
+    { name: "response-label", options: { value: "configured" } },
   ],
 };
 ```
 
 ```typescript
 // src/routes/admin.ts
+import { defineRoutes } from "vextjs";
+
 export default defineRoutes((app) => {
-  // string reference
+  // String reference
   app.get(
     "/dashboard",
     {
@@ -509,13 +411,13 @@ export default defineRoutes((app) => {
     handler,
   );
 
-  // Object reference (overrides default parameters)
+  // Object reference overrides configured default options
   app.delete(
     "/users/:id",
     {
       middlewares: [
         "audit-log",
-        { name: "rate-limit", options: { window: 60_000, max: 10 } },
+        { name: "response-label", options: { value: "admin" } },
       ],
     },
     handler,
@@ -523,7 +425,9 @@ export default defineRoutes((app) => {
 });
 ```
 
-Middleware is executed in the order of declaration, running before handlers.
+Custom route middleware runs in declaration order, before automatic route validation. Before `next()`, do not assume `req.valid()` has validation results. An authentication middleware must establish `req.auth` before a route's `auth` guard can enforce protection.
+
+The factory argument here comes from the `response-label` definition. Route options replace that middleware's configured default options as a whole. Configure built-in rate limiting with global `rateLimit.enabled` and route `override.rateLimit`; `window` is measured in seconds. See [override](/api/route-definition#override).
 
 ## OpenAPI document configuration
 
@@ -567,7 +471,7 @@ status selector.
 
 ### Hidden route
 
-For routes that you do not want to appear in the OpenAPI documentation, set `docs.hidden: true`:
+To omit a route from generated OpenAPI documentation, set `docs.hidden: true`. This does not block HTTP access; use authentication and authorization for access control:
 
 ```typescript
 app.get(
@@ -581,21 +485,21 @@ app.get(
 
 ## Access the `app` object
 
-The callback parameter `app` of `defineRoutes()` provides the full capabilities of the framework:
+The `app` argument to `defineRoutes()` gives access to services, logging, errors, and configuration:
 
 ```typescript
 export default defineRoutes((app) => {
   app.get("/example", async (req, res) => {
-    //Access service
+    // Access a service
     const data = await app.services.user.findAll();
 
     // use logger
-    app.logger.info({ userId: req.params.id }, "Fetching user");
+    app.logger.info("Fetching users");
 
     // throw HTTP error
     if (!data) app.throw(404, "not_found");
 
-    //Read configuration
+    // Read configuration
     const port = app.config.port;
 
     res.json(data);
@@ -604,20 +508,20 @@ export default defineRoutes((app) => {
 ```
 
 :::tip req.app and closure app
-There are two ways to access `app` in the routing handler:
 
-- **Closure `app`**: `app` parameter in `defineRoutes((app) => ...)`
-- **`req.app`**: The real runtime `app` reference on the request object
+A route handler can access `app` in either way:
 
-For stable references such as `config`, `services`, `logger`, and `throw`, the two usually behave the same, and the closure `app` is also written more concisely.
+- **Closure `app`**: the argument to `defineRoutes((app) => ...)`.
+- **`req.app`**: the real runtime application reference on the request.
 
-But please note: `defineRoutes()` will internally copy the properties of the root `app` to the collector first, and then pass this collector to the routing factory; if a field will be `app.extend()` **replaced with a new object reference** during runtime (such as `app.remoteConfig` in the Nacos scenario), the old reference captured in the closure `app` will not be automatically refreshed, and should be read instead. `req.app`, or read through `this.app` in service.
+The factory's `app` is a Proxy facade backed by the real application. Reads of `app.config`, `app.services`, and extension properties forward to the real application; these are not property snapshots copied into a collector. `req.app` points to the real application.
 
-In short:
+Use `req.app.fetch` in a handler for attached methods such as `fetch.get()` and `fetch.create()`; see the [HTTP client guide](/guide/fetch).
 
-- **static/stable fields** → closure `app` can continue to be used
-- **Dynamic field replacement during runtime** → Prioritize using `req.app`
-  :::
+If you assign `const config = app.remoteConfig` outside request handling, that variable retains the value read at that moment. For the latest value, read `app.remoteConfig` or `req.app.remoteConfig` inside the handler. This is ordinary JavaScript reference capture, regardless of which app entry point you choose.
+
+The factory's HTTP registration methods close after collection. Calling `app.get()` from a handler fails.
+:::
 
 ## Error handling
 
@@ -626,7 +530,7 @@ In short:
 When using `app.throw()` in a route or service to throw an error, the framework will handle it uniformly and return a structured response:
 
 ```typescript
-//Basic usage
+// Basic usage
 app.throw(404, "User does not exist");
 // → { "code": 404, "message": "User does not exist", "requestId": "..." }
 
@@ -634,13 +538,14 @@ app.throw(404, "User does not exist");
 app.throw(404, "user.not_found");
 // → Automatically translate the message into the current request language
 
-//With business error code
+// With a business error code
 app.throw(400, "Email has been registered", 10001);
 // → { "code": 10001, "message": "Email has been registered", "requestId": "..." }
 
-//With interpolation parameters
+// With interpolation parameters
 app.throw(400, "balance.insufficient", { balance: 50 });
-// → { "code": 20001, "message": "Insufficient balance, current balance is 50", "requestId": "..." }
+// → code comes from the locale's business code if present; otherwise 400.
+//   The message comes from translation and interpolation.
 
 // With interpolation parameters + business error code
 app.throw(400, "balance.insufficient", { balance: 50 }, 20001);
@@ -656,82 +561,17 @@ throw new Error("Database connection lost");
 
 The framework will catch it as well, but this path represents an "unknown runtime error" and will ultimately return a `500 Internal Server Error`. In the development environment, when `response.hideInternalErrors = false`, the JSON 500 response will be accompanied by `stack`; if your goal is to actively return a clear `4xx/5xx` HTTP result, you should still use `app.throw(...)` first.
 
-## Route loading priority
+<a id="complete-example"></a>
 
-When there are potentially conflicting routes, `router-loader` handles them according to the following rules:
+## Business route composition
 
-1. **Static routing takes precedence over dynamic routing**: `/users/list` takes precedence over `/users/:id`
-2. **Sort files in alphabetical order**: Ensure the loading order is deterministic
-3. **Duplicate definitions of the same prefix are not allowed**: `routes/users.ts` and `routes/users/index.ts` cannot exist at the same time (the framework will report an error)
-
-## Exclusion rules
-
-The following files will not be loaded as routes:
-
-- Supported route file extensions are `.ts`, `.js`, `.mjs`, and `.cjs`
-- Test files: `*.test.ts`, `*.spec.ts`
-- Type declaration files: `*.d.ts`
-- Files or directories starting with `_` or `.`
-- `node_modules` directory
-- Generated temporary files containing `.__vext_compiled__`
-
-These files are skipped, not treated as startup errors. Runtime route loading, route diagnostics, and manifest generation share this policy.
-
-You can use the `_` prefix to create tool modules for route sharing:
-
-```
-src/routes/
-├── _utils.ts # will not be loaded as a route
-├── _types.ts # Shared type definition
-├── users.ts
-└── orders.ts
-```
-
-## Complete example
+This article-creation example connects HTTP input to business operations and an HTTP response. Before running it, implement a `post` service and provide an allowlisted `auth` middleware that sets `req.auth.userId`. It is a business wiring snippet; without those prerequisites, start with `route-demo.ts` above.
 
 ```typescript
 // src/routes/posts.ts
 import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  // GET /posts — paginated list
-  app.get(
-    "/",
-    {
-      validate: {
-        query: {
-          page: "number:1-",
-          limit: "number:1-50",
-          status: "draft|published|archived",
-        },
-      },
-      docs: {
-        summary: "Get article list",
-      },
-    },
-    async (req, res) => {
-      const { page = 1, limit = 20, status } = req.valid("query");
-      const posts = await app.services.post.findAll({ page, limit, status });
-      res.json(posts);
-    },
-  );
-
-  // GET /posts/:id — Get details
-  app.get(
-    "/:id",
-    {
-      validate: { param: { id: "string!" } },
-      docs: { summary: "Get article details" },
-    },
-    async (req, res) => {
-      const { id } = req.valid("param");
-      const post = await app.services.post.findById(id);
-      if (!post) app.throw(404, "post.not_found");
-      res.json(post);
-    },
-  );
-
-  // POST /posts — create posts (authentication required)
   app.post(
     "/",
     {
@@ -744,65 +584,30 @@ export default defineRoutes((app) => {
       },
       middlewares: ["auth"],
       auth: { required: true, security: "bearerAuth" },
-      docs: {
-        summary: "Create article",
-        responses: {
-          201: { description: "Created successfully" },
-          401: { description: "Not authenticated" },
-        },
-      },
+      docs: { summary: "Create a post" },
     },
     async (req, res) => {
-      const data = req.valid("body");
       const post = await app.services.post.create({
-        ...data,
+        ...req.valid("body"),
         authorId: req.auth.userId,
       });
       res.json(post, 201);
     },
   );
-
-  // PATCH /posts/:id — update post
-  app.patch(
-    "/:id",
-    {
-      validate: {
-        param: { id: "string!" },
-        body: {
-          title: "string:1-200?",
-          content: "string:1-50000?",
-          status: "draft|published|archived",
-        },
-      },
-      middlewares: ["auth"],
-      auth: { required: true, security: "bearerAuth" },
-      docs: { summary: "Update article" },
-    },
-    async (req, res) => {
-      const { id } = req.valid("param");
-      const data = req.valid("body");
-      const post = await app.services.post.update(id, data);
-      res.json(post);
-    },
-  );
-
-  // DELETE /posts/:id — delete post
-  app.delete(
-    "/:id",
-    {
-      validate: { param: { id: "string!" } },
-      middlewares: ["auth"],
-      auth: { required: true, security: "bearerAuth" },
-      docs: { summary: "Delete article" },
-    },
-    async (req, res) => {
-      const { id } = req.valid("param");
-      await app.services.post.delete(id);
-      res.status(204).json(null);
-    },
-  );
 });
 ```
+
+For a full CRUD resource, keep the same responsibilities:
+
+| Operation      | Route and input                                                                                   | Handler and service responsibility                                                                             |
+| -------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Paginated list | `GET /`; declare `page`, `limit`, and a status enum in query                                      | Apply business defaults such as `page=1` and `limit=20` after `req.valid("query")`, then call `post.findAll()` |
+| Read details   | `GET /:id`; require `id` in param                                                                 | Call `post.findById()`; use `app.throw(404, "post.not_found")` if missing                                      |
+| Create         | `POST /` above; keep body separate from auth context                                              | Enforce business rules in `post.create()` and return 201                                                       |
+| Update         | `PATCH /:id`, or PUT when appropriate; require param and declare editable body fields as optional | Check ownership and status in `post.update()`; do not permit arbitrary client field overwrite                  |
+| Delete         | `DELETE /:id`; require param and authentication                                                   | Check permissions in `post.delete()`, then send `res.status(204).json(null)` without a body                    |
+
+A status enum can use `draft|published|archived`. Validation constrains declared input. `auth.required` does not automatically check ownership, status, or database uniqueness. See [Services](/guide/services) and [Security](/guide/security) for implementation, and [CRUD API](/examples/crud-api) for an example with its application dependencies.
 
 ## Next step
 
@@ -810,3 +615,4 @@ export default defineRoutes((app) => {
 - Learn the onion model of [middleware](/guide/middleware)
 - Explore the advanced usage of [Parameter Validation](/guide/validation)
 - View [OpenAPI Documentation](/guide/openapi) automatically generated
+- Check stable Rule IDs in the [HTTP and Routing Specification](/specification/http-and-routing)

@@ -1,6 +1,8 @@
 # MCP generation and dependency knowledge
 
-Vext MCP provides project facts, candidate files, and validation workflows. The host applies changes, runs commands, and verifies behavior. `ready` means a candidate can enter host review; `scaffold: true` identifies a scaffold, not completed business functionality. Exporting a Skill does not prove the host loaded or called it.
+Vext MCP provides project facts, generated candidates, and a validation workflow. The host applies files, runs commands, and verifies business behavior. `ready` means a candidate can enter host review; `scaffold: true` identifies a scaffold, not completed business functionality. Installing or exporting a Skill does not prove the host actually called MCP.
+
+Start with an existing Vext project and connect the host to that project's MCP. See the [CLI MCP guide](./cli) for installation, stdio startup, and configuration checks. This page covers use after connection. The dependency knowledge here is packaged MCP retrieval content; it differs from [site documentation data](../resources/documentation-data-and-ai) and the future capability graph. The existence of one source does not prove that another is integrated.
 
 ## Development workflow
 
@@ -12,6 +14,28 @@ Vext MCP provides project facts, candidate files, and validation workflows. The 
 6. Run existing type checks, focused tests, formatting, builds, and runtime checks. Record commands, exit codes, and behavior evidence, then stop verification services and remove temporary artifacts.
 
 Analysis JSON uses `schemaVersion: 2`; workspace/dev.mcp configuration remains version 1. Dependency ranges, content identity, loaded implementation identity, and runtime state describe separate facts.
+
+### Minimal candidate example
+
+To generate a shared function that adds two nonnegative finite amounts, first inspect the project and obtain its actual `projectId` and `contextRevision`. This is the business input for `vext_generate_changes`; attach `expectedIdentity` from the current inspection when calling the tool. Never copy an older identity:
+
+```json
+{
+  "recipeId": "utility",
+  "name": "add-amounts",
+  "options": {
+    "language": "ts",
+    "description": "Add two nonnegative finite amounts; reject invalid input",
+    "target": "shared",
+    "parameters": "left: number, right: number",
+    "returnType": "number",
+    "body": "if (!Number.isFinite(left) || !Number.isFinite(right) || left < 0 || right < 0) throw new Error('Invalid amount'); return left + right;"
+  },
+  "policyPatch": { "outputLanguage": "en", "commentLanguage": "en" }
+}
+```
+
+After receiving `status: "ready"`, pass the complete `changeSet`, the same `expectedIdentity`, and policy to `vext_validate_changes`. Check actual paths, exports, and SHA values, then let the host apply the candidate. Test the returned export with `2 + 3 = 5` and rejection of a negative value. Neither ready nor candidate validation proves those business tests ran. A create-only candidate must be rejected when its target already exists; the host should edit existing code incrementally.
 
 ## Default roles and project overrides
 
@@ -47,13 +71,13 @@ A project may place service contracts in `src/types/service/` by setting the fol
 
 This is a policy object, not a complete Tool request or workspace file. `server-service-types` is an alias of the same role; conflicting paths are rejected.
 
-Moving implementation files does not change runtime loaders. Candidates include re-export entries in actual loader directories when required. Feature architecture may place implementation under `src/modules/<feature>/` while preserving those entries. Monorepo inspection reads the current service and declared, verified shared sources; it does not grant arbitrary writes outside the fixed root. Shared model packages share definitions, while each application owns its connections.
+Moving implementation files does not change runtime loaders. Candidates include re-export entries in actual loader directories when required. Feature architecture may place implementation under `src/modules/<feature>/` while preserving those entries. Monorepo inspection reads the current service and declared, verified shared sources; it does not grant arbitrary writes outside the fixed root. Model paths `models/<database>/<file>` and `models/<pool>/<database>/<file>` identify database and pool placement, not ordinary business categories. Shared model packages share definitions, while each application owns its connections.
 
 ## Maintainable generated code
 
 Routes own HTTP validation, authorization, responses, and use-case calls. Services own orchestration; models own persistence schema/hooks/indexes. Reused pure transformations belong in utils and domain validators in validators. Callbacks, short local expressions, and service private methods are valid. Do not use function counts as a quality rule or export cross-route helpers from loader-owned route files.
 
-Only create reusable type contracts when needed. TS/TSX and JS/JSX are generated separately, with JSDoc contracts for JavaScript. Mixed target directories require `options.language`. Naming and architecture policy cannot invent loader behavior.
+Do not treat function count as a quality rule. A callback, short one-use expression, private service method, or local function can stay local; do not force an obvious one-line expression into a helper. Simple internal results may be inferred, without a separate type file when no consumer reuses them. TS projects generate TS/TSX; JS projects generate JS/JSX with necessary JSDoc contracts. Mixed target directories require `options.language`. Naming and architecture policy cannot override actual loader boundaries.
 
 Comments explain non-obvious contracts, authorization, transactions, idempotency, cache failures, and time units. Explicit commentLanguage wins; auto considers existing comments and outputLanguage. Static formatter JSON/.editorconfig settings affect generation. The host executes dynamic formatter configuration and final formatting.
 
@@ -76,7 +100,7 @@ All 17 Recipes have independent options schemas in `vext://catalog/recipes`. Unk
 | RCP-07 middleware         | body, factory/options                                               | Handler or factory; explicitly register it                                                                                            |
 | RCP-08 plugin             | setup/onReady/onClose, dependencies                                 | Lifecycle; close only owned resources                                                                                                 |
 | RCP-09 locale             | target, module/submodule, locale/messages                           | Module messages; verify loader use and missing locale keys                                                                            |
-| RCP-10 test               | target/exportName, kind, cases                                      | Real exported function unit/integration tests with distinct expectations                                                              |
+| RCP-10 test               | target/exportName, kind, cases                                      | Unit/integration tests calling the real export, with at least two distinct expected outcomes or boundaries                            |
 | RCP-11 type-contract      | target, fields                                                      | Consumer-owned fields, reuse complex existing contracts                                                                               |
 | RCP-12 utility            | description/body, parameters/returnType, target                     | Actual pure operation, no invented identity wrapper                                                                                   |
 | RCP-13 frontend-component | title                                                               | Presentation scaffold; integrate real interaction, styles, and i18n                                                                   |
@@ -147,5 +171,5 @@ MCP asks for corrected inputs or explicit integration when it detects this root-
 - A Job payload field map produces one runtime schema and an inferred contract, by default in `src/schemas/<name>-payload.ts` and `src/types/server/jobs/<name>.ts`. The Job imports both. JavaScript uses JSDoc; user policy can override `job-types` or its parent. Jobs without payloads do not receive empty type files.
 - Built-in scheduler-created runs do not carry business payload. Jobs with required payloads should be run/enqueued explicitly, or the scheduled handler should derive work from application data. Built-in stores allow `completeRun()` only for the current running owner and clear the lease; stale or repeated completion attempts do not overwrite terminal state.
 - Field-level `{ type: "boolean" }` and `{ enum: ["draft", "published"] }` must retain the runtime meaning, rather than becoming objects with type/enum subfields. Each request location still receives a DSL field map, not a whole-object JSON Schema.
-- Logout or 401 clears the token, legacy storage, data and editing state. Distinguish a committed save from a failed refresh. SSR images can fail before hydration; check the mounted native image's complete/naturalWidth in addition to onError.
+- For generated login, editing, or image pages, the host must verify business behavior: logout or 401 clears token, legacy storage, data, and editing state; distinguish a committed save from a failed refresh. SSR images can fail before hydration, so check the mounted native image's `complete`/`naturalWidth` as well as `onError`. These are consumer acceptance responsibilities, not automatic Recipe behavior.
 - Consume the actual generated API client after it exists; do not invent a source import into absent output. Consumer evidence covers TS/JS, HTTP, OpenAPI, client types and browsers independently of static candidate acceptance.

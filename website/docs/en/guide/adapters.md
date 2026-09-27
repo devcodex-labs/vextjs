@@ -1,6 +1,6 @@
 # Adapter architecture
 
-VextJS uses an adapter architecture so the underlying HTTP layer can be replaced. Application routes, middleware, services, and plugins use VextJS `req` / `res` objects instead of the underlying framework's native objects. In the supported abstraction, switching adapters is a configuration change rather than a rewrite of route handlers.
+VextJS uses an Adapter architecture to replace the underlying HTTP processing layer. Routes and services written against VextJS `req` / `res` can generally retain their interfaces; framework-specific middleware, plugins, and features still require an integration check. This page first verifies installation, configuration, startup, and switching, then explains the custom Adapter interface.
 
 ## Working principle
 
@@ -18,19 +18,21 @@ Adapter is responsible for:
 2. **Request Conversion** — Convert the native request object of the underlying framework into `VextRequest`
 3. **Response conversion** — Map the operations of `VextResponse` to the response object of the underlying framework
 4. **Route Registration** — Register the routes collected by the framework to the underlying routing system
-5. **Middleware Registration** — Register global middleware to the underlying framework
+5. **Middleware execution** — Collect global middleware and compose the route execution chain under VextJS conventions
 
 ## Built-in Adapter
 
 VextJS has 5 built-in Adapters, covering the mainstream Node.js HTTP framework:
 
-| Adapter              | Underlying framework               | Characteristics                             | Good starting point for             | Additional dependency |
-| -------------------- | ---------------------------------- | ------------------------------------------- | ----------------------------------- | --------------------- |
-| **Native** (default) | `http.createServer` + `route-core` | No third-party HTTP framework; default path | New projects and fewer dependencies | None                  |
-| **Hono**             | Hono                               | Web Standards APIs on Node.js               | Node.js full-stack services         | `hono`                |
-| **Fastify**          | Fastify                            | Plugin ecosystem and JSON serialization     | Projects that require Fastify       | `fastify`             |
-| **Express**          | Express v5                         | Mature middleware ecosystem                 | Express migrations                  | `express`             |
-| **Koa**              | Koa v3                             | Lightweight middleware model                | Teams with Koa experience           | `koa`                 |
+| Adapter              | Underlying implementation                  | Current project peer range          | Install separately                      |
+| -------------------- | ------------------------------------------ | ----------------------------------- | --------------------------------------- |
+| **Native** (default) | Node.js HTTP + `route-core`                | No additional HTTP framework peer   | None; `route-core` installs with VextJS |
+| **Hono**             | Hono routing with a Node.js request bridge | `hono ^4.0.0`                       | `hono`                                  |
+| **Fastify**          | Fastify routing and HTTP service           | `fastify ^5.0.0`                    | `fastify`                               |
+| **Express**          | Express routing and Node.js HTTP           | `express ^5.0.0`                    | `express`                               |
+| **Koa**              | Koa + `@koa/router`                        | `koa ^3.0.0`, `@koa/router ^15.6.0` | `koa @koa/router`                       |
+
+These ranges come from the current VextJS package declaration; use the installed version's peer requirements when upgrading. Selecting an Adapter does not automatically expose that framework's native plugin registration API.
 
 ### Performance comparison
 
@@ -39,6 +41,50 @@ This page does not keep a separate numeric snapshot, because an old environment 
 Use the [Performance benchmarks](/benchmark) page for the current results, methodology, limitations, and reproduction commands. After choosing an adapter, validate it with your real middleware, authentication, logging, and I/O workload.
 
 ## How to use
+
+### Verify one route first
+
+Prerequisites: prepare Node.js, ESM package.json, TypeScript configuration, and dev/build/start scripts using [Quick Start's manual setup](/guide/quick-start#method-2-manual-creation). This API-only example needs no database or external service. Merge configuration into an existing project and avoid a route filename collision.
+
+```typescript
+// src/config/default.ts
+export default {
+  port: 3000,
+  host: "127.0.0.1",
+  adapter: "native",
+  frontend: { enabled: false },
+};
+```
+
+```typescript
+// src/routes/adapter-demo.ts
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  app.get("/:id", {}, async (req, res) => {
+    res.json({ id: req.params.id, adapter: req.app.adapter.name });
+  });
+  app.post(
+    "/",
+    { validate: { body: { name: "string!" } } },
+    async (req, res) => {
+      const { name } = req.valid<{ name: string }>("body");
+      res.json({ name, adapter: req.app.adapter.name }, 201);
+    },
+  );
+});
+```
+
+The filename contributes `/adapter-demo`; use only `/:id` and `/` inside to avoid duplicating that prefix. Run `npm run dev`, then from another terminal (use `curl.exe` in PowerShell):
+
+```bash
+curl -i http://127.0.0.1:3000/adapter-demo/u-1
+curl -i -X POST http://127.0.0.1:3000/adapter-demo -H 'Content-Type: application/json' --data '{"name":"Alice"}'
+curl -i -X POST http://127.0.0.1:3000/adapter-demo -H 'Content-Type: application/json' --data '{}'
+curl -i http://127.0.0.1:3000/adapter-demo-missing
+```
+
+Expect 200 with `data: { "id": "u-1", "adapter": "native" }`, then 201 with `data.name: "Alice"`, then a 422 validation error, then 404. Successful responses also have `code: 0` and `requestId` by default. Stop dev with Ctrl+C; run `npm run build` and `npm start`, repeat all four requests against production output, then stop the service to release the port. Configuration fragments below show Adapter options only; merge them with your other fields.
 
 ### Native Adapter (default)
 
@@ -125,7 +171,7 @@ export default {
 };
 ```
 
-Fastify is a high-performance Node.js web framework with a rich plug-in ecosystem and built-in JSON Schema verification + serialization optimization.
+VextJS uses Fastify to host routes and the HTTP server, while Vext's own pipeline handles validation and JSON serialization. `res.json()` is serialized by Vext before sending; selecting Fastify does not automatically adopt Fastify route schemas or plugins. To set supported options, use a factory such as `fastifyAdapter({ caseSensitive: true })`; it accepts `FastifyAdapterOptions`, not arbitrary Fastify configuration.
 
 ### Express Adapter
 
@@ -155,16 +201,16 @@ export default {
 };
 ```
 
-Express is the most mature web framework in the Node.js ecosystem and has the largest middleware ecosystem. VextJS supports Express v5. Suitable for migrating from existing Express projects.
+The current implementation uses Express v5. Business logic independent of HTTP objects can be reused in a migration; native Express routes and `(req, res, next)` middleware need adaptation to Vext interfaces. `ExpressAdapterOptions` exposes a string `bodyLimit`, not an entire Express application instance.
 
 :::tip Express v5
-VextJS's Express Adapter is based on Express v5. If you are using Express v4, you need to upgrade first. Compared with v4, the main changes in v5 include: routing processing supports `async`/`await`, improved `req.query` parsing, etc.
+An existing Express v4 dependency does not satisfy this Adapter's peer range. Check the application's dependencies and migration impact before installing a compatible version; changing only the `adapter` string does not complete a migration.
 :::
 
 ### Koa Adapter
 
 ```bash
-npm install koa
+npm install koa @koa/router
 ```
 
 **Recommended method (string identification):**
@@ -189,24 +235,24 @@ export default {
 };
 ```
 
-Koa is a next-generation web framework built by the Express team and is known for its lightweight and elegance. VextJS supports Koa v3.
+The current implementation uses Koa v3 with `@koa/router` for route matching; install both packages. `KoaAdapterOptions` exposes a string `bodyLimit`. Vext middleware receives the unified request/response objects, not Koa `ctx`.
 
 ## Switch Adapter
 
-To switch Adapter, you only need to modify the `adapter` field in `src/config/default.ts`:
+Stop the current service, install the target peer dependency (`npm install hono` for Hono), then update `src/config/default.ts`:
 
-```typescript
+```diff
 // Switch from Native to Hono
-- // adapter default native
-+ import { honoAdapter } from 'vextjs/adapters/hono';
-
   export default {
-+ adapter: honoAdapter(),
+-   adapter: "native",
++   adapter: "hono",
     port: 3000,
   };
 ```
 
-Route handlers and services built on `VextRequest` / `VextResponse` can usually be reused. Native middleware, plugins, and framework-specific behavior are not fully decoupled, so review the target adapter's integration boundary before switching.
+Run `npm run dev` and the four requests above again: successful responses should now have `data.adapter: "hono"`, with status, parameters, and validation results otherwise matching. Stop dev, rebuild, start production, and repeat so production cannot keep old output. Install other Adapters from the peer table and use the same checks.
+
+Handlers and services based on `VextRequest` / `VextResponse` can generally be reused. Also test your application's case sensitivity, trailing slashes, query parameters, uploads, streams, cancellation, and errors. Four introductory requests do not prove a complete business migration.
 
 ## How to choose Adapter
 
@@ -219,27 +265,27 @@ Route handlers and services built on `VextRequest` / `VextResponse` can usually 
 
 ### Select Hono
 
-- Requires middleware or tools from the Hono ecosystem
-- Want Hono routing inside a Node.js service; future Edge / Serverless deployment requires a dedicated adapter
-- Prefer Web Standards API style
+- Your team knows Hono and wants its routing with the Web Request/Response bridge
+- The deployment target is a supported Node.js environment
+- Required behavior is available through Vext's public interface; native Hono middleware needs separate adaptation
 
 ### Select Fastify
 
-- Requires use of Fastify’s rich plug-in ecosystem
-- Large projects that value Fastify’s maturity and community support
-- Requires `fast-json-stringify` serialization optimization
+- You need Fastify routing or options actually exposed by this Adapter
+- Your team has Fastify operations and debugging experience
+- You have validated the business workload; native Fastify plugins and automatic serialization do not arrive merely by switching
 
 ### Select Express
 
 - Migrate existing Express projects to VextJS
-- Need to reuse a lot of Express middleware
+- You can adapt native HTTP middleware to Vext middleware
 - The team is most familiar with Express
 
 ### Select Koa
 
-- Prefer Koa's lightweight design
-- Small and medium-sized projects
-- Requires Koa specific middleware
+- Your team knows Koa and `@koa/router`
+- You can install both peers and have checked route matching
+- You have an adaptation plan for native Koa middleware you need
 
 ## VextAdapter interface
 
@@ -247,6 +293,16 @@ All Adapters implement the unified `VextAdapter` interface:
 
 ```typescript
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type {
+  VextAdapter as PublicAdapter,
+  VextMiddleware,
+  VextErrorMiddleware,
+  VextServerHandle,
+  RouteOptions,
+} from "vextjs";
+
+// Derive listen options from the public interface, not an internal path.
+type VextAdapterListenOptions = Parameters<PublicAdapter["listen"]>[2];
 
 interface VextAdapter {
   /** Adapter name */
@@ -285,83 +341,56 @@ OpenAPI / Docs routes are registered by the framework through `registerRoute()`.
 
 ### Custom Adapter
 
-If the five built-in Adapters cannot meet your needs, you can implement a custom Adapter:
+Configuration accepts a built-in name, a synchronous factory `(app: VextApp) => VextAdapter`, or an already constructed Adapter. The factory receives the current app during initialization. The resolver checks name and required method presence; it does not prove correct middleware, error, or shutdown behavior.
+
+If you only need to add behavior around an existing implementation, compose a built-in Adapter first. This runnable delegate preserves Native behavior while adding a name; it does not implement a different HTTP framework:
+
+```typescript
+// src/adapters/custom.ts
+import { nativeAdapter } from "vextjs/adapters/native";
+import type { VextAdapter, VextApp } from "vextjs";
+
+export function myCustomAdapter(): (app: VextApp) => VextAdapter {
+  return (app) => {
+    const base = nativeAdapter()(app);
+    return {
+      name: "my-custom",
+      registerMiddleware: (middleware) => base.registerMiddleware(middleware),
+      registerRoute: (method, path, chain, options) =>
+        base.registerRoute(method, path, chain, options),
+      registerErrorHandler: (handler) => base.registerErrorHandler(handler),
+      registerNotFound: (handler) => base.registerNotFound(handler),
+      buildHandler: () => base.buildHandler(),
+      listen: (port, host, options) => base.listen(port, host, options),
+    };
+  };
+}
+```
+
+Replace only the existing adapter field in configuration, preserving other settings:
 
 ```typescript
 // src/config/default.ts
-import { createServer } from "node:http";
-import type { VextAdapter, VextApp } from "vextjs";
-
-function myCustomAdapter(): (app: VextApp) => VextAdapter {
-  return (app) => {
-    const adapter: VextAdapter = {
-      name: "my-custom",
-
-      registerMiddleware(middleware) {
-        // Register global middleware
-      },
-
-      registerRoute(method, path, chain, options) {
-        // Register route
-      },
-
-      registerErrorHandler(handler) {
-        // Register error handling
-      },
-
-      registerNotFound(handler) {
-        // Register 404 processing
-      },
-
-      buildHandler() {
-        return (req, res) => {
-          // Convert Node.js req/res into the underlying framework request
-          // and execute the middleware chain.
-          res.statusCode = 501;
-          res.end("custom adapter bridge not implemented");
-        };
-      },
-
-      async listen(port, host = "0.0.0.0") {
-        const server = createServer(adapter.buildHandler());
-
-        await new Promise<void>((resolve) => {
-          server.listen(port, host, resolve);
-        });
-
-        const address = server.address();
-        const actualPort =
-          typeof address === "object" && address ? address.port : port;
-
-        return {
-          port: actualPort,
-          host,
-          close: () =>
-            new Promise<void>((resolve, reject) => {
-              server.close((error) => {
-                if (error) reject(error);
-                else resolve();
-              });
-            }),
-        };
-      },
-    };
-
-    return adapter;
-  };
-}
+import { myCustomAdapter } from "../adapters/custom.js";
 
 export default {
-  adapter: myCustomAdapter(),
   port: 3000,
+  host: "127.0.0.1",
+  adapter: myCustomAdapter(),
+  frontend: { enabled: false },
 };
 ```
 
-When implementing a custom Adapter, the core work is to perform bidirectional conversion between `VextRequest` / `VextResponse` and the native objects of the underlying framework, and correctly execute the middleware chain.
+Repeat the dev/build/start and four requests above. Successful responses should report `data.adapter: "my-custom"`. To integrate a genuinely different HTTP implementation, implement these contracts rather than leaving registration empty or returning 501 for every request:
+
+- Convert input to `VextRequest`, including route templates, params, raw body reads, and lifecycle signals; map output to the required `VextResponse`.
+- Preserve global and route-chain ordering, the return path of `await next()`, error/404 handling, and supplied `RouteOptions`.
+- `buildHandler()` returns a Node.js request handler without listening, for dev handler replacement. `listen()` handles listen failures and server options and returns the actual port and an awaitable `close()`.
+- Verify normal/error/validation responses, headers and Cookies, uploads, streams, disconnects, and shutdown over real HTTP. Test both development and production startup. Framework-installed frontend rendering cannot be assumed complete from the interface shape alone.
 
 ## Request/response conversion
 
-Regardless of which Adapter is used, user code always operates on the unified `VextRequest` and `VextResponse` interfaces.
+Business code should use the unified interfaces with any Adapter. The following is a member summary, omitting full generics and internal response hooks; see [Request and Response](/api/context) for precise public signatures and behavior. Do not copy this summary as a complete custom Adapter implementation.
 
 ### VextRequest (unified request object)
 
@@ -376,7 +405,7 @@ import type {
 
 interface VextRequest {
   method: string; // HTTP method
-  url: string; // Full URL
+  url: string; // Original request URL, usually a relative path with query string
   path: string; // Path part
   route: string; // Matched route template, empty string for 404
   query: Record<string, string>; // Query parameters
@@ -385,15 +414,16 @@ interface VextRequest {
   headers: Record<string, string | undefined>; // Lowercase request headers
   cookies: VextCookieJar; // Parsed cookies
   cookie(name: string): string | undefined; // Read one cookie
-  csrfToken(): string; // Current request CSRF token
+  csrfToken(): string; // Available after CSRF middleware is active
   auth: VextAuthContext; // Authentication context
-  requestId: string; // Request unique identifier
+  requestId: string; // Filled by requestId middleware; may be empty if disabled
+  signal: AbortSignal; // Cancelled on request timeout or early disconnect
   ip: string; // Client IP
   protocol: "http" | "https"; // Protocol
   app: VextApp; // Application instance
   valid<T>(location: "query" | "body" | "param" | "header" | "cookie"): T;
-  onClose(handler: () => void): void; // Connection closing hook
-  files?: ParsedFile[]; // Parsed uploaded files, filled by multipart plugins
+  onClose(handler: () => void): void; // Cleanup on normal completion or early disconnect
+  files?: ParsedFile[]; // Filled by built-in multipart or a custom upload plugin
   session?: VextSession; // Available when Session is enabled
   _getRawBody(maxBytes?: number): Promise<string>; // Raw request body text
   _getRawBodyBuffer(maxBytes?: number): Promise<Buffer>; // Raw request body bytes
@@ -444,13 +474,13 @@ interface VextResponse {
 
 This design means:
 
-- **Switching Adapter does not affect any business code**
-- **Middleware behaves consistently across all Adapters**
-- **Test code has nothing to do with Adapter**
+- Public interfaces give routes and middleware a reuse boundary.
+- Every Adapter must implement the framework's request, response, and middleware contracts; native framework objects are outside that contract.
+- Pure business unit tests may be reusable, while HTTP integration tests should run against the actual selected Adapter.
 
 ## Switch Adapter according to environment
 
-You can use different Adapters in different environments:
+The configuration loader allows environment overrides. Use separate Adapters only when needed and verified in both environments; using the same one in development and production usually makes failures easier to reproduce. This example only shows the override mechanism; install Hono first:
 
 ```typescript
 // src/config/default.ts — Use Native by default
@@ -461,7 +491,7 @@ export default {
 ```
 
 ```typescript
-// src/config/development.ts — development environment using Hono (leveraging its DevTools)
+// src/config/development.ts — Hono in development
 import { honoAdapter } from "vextjs/adapters/hono";
 
 export default {
@@ -480,7 +510,7 @@ export default {
 
 ### Do I need to modify the code after switching the Adapter?
 
-unnecessary. All business code (routing, middleware, services, plug-ins) operates the `VextRequest` / `VextResponse` interface and is completely decoupled from the underlying Adapter.
+Code using only public interfaces can generally be reused. Code reading native objects or relying on framework-specific plugins or route behavior needs adaptation and regression testing against the target Adapter. There is no guarantee that all business code is unchanged.
 
 ### Can Adapter be switched dynamically at runtime?
 
@@ -492,13 +522,24 @@ Performance differences come from both the underlying framework's HTTP parsing, 
 
 ### Can the native middleware of the underlying framework be used?
 
-Not recommended for direct use. VextJS has its own middleware system (`defineMiddleware` / `defineMiddlewareFactory`). The native middleware signature of the underlying framework is different and cannot be directly compatible. If you need to use the middleware function of an underlying framework, it is recommended to encapsulate it as VextJS middleware or plug-in.
+Do not pass native middleware directly as Vext middleware. `defineMiddleware` / `defineMiddlewareFactory` use unified request, response, and next contracts with different signatures and lifecycles. Logic independent of native HTTP objects can be wrapped in Vext middleware or a plugin. Extensions depending on native instances need a bridge or custom Adapter; a thin function wrapper alone does not prove compatibility.
 
 ### What should I do if peer dependencies report a warning?
 
-VextJS declares all underlying frameworks as optional `peerDependencies`. You only need to install the framework package corresponding to the Adapter you actually use. For example, the Hono Adapter requires only `hono`; peer dependency warnings from other unused frameworks can be safely ignored.
+Optional means you do not need peers for Adapters you do not select. The selected Adapter needs compatible peers: Hono needs `hono`, and Koa needs both `koa` and `@koa/router`. Distinguish an unused optional package from a missing selected peer or incompatible version rather than ignoring all installation warnings.
 
 The current Hono Adapter is a Node.js runtime capability: it receives requests through a Node.js HTTP server and bridges them into Hono's Web `Request` / `Response` flow. Edge / Serverless runtimes should not use these Node adapter installation instructions as a support claim.
+
+### How do I diagnose startup or switching failures?
+
+| Symptom                              | Check and fix                                                                                                    | Recheck                                                   |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| Unknown adapter                      | Use a lowercase built-in name from the table, or a synchronous factory/complete object                           | Restart and inspect adapter name in a successful response |
+| Requires package                     | Install the selected peer from the application's package.json directory; check both Koa packages                 | Run `npm ls` for the peer, then start                     |
+| Incompatible or failed while loading | Inspect the original cause, peer range, and package entry; loading failure may also be an Adapter internal error | Fix the specific cause instead of only reinstalling       |
+| Custom Adapter missing a member      | Provide name and six required methods from `VextAdapter`                                                         | Type check and exercise dev/production HTTP               |
+| Response still shows old name        | Check environment override, working directory, and old process; rebuild/start                                    | Recheck four requests and actual port                     |
+| EADDRINUSE                           | Stop the instance you started earlier or change port and request URL                                             | Confirm the new instance listens before retrying          |
 
 ## Next step
 

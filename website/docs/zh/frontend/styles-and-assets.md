@@ -29,7 +29,7 @@ body {
 
 全局 CSS 适合 reset、基础排版和设计 token。当前 SSR 页面需要局部样式时优先使用 JSCSS，CSS Modules 的生产限制见下节。
 
-文件存在不代表已进入浏览器。沿用[布局与组件](./layouts-and-components)中的根布局，在 `src/frontend/layouts/layout.tsx` 顶部加入 `import "../styles/app.css";`，保留原布局导出与 children；也可把现有 `frontend.styles.entry` 指向该文件。不要同时维护两份不同的全局基础样式。
+文件存在不代表已进入浏览器。沿用[布局与组件](./layouts-and-components)中的根布局，在 `src/frontend/pages/layout.tsx` 顶部加入 `import "../styles/app.css";`，保留原布局导出与 children；也可把现有 `frontend.styles.entry` 指向该文件。不要同时维护两份不同的全局基础样式。
 
 Vext 不会编译 Sass 或 SCSS 源文件。如需 Sass，请在交给 Vext 前由外部工具预编译为 CSS；一等支持的样式源是 CSS、CSS Modules 和 Vext JSCSS。
 

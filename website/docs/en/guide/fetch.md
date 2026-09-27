@@ -1,10 +1,12 @@
 # Built-in HTTP client (app.fetch)
 
-VextJS has a built-in enhanced HTTP client `app.fetch`, which is based on the Node.js 20+ native `fetch` package and provides capabilities such as **requestId automatic propagation**, **timeout control**, **automatic retry**, **structured log**, **create() factory** and **config driver agent**. There is no need to install any third-party HTTP libraries to make inter-service calls.
+VextJS includes `app.fetch`, an enhanced client built on Node.js native `fetch`. It adds request ID propagation, timeouts, retries, structured logs, a `create()` factory and config-driven proxying without requiring a third-party HTTP library.
+
+Run the local outbound request in [Basic usage](#basic-usage) first, then consult configuration, proxy and retry behavior. Later standalone call snippets belong in a route, Service or plugin that already has an `app`. Replace example domains with actual service addresses.
 
 ## Function overview
 
-Production and development initialize `app.fetch` before user plugin `setup()`, service constructors, and route factories. These stages and `onReady` can call `app.fetch.create()`. Later outbound calls also use logger wrappers installed through `app.setLogger()`.
+Production and development initialize `app.fetch` before user-plugin setup, Service constructors and route factories. Plugin setup, Service constructors and `onReady` callbacks registered on a real app can use `app.fetch.create()`. The route factory argument has the bound-method limitation described below, so handlers should use `req.app.fetch`. Later outbound calls also use logger wrappers installed through `app.setLogger()`.
 
 `req.signal` is cancelled on an interrupted request, a premature disconnect, or a route timeout. Receiving a complete POST body and completing a normal response do not cancel it; `req.onClose()` still performs cleanup on completion or disconnect. For ordinary `app.fetch()`, `timeout` covers obtaining response headers, not the subsequent `response.text()` or `response.json()` call. Proxy and streaming calls follow their own cancellation and timeout contracts.
 
@@ -20,34 +22,72 @@ Production and development initialize `app.fetch` before user plugin `setup()`, 
 
 ## Basic usage
 
-The signature of `app.fetch` is fully compatible with native `fetch` and can be replaced seamlessly:
+Start with the TypeScript API-only project from [Quick Start](/guide/quick-start). Keep its package.json, tsconfig.json and scripts, merge this config and add the route. A separate route in the same process simulates an upstream without an external test API. For deployment, replace `fetchDemoBaseURL` with the internal service URL.
 
 ```typescript
+// src/config/default.ts
+export default {
+  host: "127.0.0.1",
+  port: 3000,
+  frontend: { enabled: false },
+  logger: { level: "debug", pretty: false },
+  fetchDemoBaseURL: "http://127.0.0.1:3000",
+  fetch: { timeout: 3000, retry: 0, propagateHeaders: ["x-tenant-id"] },
+};
+```
+
+```typescript
+// src/routes/fetch-demo.ts
 import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  app.get(
-    "/users/:id/posts",
-    {
-      validate: { param: { id: "string!" } },
-    },
-    async (req, res) => {
-      const { id } = req.valid("param");
+  app.get("/upstream/:id", async (req, res) => {
+    if (req.params.id === "missing") {
+      res.json({ message: "user not found" }, 404);
+      return;
+    }
+    res.json({
+      id: req.params.id,
+      requestId: req.requestId,
+      tenant: req.headers["x-tenant-id"] ?? null,
+    });
+  });
 
-      // Use app.fetch to call downstream services
-      const response = await app.fetch(
-        `https://api.example.com/users/${id}/posts`,
+  app.get("/users/:id", async (req, res) => {
+    const response = await req.app.fetch.get(
+      `${app.config.fetchDemoBaseURL}/fetch-demo/upstream/${encodeURIComponent(req.params.id!)}`,
+      { signal: req.signal },
+    );
+    if (!response.ok) {
+      await response.body?.cancel();
+      app.throw(
+        response.status === 404 ? 404 : 502,
+        "Upstream user query failed",
       );
-      const posts = await response.json();
-
-      res.json(posts);
-    },
-  );
+    }
+    const payload = (await response.json()) as {
+      data: { id: string; requestId: string; tenant: string | null };
+    };
+    res.json({ user: payload.data });
+  });
 });
 ```
 
-:::tip
-`app.fetch` will automatically inject the `requestId` of the current request into the `x-request-id` header of the outbound request. If downstream services also use VextJS, they will automatically receive and continue this tracking ID to implement distributed link tracking.
+Run `npm run dev`, then request these URLs in another terminal (use `curl.exe` in PowerShell):
+
+```bash
+curl -H "x-request-id: fetch-demo-1" -H "x-tenant-id: tenant-a" http://127.0.0.1:3000/fetch-demo/users/u-1
+curl -i http://127.0.0.1:3000/fetch-demo/users/missing
+```
+
+The first request returns 200 with `data.user.id: "u-1"`, `requestId: "fetch-demo-1"` and `tenant: "tenant-a"`; the terminal shows a GET log with `type: "outbound"`. The second returns 404, showing that the caller checks HTTP errors rather than accepting an error response as success.
+
+Stop dev, run `npm run build` and `npm start`, repeat both requests, then stop with Ctrl+C. If the port changes, update `fetchDemoBaseURL` too. This tenant header demonstrates propagation only, not tenant authentication.
+
+The general call accepts `string | URL | Request` and extended `RequestInit`, but timeout, retry and logging defaults differ from native fetch. It returns a standard `Response`: HTTP 4xx/5xx do not throw automatically. The caller must read the body and check `response.ok`.
+
+:::warning Current route factory boundary
+The factory argument of `defineRoutes((app) => ...)` binds functions and currently does not retain attached methods such as `fetch.get/create/proxy`. Use `req.app.fetch` in a handler for the complete client; direct `app.fetch(url, init)` still works. Plugin setup and Service constructors receive a real app and are unaffected. In later shortcut examples, `app` means a real application instance; use `req.app` inside handlers.
 :::
 
 ## Fetch Hooks
@@ -75,7 +115,9 @@ export default definePlugin({
 });
 ```
 
-`fetch:before` and `proxy:before` are propagable hooks. Throwing an error will prevent this outbound request; `fetch:after/error` and `proxy:after/error` are safe hooks, which only record failures and do not change the main process.
+`fetch:before` and `proxy:before` can modify outbound headers; throwing stops the outbound request. An ordinary `fetch:before` runs outside the request loop, so its exception propagates directly without a later `fetch:error`. A proxy before-hook error enters proxy error handling and normally returns a local 502.
+
+`fetch:after/error` and `proxy:after/error` use safe dispatch: listener errors are logged without replacing the main result. Before fires once per call; after fires when the final Response arrives, including the final attempt. HTTP 5xx still produces after, and a later body-read failure does not add `fetch:error`. Argument parsing and retry-delay evaluation also do not guarantee an error hook; see [Hooks](/guide/hooks).
 
 ## Shortcut method
 
@@ -90,7 +132,7 @@ const users = await response.json();
 
 ### POST
 
-The second parameter of the `post` / `put` / `patch` method is the request body object, which will automatically `JSON.stringify` and set `Content-Type: application/json`:
+A non-null second argument to `post`, `put` or `patch` is `JSON.stringify`-encoded. The shortcut adds `application/json` only if no Content-Type is set. For FormData, binary or streams, use the general call and supply the body yourself:
 
 ```typescript
 const response = await app.fetch.post("https://api.example.com/users", {
@@ -140,10 +182,10 @@ const response = await app.fetch.delete(`https://api.example.com/users/${id}`);
 
 ### Global configuration (config.fetch)
 
-Configure global defaults through the `fetch` field in `vext.config.ts`:
+Configure global defaults in `src/config/default.ts`:
 
 ```typescript
-// vext.config.ts
+// src/config/default.ts
 export default {
   port: 3000,
   fetch: {
@@ -179,12 +221,11 @@ export default {
 | `proxy`            | `VextFetchProxyTargetConfig[]`  | `[]`          | List of upstream targets for `app.fetch.proxy.<name>()`                                                        |
 
 :::warning Timer bounds
-`timeout` must be a finite positive number no greater than `2147483647` milliseconds. `retryDelay` must be a finite non-negative number no greater than `2147483647` milliseconds. Function-form `retryDelay` return values are checked before each native timer is created.
+`retry` must be a non-negative integer counting extra attempts. `timeout` must be a finite positive number no greater than `2147483647` milliseconds. `retryDelay` must be finite and non-negative, also no greater than `2147483647` milliseconds. Function-form return values are checked before each native timer is created; invalid values fail fast.
 :::
 
 :::tip propagateHeaders working principle
-The independent request metadata middleware captures the configured inbound headers, including when `requestId.enabled` is false.
-Write to `requestContext.store.propagatedHeaders`. `app.fetch` automatically reads and injects from the store during outbound requests.
+The independent request metadata middleware reads configured names from inbound headers and writes them to `requestContext.store.propagatedHeaders`. `app.fetch` reads and injects them on outbound requests.
 
 **No need to manually pass these headers on every `app.fetch` call** - the framework does the entire chain automatically.
 :::
@@ -202,17 +243,17 @@ const response = await app.fetch.get("https://api.example.com/data", {
 });
 ```
 
-#### VextFetchInit complete field
+#### All VextFetchInit fields
 
 `VextFetchInit` inherits from the standard `RequestInit` and adds:
 
-| Field                | Type                                    | Default Value                    | Description                                                                                                                     |
-| -------------------- | --------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `timeout`            | `number`                                | Global `config.fetch.timeout`    | Request timeout in milliseconds                                                                                                 |
-| `retry`              | `number`                                | Global `config.fetch.retry`      | Number of retries for idempotent methods                                                                                        |
-| `retryDelay`         | `number \| (attempt: number) => number` | Global `config.fetch.retryDelay` | Retry interval; a function can implement exponential backoff                                                                    |
-| `propagateRequestId` | `boolean`                               | `true`                           | Whether to inject `x-request-id` automatically; configured `propagatedHeaders` are still forwarded when this is disabled        |
-| `propagateHeaders`   | `string[]`                              | —                                | Additional headers to forward for this request; values are available only for names declared by `config.fetch.propagateHeaders` |
+| Field                | Type                                    | Default Value                    | Description                                                                                                                      |
+| -------------------- | --------------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `timeout`            | `number`                                | Global `config.fetch.timeout`    | Request timeout in milliseconds                                                                                                  |
+| `retry`              | `number`                                | Global `config.fetch.retry`      | Number of retries for idempotent methods                                                                                         |
+| `retryDelay`         | `number \| (attempt: number) => number` | Global `config.fetch.retryDelay` | Retry interval; a function can implement exponential backoff                                                                     |
+| `propagateRequestId` | `boolean`                               | `true`                           | Whether to inject `x-request-id` automatically; configured `propagatedHeaders` are still forwarded when this is disabled         |
+| `propagateHeaders`   | `string[]`                              | —                                | Type-only field; the current implementation does not read this per-request option, so it cannot add or filter propagated headers |
 
 :::tip priority
 Single request `init.timeout` > `options.timeout` of `create()` > Global `config.fetch.timeout`
@@ -220,16 +261,25 @@ Single request `init.timeout` > `options.timeout` of `create()` > Global `config
 
 ## create() factory
 
-When you need to call the same downstream service frequently, use `create()` to create a preconfigured subclient to avoid repeatedly passing in `baseURL` and public headers:
+For repeated calls to one downstream service, `create()` provides a preconfigured client with a baseURL and default headers:
 
 ```typescript
-import { definePlugin } from "vextjs";
+import { definePlugin, type VextFetchClient } from "vextjs";
+
+declare module "vextjs" {
+  interface VextApp {
+    clients: {
+      userService: VextFetchClient;
+      payment: VextFetchClient;
+    };
+  }
+}
 
 export default definePlugin({
   name: "api-clients",
 
   setup(app) {
-    //Create user service client
+    // Create the user-service client.
     const userServiceClient = app.fetch.create({
       baseURL: "http://user-service:3001/api/v1",
       headers: {
@@ -240,16 +290,16 @@ export default definePlugin({
       retry: 2,
     });
 
-    // Create payment service client
+    // Create the payment-service client.
     const paymentClient = app.fetch.create({
       baseURL: "http://payment-service:3002/api/v1",
       headers: {
         "x-service-name": "order-service",
       },
-      timeout: 15000, // Set the payment service timeout to be longer
+      timeout: 15000, // Allow a longer payment timeout.
     });
 
-    //Mount to app for global use
+    // Attach for application use.
     app.extend("clients", {
       userService: userServiceClient,
       payment: paymentClient,
@@ -258,15 +308,18 @@ export default definePlugin({
 });
 ```
 
-Use in a route or service:
+This order route fragment requires the plugin above and two upstream services. `userId` comes from a validated body solely to show call organization; a real system should derive identity from authenticated context:
 
 ```typescript
+import { defineRoutes } from "vextjs";
+
 export default defineRoutes((app) => {
   app.post(
     "/orders",
     {
       validate: {
         body: {
+          userId: "string!",
           productId: "string!",
           quantity: "number:1-99!",
         },
@@ -275,17 +328,26 @@ export default defineRoutes((app) => {
     async (req, res) => {
       const body = req.valid("body");
 
-      // Use pre-configured subclient - automatically concatenate baseURL + merge headers
+      // Use the preconfigured client: join baseURL and merge headers.
       const userResp = await app.clients.userService.get(
-        `/users/${req.userId}`,
+        `/users/${encodeURIComponent(body.userId)}`,
+        { signal: req.signal },
       );
-      const user = await userResp.json();
+      if (!userResp.ok) {
+        await userResp.body?.cancel();
+        app.throw(502, "User service call failed");
+      }
+      const user = (await userResp.json()) as { id: string };
 
       const payResp = await app.clients.payment.post("/charges", {
         userId: user.id,
         amount: body.quantity * 100,
       });
-      const charge = await payResp.json();
+      if (!payResp.ok) {
+        await payResp.body?.cancel();
+        app.throw(502, "Payment service call failed");
+      }
+      const charge = (await payResp.json()) as { orderId: string };
 
       res.json({ orderId: charge.orderId }, 201);
     },
@@ -293,17 +355,20 @@ export default defineRoutes((app) => {
 });
 ```
 
+These upstream examples read unwrapped JSON such as `{ id }`. If an upstream enables VextJS response wrapping, read its `data`. Supply `serviceToken` in your application config; see [Plugins](/guide/plugins) for `app.extend()` typing.
+
 ### VextFetchClientOptions
 
-| Field     | Type                     | Required | Description                                                  |
-| --------- | ------------------------ | -------- | ------------------------------------------------------------ |
-| `baseURL` | `string`                 | ✅       | Base URL, all request paths are automatically spliced        |
-| `headers` | `Record<string, string>` | ❌       | Default request headers (merged with single request headers) |
-| `timeout` | `number`                 | ❌       | Subclient default timeout                                    |
-| `retry`   | `number`                 | ❌       | The default number of retries for subclients                 |
+| Field        | Type                                    | Required | Description                                     |
+| ------------ | --------------------------------------- | -------- | ----------------------------------------------- |
+| `baseURL`    | `string`                                | ✅       | Base URL joined with request paths              |
+| `headers`    | `Record<string, string>`                | ❌       | Default headers merged with per-request headers |
+| `timeout`    | `number`                                | ❌       | Subclient default timeout                       |
+| `retry`      | `number`                                | ❌       | Subclient default retry count                   |
+| `retryDelay` | `number \| (attempt: number) => number` | ❌       | Subclient default retry delay                   |
 
-:::info nested create
-Subclients also support calling `create()` again to create more fine-grained clients:
+:::info Nested create
+A subclient can call `create()` again, but the current implementation reuses its parent factory. Do not assume it inherits that subclient's headers, timeout, retry or baseURL. Pass values that must be retained explicitly:
 
 ```typescript
 const apiClient = app.fetch.create({ baseURL: "https://api.example.com" });
@@ -311,6 +376,8 @@ const v2Client = apiClient.create({ baseURL: "https://api.example.com/v2" });
 ```
 
 :::
+
+String paths join as `baseURL + / + path`; `/users` keeps `/api/v1` in the baseURL. Even a full URL passed as a string is joined. To bypass baseURL, use root `app.fetch` or pass a `URL` or `Request` object to the callable subclient.
 
 ## app.fetch.proxy request proxy
 
@@ -341,7 +408,7 @@ target.headers
   < options.injectHeaders
 ```
 
-`forwardHeaders` reads from the current `req.headers` whitelist. The original `Authorization` is not passed through by default; it will only be passed through if the target configuration or single call explicitly sets `allowAuthorizationForward: true` and the whitelist contains `authorization`.
+Target and call-level `forwardHeaders` combine into a whitelist read from current `req.headers`; an empty call-level array does not clear the target whitelist. Proxy does not reuse ordinary fetch's ALS automatic propagation. To forward request ID, explicitly whitelist its header or inject `req.requestId`. Raw `Authorization` is not forwarded by default; target or call config must set `allowAuthorizationForward: true` and whitelist `authorization`.
 
 ```typescript
 await app.fetch.proxy.userService(req, res, {
@@ -363,19 +430,21 @@ await app.fetch.proxy(req, res, {
 
 ### proxy retry rules
 
-The agent's retry represents "extra attempts", and the total number of attempts is `retry + 1`. The priority is `options.retry > target.retry > config.fetch.retry > 0`, the same is true for `retryDelay`. Only idempotent methods such as GET / HEAD / OPTIONS / PUT / DELETE will automatically retry in the event of upstream 5xx or network errors; POST / PATCH does not retry by default. There is no retry after timeout, and a local 504 is returned directly.
+Proxy `retry` counts extra attempts, for `retry + 1` total. Priority is `options.retry > target.retry > config.fetch.retry > 0`, likewise for `retryDelay`. Only GET / HEAD / OPTIONS / PUT / DELETE retry on upstream 5xx or network error; POST / PATCH do not. The body must be replayable; streamed bodies do not retry automatically. Timeouts do not retry. A timeout before response headers can return a local 504; after body streaming starts, the stream aborts and cannot be replaced with a complete JSON 504. Proxy timing covers the upstream response stream, and a client disconnect cancels upstream.
+
+By default, proxy preserves the inbound method, merges inbound query with `options.query` taking priority (null/undefined removes a key), and reads the raw body for non-GET/HEAD calls without `options.body`. It uses manual redirects to preserve 3xx, strips hop-by-hop headers, Content-Length and Content-Encoding, and retains multiple Set-Cookie headers. This is not byte-for-byte copying of the HTTP message. See [Fetch API](/api/fetch) for all options.
 
 ## requestId automatically propagates
 
-This is one of the core capabilities of `app.fetch`. When an HTTP request comes into VextJS, the `requestId` middleware generates a unique ID for it and writes it to the `requestContext` (based on `AsyncLocalStorage`). When you use `app.fetch` to call a downstream service, the framework automatically:
+With request context enabled and an ID in its store, ordinary `app.fetch` can propagate that ID. The requestId middleware accepts a valid inbound header or creates an ID and writes it to `requestContext` (based on `AsyncLocalStorage`). The client then:
 
 1. Read the current `requestId` from `requestContext.getStore()`
-2. Inject the `x-request-id` header into the outbound request
+2. Add the ID only if the outbound header is not already set. Its name follows `config.requestId.header`, default `x-request-id`.
 
 ```
 Client → [VextJS A: requestId=abc123] → app.fetch → [VextJS B: x-request-id=abc123]
                                                         ↓
-                                                   requestId middleware reads and inherits abc123
+                                                   requestId middleware reads and retains abc123
 ```
 
 ### Disable requestId propagation
@@ -389,9 +458,9 @@ const response = await app.fetch.get("https://third-party-api.com/data", {
 });
 ```
 
-## Custom header transparent transmission (propagateHeaders)
+## Forward selected request headers (propagateHeaders)
 
-In addition to `requestId`, `app.fetch` also supports automatic transparent transmission of other inbound request headers to downstream - typical uses are distributed link tracing headers (`traceparent`) and multi-tenant identification (`x-tenant-id`).
+In addition to `requestId`, `app.fetch` can forward selected inbound request headers to downstream services. Typical examples are a tracing header (`traceparent`) and an application-specific tenant header (`x-tenant-id`).
 
 ### Configuration method
 
@@ -412,49 +481,31 @@ export default {
 
 ### Working principle
 
-The framework automatically completes the transparent transmission link when processing each inbound request, **without any manual operation**:
+The framework handles this chain for each inbound request:
 
+```text
+① Inbound traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+         ↓
+② Request metadata middleware stores it in store.propagatedHeaders, independently of requestId.enablement
+         ↓
+③ app.fetch reads that store and adds it to outbound headers
+         ↓
+④ Downstream receives the same traceparent
+         ↓
+⑤ Downstream can read the header; creating an APM span still requires instrumentation
 ```
-① Inbound requests carry traceparent: 00-abc123-def456-01
-         ↓
-② Request metadata middleware writes store.propagatedHeaders independently of requestId
-         ↓
-③ app.fetch reads from the store during outbound requests and injects them into the request header.
-         ↓
-④ The downstream service receives traceparent: 00-abc123-def456-01
-         ↓
-⑤ The APM system identifies the same trace and establishes a span association.
-```
+
+Ordinary fetch adds captured store headers unless explicit `init.headers` or subclient defaults take priority. Capture requires request context; disabled context or a call outside its scope has no automatic propagation. `init.propagateHeaders` currently has no runtime filter or addition effect. The local example above demonstrates the path with `x-tenant-id`.
+
+### Forward a header for one request
+
+If a header is not listed in the global `propagateHeaders` but one request needs it, set it explicitly in `init.headers`:
 
 ```typescript
-// No additional code is required in routing, the framework automatically handles transparent transmission
-export default defineRoutes("/orders", [
-  {
-    method: "POST",
-    handler: async (req, res) => {
-      // traceparent has automatically been transparently passed from inbound request to inventory-service
-      const stock = await app.fetch.get("http://inventory-service/check");
-      // Also automatically transparently transmitted to payment-service
-      const payment = await app.fetch.post(
-        "http://payment-service/charge",
-        req.body,
-      );
-
-      res.json({ orderId: "new-id" });
-    },
-  },
-]);
-```
-
-### Manual transparent transmission (temporary solution)
-
-If a header is not declared in the global `propagateHeaders`, but this request requires transparent transmission, set it manually in `init.headers`:
-
-```typescript
+const token = req.headers["x-partner-token"];
 await app.fetch.get("https://partner-api.com/data", {
-  headers: {
-    "x-partner-token": req.headers["x-partner-token"] as string,
-  },
+  headers: token ? { "x-partner-token": token } : {},
+  signal: req.signal,
 });
 ```
 
@@ -463,7 +514,7 @@ await app.fetch.get("https://partner-api.com/data", {
 - **requestId** (vext built-in): automatically generated for log correlation and internal inter-service tracking
 - **traceId** (APM system): generated by OpenTelemetry / Jaeger, etc., transparently transmitted through `propagateHeaders`
 
-For details, see [Request Context → Relationship with Distributed Tracing](/guide/request-context#Relationship with Distributed Tracing traceId) for complete instructions.
+See [Request Context and distributed tracing](/guide/request-context#relationship-with-distributed-tracing-traceid).
 :::
 
 ## Timeout control
@@ -478,18 +529,20 @@ try {
   const data = await response.json();
   res.json(data);
 } catch (err) {
-  // err.message: "[app.fetch] GET https://slow-api.example.com/data timed out after 3000ms"
-  app.throw(504, "Downstream service timeout");
+  if (err instanceof Error && err.name === "TimeoutError") {
+    app.throw(504, "Downstream service timeout");
+  }
+  throw err; // Preserve network and body-parsing errors.
 }
 ```
 
-If the request is passed in `signal` at the same time (such as manual cancellation by the user), `app.fetch` will merge the two signals - either trigger will abort the request.
+Pass `{ signal: req.signal }` explicitly to propagate inbound cancellation; ordinary fetch does not read the current `req.signal` automatically. The caller signal combines with the internal timeout and retains its cancellation reason, stopping a request or retry wait. Ordinary timeout is per attempt and covers response headers only. Body reading still observes the caller signal. Total time also includes retries, retry waits and body consumption.
 
 `init.timeout`, `create({ timeout })`, `config.fetch.timeout`, and proxy `timeout` follow the same boundary: a finite positive number no greater than `2147483647` milliseconds. `retryDelay` may be `0`, but it must also be finite and no greater than `2147483647` milliseconds; function return values are validated before every retry.
 
 ## Automatic retry
 
-Retry only takes effect for **idempotent methods** (GET / HEAD / OPTIONS / PUT / DELETE), POST / PATCH will not be retried (to avoid repeated execution of side effects).
+Retry requires an idempotent method (GET / HEAD / OPTIONS / PUT / DELETE), a replayable body and remaining attempts. POST / PATCH do not retry. A Request with an original body not replaced by replayable `init.body`, or a streaming body, does not retry. The upstream service still determines whether the business operation is truly idempotent.
 
 ### List of idempotent methods
 
@@ -512,7 +565,7 @@ The following methods are considered idempotent and allow automatic retries:
 | HTTP 5xx response                                                |        ✅        | Server error, retry may restore                        |
 | Network error (connection failure, DNS resolution failure, etc.) |        ✅        | Transient network problem, retry may succeed           |
 | HTTP 4xx response                                                |        ❌        | Client error, retrying is meaningless                  |
-| Timeout (AbortError)                                             |        ❌        | Throw `Error` directly without retrying                |
+| Internal timeout (`TimeoutError`)                                |        ❌        | Throw `Error` directly without retrying                |
 | Non-idempotent method (POST / PATCH)                             |        ❌        | Do not retry any errors to avoid repeated side effects |
 
 ### Retry decision process
@@ -534,7 +587,7 @@ request issued
   │ ├── It is an idempotent method + there are retry times → wait for retryDelay → retry
   │ └── The last or non-idempotent → throws Error ❌
   │
-  └── Timeout (AbortError)
+  └── Internal timeout (`TimeoutError`)
         └── Throw Error directly ❌ (without retrying)
 ```
 
@@ -599,7 +652,7 @@ The default `retryDelay` is fixed `1000ms` (1 second).
 
 ## Structured log
 
-Structured logs are automatically recorded for each outbound request, containing the following fields:
+Each actual outbound attempt records a structured log; retry waits produce separate debug logs. Argument validation and a failing before-hook may happen before any attempt, so those paths do not guarantee this log. Fields include:
 
 | Field       | Description                               |
 | ----------- | ----------------------------------------- |
@@ -614,12 +667,13 @@ Structured logs are automatically recorded for each outbound request, containing
 
 Log levels automatically adjust based on response status:
 
-| Conditions            | Log Level |
-| --------------------- | --------- |
-| 2xx / 3xx             | `debug`   |
-| 4xx                   | `warn`    |
-| 5xx                   | `error`   |
-| Network error/timeout | `error`   |
+| Conditions                         | Log Level |
+| ---------------------------------- | --------- |
+| 2xx (`response.ok`)                | `debug`   |
+| 3xx / 4xx                          | `warn`    |
+| 5xx                                | `error`   |
+| Network error / internal timeout   | `error`   |
+| Caller cancellation during request | `debug`   |
 
 Example of log output:
 
@@ -630,42 +684,37 @@ Example of log output:
 [14:23:08.012] DEBUG → GET https://api.example.com/data RETRY attempt 1/3
 ```
 
+`duration` is the time for a single attempt to obtain response headers, excluding retry wait and body consumption. Ordinary fetch follows redirects by default; only a 3xx actually returned is logged as warn. Logger thresholds still control output.
+
 ## Replace fetch implementation
 
 The current version does not expose the `app.setFetch()` public API, so it does not support directly replacing the framework's built-in `app.fetch` in the plug-in.
 
-If you need to use axios or other HTTP clients, it is recommended to mount the independent client through `app.extend()` in the plugin instead of overriding the built-in implementation:
+If your application already uses another HTTP SDK, mount it as a separate client with plugin `app.extend()` and follow that SDK's own installation and configuration instructions. Keep built-in `app.fetch` so framework behavior depending on it remains available.
 
 ```typescript
-import { definePlugin } from "vextjs";
-import axios from "axios";
-
-export default definePlugin({
-  name: "axios-fetch",
-
-  setup(app) {
-    app.extend(
-      "axios",
-      axios.create({
-        baseURL: process.env.API_BASE_URL,
-        timeout: 5000,
-      }),
-    );
-  },
-});
+// In a plugin that has installed and configured its chosen SDK:
+app.extend("otherHttpClient", configuredClient);
 ```
 
 :::warning
 If you bypass the built-in `app.fetch`, requestId propagation, timeouts, retries and structured logging will all need to be implemented yourself. In most scenarios, it is recommended to use the built-in `app.fetch` directly, or mount a dedicated client based on `app.fetch.create()`.
 :::
 
-## Complete example: calls between microservices
+## Advanced example: organizing microservice clients
 
-Here is a complete example of an order service calling a user service and an inventory service:
+The two-file example above directly verifies outbound calls. This section shows business organization with a plugin and Service. To run it, supply user and inventory services, an order route calling this Service, and persistence. The three upstream contracts are GET `/api/users/:id` returning `{ id }`, GET `/api/stock/:id` returning `{ available }`, and POST `/api/stock/:id/deduct` accepting `{ quantity, orderId }` with 2xx on success. Read `data` instead if an upstream wraps responses.
 
 ```typescript
 // src/plugins/service-clients.ts
-import { definePlugin } from "vextjs";
+import { definePlugin, type VextFetchClient } from "vextjs";
+
+declare module "vextjs" {
+  interface VextApp {
+    userClient: VextFetchClient;
+    inventoryClient: VextFetchClient;
+  }
+}
 
 export default definePlugin({
   name: "service-clients",
@@ -695,37 +744,55 @@ export default definePlugin({
 
 ```typescript
 // src/services/order.ts
-export class OrderService {
+import { randomUUID } from "node:crypto";
+import type { VextApp } from "vextjs";
+
+export default class OrderService {
   constructor(private app: VextApp) {}
 
   async createOrder(userId: string, productId: string, quantity: number) {
-    // 1. Query user information
-    const userResp = await this.app.userClient.get(`/api/users/${userId}`);
+    // 1. Query the user.
+    const userResp = await this.app.userClient.get(
+      `/api/users/${encodeURIComponent(userId)}`,
+    );
     if (!userResp.ok) {
-      this.app.throw(400, "User does not exist");
+      await userResp.body?.cancel();
+      this.app.throw(
+        userResp.status === 404 ? 404 : 502,
+        "User service query failed",
+      );
     }
-    const user = await userResp.json();
+    const user = (await userResp.json()) as { id: string };
 
-    // 2. Check inventory
+    // 2. Check inventory.
     const stockResp = await this.app.inventoryClient.get(
-      `/api/stock/${productId}`,
+      `/api/stock/${encodeURIComponent(productId)}`,
     );
     if (!stockResp.ok) {
-      this.app.throw(500, "Inventory service is not available");
+      await stockResp.body?.cancel();
+      this.app.throw(502, "Inventory service unavailable");
     }
-    const stock = await stockResp.json();
+    const stock = (await stockResp.json()) as { available: number };
 
     if (stock.available < quantity) {
-      this.app.throw(400, "Insufficient Stock", "INSUFFICIENT_STOCK");
-    } // 3. Deduct inventory
-    await this.app.inventoryClient.post(`/api/stock/${productId}/deduct`, {
-      quantity,
-      orderId: `order-${Date.now()}`,
-    });
+      this.app.throw(400, "Insufficient inventory");
+    }
 
-    // 4. Create order record
+    // 3. Deduct inventory.
+    const orderId = randomUUID();
+    const deducted = await this.app.inventoryClient.post(
+      `/api/stock/${encodeURIComponent(productId)}/deduct`,
+      { quantity, orderId },
+    );
+    if (!deducted.ok) {
+      await deducted.body?.cancel();
+      this.app.throw(502, "Inventory deduction failed");
+    }
+    await deducted.arrayBuffer();
+
+    // 4. Create the order record.
     return {
-      orderId: `order-${Date.now()}`,
+      orderId,
       userId: user.id,
       productId,
       quantity,
@@ -735,11 +802,11 @@ export class OrderService {
 }
 ```
 
-Throughout the call chain, `requestId` is automatically propagated from inbound requests to all outbound requests, enabling complete distributed tracing.
+The caller should validate userId, productId and quantity and derive identity from authentication context. Inventory deduction must be atomic and idempotent by orderId; the business must implement compensation if order creation fails. A request ID correlates outbound calls when context exists but does not provide transactions, compensation or a full distributed Trace.
 
 ## Next step
 
-- Learn how the [requestId and request context](/guide/middleware) middleware generates and manages requestIds
+- Learn how [requestId and request context](/guide/request-context) generate and manage request IDs
 - See [plugins](/guide/plugins) how to mount a custom client through `app.extend()`
 - Explore global configuration items related to `fetch` in [Configuration](/guide/configuration)
 - Learn how to mock `app.fetch` for unit testing in [Testing](/guide/testing)

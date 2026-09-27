@@ -1,45 +1,82 @@
 # Cluster multi-process
 
-## Jobs and cluster
+VextJS uses one Master to manage multiple HTTP Workers. Each Worker has its own application instance and listens on the same service port. The Master starts and replaces Workers, checks heartbeats, and coordinates rolling reloads.
 
-HTTP cluster workers do not run jobs by default. This prevents duplicated scheduled firing when multiple HTTP workers serve the same app. In production, run HTTP, `vext job scheduler`, and `vext job worker` as separate processes; multiple schedulers/workers coordinate through job store leases. See [Jobs](/guide/jobs).
-
-VextJS has built-in **Cluster multi-process management**, manages multiple Worker processes through `ClusterMaster`, makes full use of multi-core CPUs, and supports enterprise-level features such as zero-downtime rolling restart, heartbeat detection, and automatic fault recovery.
+First start two Workers and verify requests; then tune the count and recovery policy. For development reloads see [Hot Reload](/guide/hot-reload); for the production build prerequisite see [Build](/guide/build).
 
 ## Quick Start
 
-### Enabled via configuration
+### Enable in configuration
+
+Use an installed TypeScript API project, such as [the CLI scaffold](/guide/cli#from-project-creation-to-production-startup). Merge these settings into your existing production config while retaining business settings:
 
 ```typescript
-// src/config/default.ts
+// src/config/production.ts
+import type { VextConfigOverride } from "vextjs";
+
 export default {
   port: 3000,
   cluster: {
     enabled: true,
-    workers: "auto", // Detect available CPUs (availableParallelism / cgroup-aware)
+    workers: 2,
   },
-};
+} satisfies VextConfigOverride;
 ```
 
-### Enable via environment variables
+Add a diagnostic route:
 
-There is no need to modify the configuration file, just set `VEXT_CLUSTER=1` to enable Cluster mode:
+```typescript
+// src/routes/worker-info.ts
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  app.get("/", async (_req, res) => {
+    res.json({ pid: process.pid, workerId: process.env.VEXT_WORKER_ID });
+  });
+});
+```
+
+Stop the same project's development server, then run from the project root:
 
 ```bash
-VEXT_CLUSTER=1 vext start
+npx vextjs build --typecheck
+npx vextjs start --port 3000 --verbose-lifecycle
+```
+
+Expect two ready Workers and a final `workers=2/2` summary. Failure of the first Worker aborts startup; later failures may leave fewer Workers ready than requested. Check the actual ready count.
+
+### Startup and request verification
+
+From another terminal, open separate connections:
+
+```bash
+curl -i -H "Connection: close" http://127.0.0.1:3000/worker-info
+curl -i -H "Connection: close" http://127.0.0.1:3000/worker-info
+npx vextjs status --port 3000
+```
+
+The requests should return HTTP 200. `data.pid` and `data.workerId` identify the Worker serving each request. Confirm both ready Workers in the detailed startup logs; scheduling does not guarantee that two requests alternate between Workers.
+
+Inspect `.vext.pid` in the project root. It records the Master PID, not an HTTP Worker PID. The status command has the limits described below. After verification, stop the foreground process with Ctrl+C; on Unix/macOS you may also run `npx vextjs stop` in another terminal. Verify the process, port, and PID file afterward. Keep or remove the diagnostic route as appropriate.
+
+### Enable through an environment variable
+
+`VEXT_CLUSTER=1` also enables Cluster. Configuration still controls the Worker count. Setting it to 0 does not disable an already configured `cluster.enabled: true`.
+
+```bash
+# Bash or another Unix-like shell
+VEXT_CLUSTER=1 npx vextjs start
+```
+
+```powershell
+$env:VEXT_CLUSTER = "1"
+npx vextjs start
+Remove-Item Env:VEXT_CLUSTER
 ```
 
 :::tip Configuration consistency
-In Cluster mode, the Master will first complete the configuration detection and port pre-check; the patch of `bootstrap config provider` will be passed to the Worker for reuse in the same startup cycle, preventing the Master and Worker and different Workers from seeing different remote configuration results.
+The Master loads configuration and checks the port before starting Workers. It passes the current bootstrap config provider patch to the Workers for reuse. Each Worker still initializes its own application; plugin side effects do not thereby run only once.
 :::
-
-### Startup effect
-
-```bash
-$ vext start
-[vextjs] start mode - built (node, from dist/)
-[vextjs] ready on http://0.0.0.0:3000 (total=1842ms, workers=4/4)
-```
 
 ## Architecture Overview
 
@@ -63,24 +100,26 @@ $ vext start
 
 ## Configuration options
 
-Configure Cluster related options in `config/default.ts`:
+Configure Cluster in the selected profile, such as `src/config/production.ts`. This example lists current defaults while enabling Cluster; usually you only need to override settings you intend to change:
 
 ```typescript
+import type { VextConfigOverride } from "vextjs";
+
 export default {
   cluster: {
     // Whether to enable Cluster mode
     enabled: true,
 
     // Worker quantity
-    // 'auto' — equal to the detected available CPU count (default recommended)
-    // 'auto-1' — equal to detected available CPU count - 1 (one core is reserved for the Master)
+    // 'auto' — detected available CPUs (default)
+    // 'auto-1' — detected count minus one, at least one; no CPU affinity
     // number — fixed number
     workers: "auto",
 
     // Worker automatically restarts when it crashes
     autoRestart: true,
 
-    //The maximum number of restarts within the time window (stop restarting if exceeded to prevent infinite crash loops)
+    // Restart budget shared by the entire Master; attempt N+1 is rate-limited
     maxRestarts: 5,
 
     //Restart counting window (milliseconds)
@@ -89,17 +128,20 @@ export default {
     //Restart base delay (milliseconds, exponential backoff)
     restartBaseDelay: 1000,
 
-    //Maximum restart delay (milliseconds)
+    // Maximum restart delay (milliseconds)
     restartMaxDelay: 30000,
+
+    // Worker heap threshold (bytes; default 1 GiB)
+    memoryThreshold: 1024 * 1024 * 1024,
 
     // Worker heartbeat detection configuration
     healthCheck: {
       enabled: true, // Whether to enable heartbeat detection
-      interval: 15000, // Detection interval (milliseconds)
-      timeout: 30000, //Heartbeat timeout (milliseconds)
+      interval: 15000, // Interval for Master to inspect lastHeartbeat (ms)
+      timeout: 30000, // Heartbeat timeout (ms)
     },
 
-    // Zero downtime rolling restart configuration
+    // Rolling replacement and Worker start/stop waits
     reload: {
       workerDelay: 2000, // Waiting time before replacing the next Worker (milliseconds)
       readyTimeout: 30000, // Worker ready timeout (milliseconds)
@@ -114,37 +156,29 @@ export default {
 
     // sticky session mode ('none' | 'ip')
     // 'none' — not enabled (default)
-    // 'ip' — Allocate fixed Worker based on client IP (WebSocket / SSE scenario)
+    // 'ip' — currently selects a scheduling-policy branch, not IP affinity
     sticky: "none",
   },
-};
+} satisfies VextConfigOverride;
 ```
 
 ### Worker quantity strategy
 
-| Value      | Meaning                          | Applicable scenarios                                          |
-| ---------- | -------------------------------- | ------------------------------------------------------------- |
-| `'auto'`   | Detected available CPU count     | Production environment (default recommended)                  |
-| `'auto-1'` | Detected available CPU count - 1 | Single-machine mixed deployment (reserve one core for Master) |
-| `2`        | Fixed 2 Workers                  | Development environment test Cluster                          |
-| `1`        | Fixed 1 Worker                   | Debugging Cluster logic                                       |
+| Value            | Actual rule                           | Considerations                                  |
+| ---------------- | ------------------------------------- | ----------------------------------------------- |
+| `"auto"`         | Detected available CPUs, capped at 64 | Check actual container and host results         |
+| `"auto-1"`       | Detected count minus one, minimum one | Reduces process count; does not bind a CPU core |
+| Positive integer | Limited to 1–64                       | Use 2 for the two-Worker verification           |
 
-```typescript
-// Production environment: use the CPU quota available to this runtime
-cluster: {
-  workers: "auto";
-}
+Use a valid positive integer rather than relying on out-of-range fallback. CPU detection first tries `os.availableParallelism()`, then falls back to Linux cgroup v1 and `os.cpus()` on failure. It does not necessarily match every container CPU quota exactly.
 
-// Single-machine mixed deployment: reserve one core for the system/Master process
-cluster: {
-  workers: "auto-1";
-}
+Each Worker adds an application instance, database pool, cache, and heap. Choose a count based on request load, memory, and external connection limits, then verify under load; CPU multiples alone do not guarantee throughput.
 
-// Development and testing: Fixed 2 Workers
-cluster: {
-  workers: 2;
-}
-```
+### State and multi-process boundaries
+
+Workers do not share ordinary variables, Service instances, or in-memory Stores. Use shared storage for data that must be globally consistent. For example, an in-memory rate limit counts separately in each Worker and is not a global quota; see [Rate Limiting](/guide/rate-limit). Sessions and caches likewise depend on their configured Stores.
+
+Although `sticky: "ip"` is configurable, the current Master only uses it to select a Node scheduling-policy branch. It does not map client IPs to Workers. Do not rely on it for session consistency or state retention after WebSocket/SSE reconnection.
 
 ## CLI commands
 
@@ -154,13 +188,13 @@ VextJS CLI provides complete Cluster management commands:
 
 ```bash
 # Start in normal mode
-vext start
+npx vextjs start
 
 # Start in Cluster mode (via environment variables)
-VEXT_CLUSTER=1 vext start
+VEXT_CLUSTER=1 npx vextjs start
 
-#Specify port
-vext start --port 8080
+# Specify port
+npx vextjs start --port 8080
 ```
 
 If `cluster.enabled: true` or `VEXT_CLUSTER=1` is set in the configuration, `vext start` will automatically start in Cluster mode.
@@ -168,55 +202,64 @@ If `cluster.enabled: true` or `VEXT_CLUSTER=1` is set in the configuration, `vex
 ### `vext stop` — stop
 
 ```bash
-# Stop the running Cluster
-vext stop
+npx vextjs stop
+# Use the same explicit path in control commands if the PID file was customized
+npx vextjs stop --pid-file .vext/app.pid
 ```
 
-`vext stop` finds the Master process by reading the PID file (default `.vext.pid`) and sends the `SIGTERM` signal to trigger graceful shutdown.
+The command reads the PID file, sends SIGTERM, and waits up to 30 seconds for the Master to exit. Normal Master shutdown asks Workers to stop accepting requests, waits for work and cleanup, then removes the PID file on exit. A nonzero timeout does not prove the process has stopped.
 
-Close process:1. Master receives `SIGTERM` 2. Master sends shutdown instructions to all Workers 3. Each Worker executes the `onClose` hook (closes the database connection, etc.) 4. Worker stops accepting new requests and waits for existing requests to complete 5. Forced exit after timeout (controlled by `shutdown.timeout`) 6. After all Workers exit, the Master exits 7. PID files are automatically deleted
+On Windows, externally terminating a process is not equivalent to Unix signal-driven cleanup. Ctrl+C in a foreground `vext start` lets the CLI request shutdown through parent-child IPC; a separate `vext stop` or operating-system force termination cannot guarantee `onClose` runs. See [Graceful shutdown](#cooperation-with-graceful-closing) for the timeout layers.
 
 ### `vext reload` — rolling restart
 
 ```bash
-# Zero downtime rolling restart
-vext reload
+# Unix/macOS; point to the target Master's PID file
+npx vextjs reload
 ```
 
-`vext reload` executes **zero-downtime rolling restart** (Rolling Restart):
+The CLI returns after sending SIGHUP; successful delivery does not mean all Workers have been replaced. For each old Worker recorded at startup, the Master:
 
-1. Master receives reload signal
-2. Restart Workers one by one (instead of restarting them all at once)
-3. After the new Worker is started and ready, close the old Worker
-4. Process all Workers in sequence
-5. There is always a Worker serving requests throughout the process
+1. Starts a new Worker and waits for ready.
+2. Asks the old Worker to shut down only after its replacement is ready.
+3. Waits for the old Worker to exit, forcing termination after timeout.
+4. Waits `workerDelay`, then processes the next pair.
 
 ```
-Worker 1: [Running] → [Close] → [Restart] → [Ready] ✅
-Worker 2: [Running] → [Close] → [Restart] → [Ready] ✅
-Worker 3: [Running] → [Close] → [Restart] → [Ready] ✅
+Old Worker A: running ──────────→ drain/close
+New Worker A:     start → ready → accept requests
+                              ↓
+                      replace the next pair
 ```
 
-Applicable scenarios:
+If a new Worker fails to start, the old Worker remains and failure is recorded while other replacements continue. Inspect `replaced/total` in the logs and make real requests; a `complete` message alone does not prove every replacement succeeded. Long connections, shutdown timeout, application errors, and insufficient resources can still interrupt traffic. Rolling replacement has no universal zero-downtime guarantee.
 
-- After deploying a new version of the code, no downtime is required for the new code to take effect
-- Reload after updating configuration
-- Hot fix
+Reload does not recreate the Master. Worker count, Master heartbeat/backoff settings, and the provider patch captured at startup do not all refresh on a signal. Restart the complete service and shift traffic according to your deployment process when these settings change.
 
 :::warning Prerequisites
-On Unix/macOS, `vext reload` sends `SIGHUP` to the Master, and the Master performs the rolling restart. `cluster.reload` only configures the replacement delay, worker readiness timeout, and shutdown timeout. Omitting `cluster.reload` does not disable rolling restart; Vext uses the defaults. To block reload in production operations, disable the `vext reload` command or related signals at your deployment/operations layer.
+Windows does not support this reload signal operation; the command fails. Build valid TypeScript artifacts before deploying an update. Omitting `cluster.reload` uses default waits rather than disabling reload. Update code, config, and artifacts so old and new Workers can each read a consistent version.
 :::
 
 ### `vext status` — View status
 
 ```bash
-# Check Cluster running status
-vext status
+# Check Cluster status
+npx vextjs status
 ```
 
-Output example when the Master process is alive and `/health` is reachable:
+The command normally shows the Master PID and PID file, then probes `http://<host>:<port>/health` (default host `127.0.0.1`, port `3000`):
 
+```text
+Status: 🟢 running
+  Master PID: 12345
+  PID file:   <project>/.vext.pid
 ```
+
+It appends PID, uptime, and memory details only when the health response contains those fields at the top level. It does not unpack the usual Vext response `data`, read the configured application port, or scan all Workers. The application must provide `/health`; a route at `/api/health` does not satisfy this fixed probe.
+
+For example, if the target health route directly returns those top-level fields, one response could produce:
+
+```text
 Status: 🟢 running
   Master PID: 12345
   PID file:   .vext.pid
@@ -226,19 +269,20 @@ Status: 🟢 running
   RSS:        128.0 MB
 ```
 
-If `/health` is unreachable, `vext status` still reports the Master process state and notes that the health endpoint could not be reached. The current command does not print a worker table or request counts; use Prometheus or another monitoring system for multi-worker metrics.
+These numbers illustrate one health request, not all Workers. The default wrapped response in this page's demo does not automatically provide them. `status` may exit 0 even for not running, stale, or unreachable results; do not use its exit code as a deployment health gate. Pass the actual `--host`, `--port`, and `--pid-file`, and independently check business health.
 
 ## Automatic failure recovery
 
 ### Worker crashes and restarts
 
-When `autoRestart: true` (default), the Master will automatically restart after the Worker crashes:
+With `autoRestart: true`, an unintentional Worker exit usually triggers replacement. Candidate failures before ready are handled by their startup or replacement flow. The new Worker gets a new ID and PID; the old process is not revived in place. These log values are illustrative:
 
 ```
-[vextjs] Worker 3 (PID: 12348) exited unexpectedly (code: 1)
-[vextjs] Restarting Worker 3... (restart 1/10 in 60s window)
-[vextjs] Worker 3 (PID: 12350) ready
+[cluster] worker 3 (pid: 12348) exited: code 1
+[cluster] restarting worker in 1000ms...
 ```
+
+Worker memory, unfinished requests, and unpersisted state do not return automatically with the replacement.
 
 ### Exponential backoff
 
@@ -255,25 +299,21 @@ Maximum delay: 30s (restartMaxDelay)
 
 ### Crash loop protection
 
-If the number of restarts reaches `maxRestarts` (default 5 times) within `restartWindow` (default 60 seconds), Master will stop restarting and output an alarm:
+`restartWindow` defaults to 60,000 ms and `maxRestarts` to 5. The whole Master shares this budget; abnormal exits from different Workers consume it together. The sixth attempted restart within the window is paused:
 
 ```
-[vextjs] ⚠️ Worker 3 has restarted 5 times in 60s, stopping auto-restart
-[vextjs] Please investigate the root cause before manually restarting
+[cluster] ❌ restart rate exceeded (5 in 60000ms), pausing auto-restart
 ```
 
-This prevents buggy code from causing infinite crash-restart loops.
+The end of the time window does not schedule a task to restore missing capacity. Find the cause and deliberately recover the instance or capacity. A live Master does not imply all Workers are healthy. If all Workers disappear, the current implementation only emits an internal `all-workers-dead` event; do not assume it exits the Master so an outer supervisor can restart it. Check ready Worker count and business requests.
 
 ### Heartbeat detection
 
-When `healthCheck.enabled: true` (default), Master sends heartbeat detection to Worker every `healthCheck.interval` (default 15 seconds). If the Worker does not respond (may be deadlocked or blocked) within `healthCheck.timeout` (default 30 seconds), the Master will force kill and restart the Worker:
+Workers send heartbeat messages spontaneously every 10 seconds by default. With `healthCheck.enabled: true`, the Master inspects ready Workers' last heartbeat every `interval` (default 15 seconds). After `timeout` (default 30 seconds), it forcibly terminates a timed-out Worker. Replacement still depends on `autoRestart` and the restart budget. This is not an HTTP `/health` request or an IPC health-check sent every 15 seconds. Interval-based inspection does not guarantee detection at exactly 30 seconds.
 
-```
-[vextjs] Worker 2 (PID: 12347) heartbeat timeout, killing...
-[vextjs] Worker 2 (PID: 12347) force killed
-[vextjs] Restarting Worker 2...
-[vextjs] Worker 2 (PID: 12351) ready
-```
+### Memory threshold
+
+Every 60 seconds, a Worker checks its heap used against `cluster.memoryThreshold` (default 1 GiB, in bytes). On crossing it, that Worker sends a single `request-restart` asking the Master to start a replacement first. It does not exit immediately, and this is not an RSS or container-memory hard limit. If replacement fails, do not assume memory was freed; inspect logs and live processes.
 
 ## PID file
 
@@ -290,10 +330,14 @@ PID files are automatically managed at the following times:
 - **Delete**: When Master exits normally
 - **Detection**: Detect whether there is a running Cluster at startup
 
-```bash
-# Customize PID file path
-cluster: { pidFile: '/var/run/myapp.pid' }
+```typescript
+// Merge into the existing cluster object in the selected profile
+cluster: {
+  pidFile: ".vext/app.pid";
+}
 ```
+
+Relative paths resolve from the startup working directory. Stop, reload, and status do not automatically read this path from application config; pass the same `--pid-file`. Forced termination may leave a stale file. Check the process behind its PID rather than deleting the file as a substitute for stopping the service.
 
 :::tip
 Add `.vext.pid` to `.gitignore` to avoid committing to version control.
@@ -323,22 +367,31 @@ After all Workers exit, the Master exits
 PID files automatically deleted
 ```
 
-Timeout control:
+There are separate timeout layers with different units:
 
-- Worker level timeout is controlled by `shutdown.timeout` (default 10 seconds)
-- Worker is forcibly terminated after timeout (`SIGKILL`)
+| Setting                          | Unit             | Default | Scope                                                               |
+| -------------------------------- | ---------------- | ------- | ------------------------------------------------------------------- |
+| `shutdown.timeout`               | **seconds**      | 10      | Total budget for Worker application shutdown                        |
+| `cluster.reload.shutdownTimeout` | **milliseconds** | 10,000  | Master wait for Worker exit during shutdown and rolling replacement |
+| CLI stop wait                    | milliseconds     | 30,000  | Fixed maximum time the control command waits for the Master to exit |
+
+When the Master's wait expires, it may SIGKILL a Worker, so application cleanup cannot be assumed to continue. Allow more time outside than inside the application, for example:
 
 ```typescript
+// Merge into an existing production config
+import type { VextConfigOverride } from "vextjs";
+
 export default {
-  shutdown: {
-    timeout: 15000, // 15 seconds timeout
-  },
+  shutdown: { timeout: 15 },
   cluster: {
     enabled: true,
-    workers: "auto",
+    workers: 2,
+    reload: { shutdownTimeout: 20000 },
   },
-};
+} satisfies VextConfigOverride;
 ```
+
+See [Hooks](/guide/hooks) for shutdown ordering. A forced termination or timeout is not proof that cleanup hooks finished.
 
 ## Configure according to environment
 
@@ -379,7 +432,7 @@ It is recommended to use `vext dev` (hot reload mode) instead of Cluster mode fo
 
 ## Inter-process communication
 
-Master and Worker communicate through IPC messages. VextJS defines a standardized messaging protocol:
+Master and Worker communicate through an internal IPC protocol. The table helps explain runtime behavior; it is not a stable package-root API for application plugins. Applications must not manually send `ready` to bypass real initialization.
 
 When launched through `vext start`, the Windows CLI sends its shutdown request to the Master over the parent-child IPC channel. The Master uses the same graceful shutdown sequence to notify Workers, wait for exit, and remove its PID file. Terminating a process directly through the operating system does not guarantee that close hooks run.
 
@@ -387,61 +440,51 @@ The message types below are the exact string literals of the IPC payload `type` 
 
 ### Worker → Master message
 
-| Message type      | Description                                                       |
-| ----------------- | ----------------------------------------------------------------- |
-| `ready`           | Worker initialization is completed and starts accepting requests  |
-| `heartbeat`       | Heartbeat response                                                |
-| `metrics`         | Worker reports running metrics (number of requests, memory, etc.) |
-| `request-restart` | Worker requests itself to restart (if a memory leak is detected)  |
+| Message type      | Description                                                                                                                            |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `ready`           | Worker initialization is completed and starts accepting requests                                                                       |
+| `heartbeat`       | Heartbeat response                                                                                                                     |
+| `metrics`         | Memory and other snapshots every 30 seconds; without a request metrics provider, counts are placeholder zero with `metricsUnavailable` |
+| `request-restart` | Worker requests itself to restart (if a memory leak is detected)                                                                       |
 
 ### Master → Worker message
 
-| Message type   | Description                           |
-| -------------- | ------------------------------------- |
-| `set-title`    | Set Worker process title              |
-| `shutdown`     | Notify Worker to shut down gracefully |
-| `health-check` | Heartbeat detection                   |
-| `broadcast`    | Broadcast messages to all Workers     |
+| Message type   | Description                                                                                                     |
+| -------------- | --------------------------------------------------------------------------------------------------------------- |
+| `set-title`    | Set Worker process title                                                                                        |
+| `shutdown`     | Notify Worker to shut down gracefully                                                                           |
+| `health-check` | Immediate heartbeat response supported by Workers; scheduled inspection currently uses spontaneous heartbeats   |
+| `broadcast`    | Currently only logs at debug level on receipt; it does not automatically trigger business events or config sync |
 
-```typescript
-process.send?.({ type: "ready", pid: process.pid, workerId: "1" });
-worker.send({ type: "shutdown", timeout: 10000 });
-```
+These messages are maintained by the framework. Placeholder request counts do not mean there was no traffic; production monitoring needs an actual request metrics provider.
 
 ## Deploying with Docker
 
-Things to note when using Cluster mode in Docker containers:
-
 ### Dockerfile example
 
+This runtime image assumes a TypeScript API project has already built `dist`, all config needed by start is in the output, and no other runtime resources are required. See [Build](/guide/build) for a complete multi-stage build. JavaScript source mode must also carry `src`.
+
 ```dockerfile
-FROM node:20-alpine
-
-WORKDIR/app
-
-COPY package*.json ./
-RUN npm ci --production
-
+FROM node:22-alpine
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
 COPY dist/ ./dist/
-COPY src/ ./src/
-
-# Use SIGTERM signal (Docker default)
 STOPSIGNAL SIGTERM
-
-# Start Cluster mode
 ENV VEXT_CLUSTER=1
-CMD ["npm", "start"]
+CMD ["./node_modules/.bin/vext", "start", "--outdir", "dist"]
 ```
 
 ### Suggestions
 
-- **Worker count**: `workers: "auto"` first uses `os.availableParallelism()` (modern Node runtimes usually account for Docker/Kubernetes CPU limits), then falls back to cgroup v1 `cpu.cfs_quota_us` / `cpu.cfs_period_us`, and finally to `os.cpus().length`. If the runtime cannot read cgroup limits, or if the worker count must strictly match a Pod/container quota, set an explicit number.
-- **PID file**: No special configuration is required for the PID file path in the container, just use the default `.vext.pid`
-- **Graceful shutdown**: Make sure Docker's `stop_grace_period` is greater than VextJS's `shutdown.timeout`
-- **Single container, multiple processes**: Cluster mode is a reasonable approach to run multiple Workers in a single container, but if you use orchestration tools such as Kubernetes, you can also choose single-process mode + multiple Pod replicas
+- Keep identity files inside `dist` and production dependencies. Carry custom frontend directories, workspace packages, and external resources separately.
+- Check Worker count against actual container CPUs, memory, and connection quotas; choose an explicit number when needed.
+- The PID path must be writable and unique to each instance.
+- The container stop grace period must exceed the Master wait and application cleanup time.
+- With an outer process manager or multiple container replicas, count total Workers to avoid unintended double scaling.
 
 ```yaml
-# docker-compose.yml
+# docker-compose.yml; application config or CLI must actually listen on 3000
 services:
   api:
     build: .
@@ -449,20 +492,22 @@ services:
       - VEXT_CLUSTER=1
     ports:
       - "3000:3000"
-    stop_grace_period: 30s # greater than shutdown.timeout
+    stop_grace_period: 30s
 ```
+
+## Jobs and Cluster
+
+HTTP Cluster Workers do not execute Jobs by default, so multiple HTTP Workers do not each fire the same schedule. Run HTTP, `vext job scheduler`, and `vext job worker` as separate processes. Cooperation between multiple schedulers or workers depends on a shared Job Store and leases. Process separation does not provide exactly-once execution or business idempotency; see [Jobs](/guide/jobs).
 
 ## FAQ
 
 ### What should we pay attention to when using WebSocket/SSE in Cluster mode?
 
-Long connections (WebSocket, SSE) need to consider sticky session in Cluster mode to ensure that connections from the same client are routed to the same Worker as much as possible. Sticky allocation based on client IP can be enabled via `cluster.sticky: "ip"`; the default is `"none"`.
+An established long connection stays with the Worker holding it and can disconnect when that Worker exits. Design reconnection, cross-request state, broadcast, and shutdown timeouts explicitly. Current `sticky: "ip"` does not implement IP affinity and cannot guarantee that reconnection returns to the old Worker. Protocol support also depends on the adapter and application.
 
 ### What is the appropriate number of Workers?
 
-- **CPU intensive**: set to the detected available CPU count (`'auto'`)
-- **I/O intensive**: start by evaluating 1-2 times the available CPU count
-- **Mixed load**: start with the available CPU count and adjust based on actual monitoring data
+Start with a controlled count, then adjust using CPU, memory, response latency, and total database connections. Every Worker initializes its own application and pools. `"auto-1"` only reduces process count; it does not reserve or pin a physical core for the Master.
 
 ### How to monitor the status of each Worker?
 
@@ -470,7 +515,7 @@ Use `vext status` to view the Master PID, PID file state, and single health endp
 
 ### How is it different from PM2?
 
-VextJS's built-in Cluster management is deeply integrated with framework features (such as cooperation with `onClose` hooks, configuration systems, hot reloading), providing a zero-configuration out-of-the-box experience. PM2 is a general-purpose process manager with broader functionality but less integrated with the framework than the built-in solutions. The two can be used together (PM2 manages the Master process), but usually not required.
+The built-in Master manages this framework's Workers. If an external process manager also supervises the app, decide whether it manages one Master or several independent application instances. Avoid two Cluster layers conflicting over Worker count, PID files, and shutdown. The outer supervisor still owns recovery when the Master itself exits.
 
 ## Next step
 

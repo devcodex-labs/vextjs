@@ -1,12 +1,16 @@
+---
+role: specification
+---
+
 # Boundaries and Roadmap
 
-This page separates current frontend targets from future capability tracks.
+This page defines the current frontend capability boundaries and separates implemented features, explicitly enabled features, and directions still under consideration. It is for maintainers of frontend pages, server routes, builds, and deployments. For procedures, see [Frontend Quick Start](/frontend/getting-started); for diagnosis, see [Troubleshooting](/frontend/troubleshooting). Rule levels follow the [Specification overview](/specification/).
 
-## Current Target
+## Current Capabilities
 
-The current Vext frontend direction is:
+The current implementation provides these capabilities, subject to the relevant configuration and route declarations:
 
-- `src/frontend/**` as the user frontend source root
+- `src/frontend/**` as the default user frontend source root, adjustable through supported frontend configuration
 - `src/routes/**` as URL and server data entry
 - `res.render(page, props?, options?)`
 - React 19 SSR plus hydration
@@ -22,6 +26,43 @@ The current Vext frontend direction is:
 - Fast Refresh and render refresh in development
 - esbuild-powered production build
 - route assets, code splitting, size reports, budgets, deploy manifest, SRI, incremental static upload, and local image/font media closure
+
+### Conditions and Exclusions
+
+| Capability                                    | Enablement and use                                                                                          | What it does not imply                                                                             |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| React SSR and hydration                       | Enable frontend and provide a page and render route                                                         | A page file does not automatically register a URL.                                                 |
+| Document without hydration                    | Set `frontend.hydration: "none"` on a route with SSR enabled                                                | This is not Islands or partial hydration; application-added scripts are not automatically removed. |
+| Streaming SSR                                 | Set `frontend.render.streaming: "auto"` with effective SSR and full hydration; buffered remains the default | This is not RSC or Server Actions; `hydration: "none"` uses the non-streaming document path.       |
+| Same-route client navigation                  | Use `Link`, `Form`, a compatible page protocol, and layouts                                                 | Navigation can fall back to a document request when the protocol cannot be satisfied.              |
+| Static, revalidate, and client-only freshness | Declare the route and produce the corresponding build/runtime artifacts                                     | Arbitrary responses are not cached automatically; in-memory state is not shared across processes.  |
+| Image and font handling                       | Provide local inputs and explicit media/deploy configuration                                                | Remote images and fonts are not downloaded by default.                                             |
+
+Choose an implementation path with these verified limitations in mind:
+
+- The browser entry for the [empty CSR shell](./csr-and-spa-fallback#current-limitation-of-an-empty-shell) still calls `hydrateRoot`. It may report a mismatch before recovering the display. Do not treat that as error-free CSR validation; prefer keeping shell SSR.
+- [CSS Modules](./styles-and-assets#css-modules) can produce different class names in the default production SSR and browser builds. Prefer plain CSS or JSCSS for current SSR pages.
+- The loader for [imported images](./styles-and-assets#imported-assets) is configured only in the browser build. SSR-registered pages should use a Public URL or a manifest-backed Image. Turning off runtime SSR does not eliminate the server bundle build.
+
+## Route and Browser Responsibilities
+
+<a id="vext-arch-008"></a>
+
+### VEXT-ARCH-008 [MUST] Routes Explicitly Own URLs and Server Data
+
+Page and layout files render content. HTTP entry points are registered under `src/routes/**`; route handlers bind a page and its data with `res.render()`. Do not equate page discovery with URL registration or assume a parallel loader/action route model. An external frontend consumes services through an explicit HTTP contract.
+
+<a id="vext-arch-009"></a>
+
+### VEXT-ARCH-009 [MUST NOT] Browser Dependencies Must Not Include Server-Only Modules
+
+Database, filesystem, server configuration, and service work belongs in server consumers. The route passes the data needed by the page. Naming a directory “shared” does not make Node-only code browser-safe. The build boundary check is one verification method; it does not replace inspection of actual dependencies and transmitted data.
+
+<a id="vext-arch-010"></a>
+
+### VEXT-ARCH-010 [MUST] Verify Delivery Against the Actual Render and Deployment Mode
+
+Verify the corresponding HTML, scripts, requests, and fallback behavior separately for buffered, streaming, `hydration: "none"`, and client navigation. Production must use assets and a manifest from the matching build. Enabling asset upload does not automatically upload every SSR page, and a CDN containing only static assets is not a server runtime. See [Build and Deploy](/frontend/build-and-deploy).
 
 ## Version Boundary
 
@@ -46,6 +87,8 @@ export default {
 ## External Frontend Adapters
 
 Vext can expose contracts for external frontend frameworks through `vextjs/frontend`, generated API artifacts, and stable HTTP boundaries. The default integrated experience remains Vext-owned full-stack React.
+
+Those contracts and extension points make integration possible; they do not mean the framework includes every third-party frontend runtime adapter. For each adapter, verify the rendering, client routing, error, and deployment contracts.
 
 ## Why RSC is not a current requirement
 
@@ -86,7 +129,7 @@ consumer acceptance contracts before it can leave this non-goal list.
 
 ## Future Tracks
 
-These are not first-phase commitments, but can be evaluated later:
+These are neither implemented capabilities nor committed schedule items. They can be evaluated independently:
 
 - React Server Components
 - Server Functions and Server Actions
@@ -95,6 +138,12 @@ These are not first-phase commitments, but can be evaluated later:
 - deeper external framework adapters
 
 Each track needs separate requirements, performance evidence, and compatibility review before becoming default behavior.
+
+<a id="vext-arch-011"></a>
+
+### VEXT-ARCH-011 [MUST NOT] Do Not Present Planned Directions as Current Usage Contracts
+
+Release notes, operating guides, and machine-readable docs must distinguish implemented features from candidate directions. An API in React or an underlying tool does not imply that Vext provides the corresponding end-to-end capability. Before a new capability enters formal usage docs, verify its configuration, types, implementation, build artifacts, and consumer results.
 
 ## Current Non-goals
 

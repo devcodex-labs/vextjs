@@ -1380,21 +1380,25 @@ function verifyFrontendSeoAndNoHydrationDocumentationContract() {
 
   if (stableReleaseDocumentation) {
     requireTokens("website/docs/en/guide/quick-start.md", [
-      "Stable release",
-      `stable \`v${packageVersion}\` release`,
+      "Published stable package:",
+      `\`v${packageVersion}\``,
+      "current repository source",
     ]);
     requireTokens("website/docs/en/guide/cli.md", [
-      "Stable release",
-      `stable \`v${packageVersion}\` release`,
+      "Published stable package:",
+      `\`v${packageVersion}\``,
+      "current repository source",
       `vextjs v${packageVersion}`,
     ]);
     requireTokens("website/docs/zh/guide/quick-start.md", [
-      "稳定版本",
-      `稳定发布的 \`v${packageVersion}\``,
+      "已发布稳定包：",
+      `\`v${packageVersion}\``,
+      "仓库当前源码",
     ]);
     requireTokens("website/docs/zh/guide/cli.md", [
-      "稳定版本",
-      `稳定发布的 \`v${packageVersion}\``,
+      "已发布稳定包：",
+      `\`v${packageVersion}\``,
+      "仓库当前源码",
       `vextjs v${packageVersion}`,
     ]);
     for (const locale of ["en", "zh"]) {

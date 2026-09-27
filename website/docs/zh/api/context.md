@@ -700,7 +700,7 @@ app.get("/dashboard", async (_req, res) => {
 });
 ```
 
-`VextRenderOptions` 包含 `status`、`headers`、`head`、`seo`、`nonce`、`locale`、`messages`、`ssr`、`layout` 和 `layoutData`。状态默认沿用当前响应状态；props、layoutData、messages必须可安全转换为JSON。页面结构、渲染模式与完整流程见[页面与渲染](/zh/frontend/pages-and-rendering)，head/seo选项见[SEO、Sitemap与Robots](/zh/frontend/seo-sitemap)。该出口不使用JSON的 `{ code, data, requestId }` 包装。
+`VextRenderOptions` 包含 `status`、`headers`、`head`、`seo`、`nonce`、`locale`、`messages`、`ssr`、`layout` 和 `layoutData`。状态默认沿用当前响应状态；props、layoutData、messages必须可安全转换为JSON。页面结构、渲染模式与完整流程见[路由与页面](/zh/frontend/routing-and-pages)及[渲染模式](/zh/frontend/rendering-modes)，head/seo选项见[SEO、Sitemap与Robots](/zh/frontend/seo-sitemap)。该出口不使用JSON的 `{ code, data, requestId }` 包装。
 
 ### `renderError(errorOrStatus?, pageOrOptions?, options?)`
 

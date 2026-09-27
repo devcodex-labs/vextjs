@@ -19,8 +19,8 @@ function input(overrides: Record<string, unknown> = {}) {
         zh: `docs v${next}; output vextjs v${stable}`,
       },
       quickStart: {
-        en: `docs v${next}; stable v${stable}; "vextjs": "^${stable}"`,
-        zh: `docs v${next}; stable v${stable}; "vextjs": "^${stable}"`,
+        en: `docs v${next}; stable v${stable}; npm install vextjs`,
+        zh: `docs v${next}; stable v${stable}; npm install vextjs`,
       },
     },
     ...overrides,
@@ -53,8 +53,8 @@ describe("version channel contract", () => {
       zh: `docs v${version}; output vextjs v${version}`,
     };
     current.files.quickStart = {
-      en: `docs v${version}; stable v${version}; "vextjs": "^${version}"`,
-      zh: `docs v${version}; stable v${version}; "vextjs": "^${version}"`,
+      en: `docs v${version}; stable v${version}; npm install vextjs`,
+      zh: `docs v${version}; stable v${version}; npm install vextjs`,
     };
     expect(validateVersionContract(current).errors).toEqual([]);
   });
@@ -74,8 +74,8 @@ describe("version channel contract", () => {
       zh: `docs v${version}; output vextjs v${stable}`,
     };
     current.files.quickStart = {
-      en: `docs v${version}; stable v${stable}; "vextjs": "^${stable}"`,
-      zh: `docs v${version}; stable v${stable}; "vextjs": "^${stable}"`,
+      en: `docs v${version}; stable v${stable}; npm install vextjs`,
+      zh: `docs v${version}; stable v${stable}; npm install vextjs`,
     };
 
     expect(validateVersionContract(current).errors).toEqual([]);
@@ -97,14 +97,24 @@ describe("version channel contract", () => {
     );
   });
 
-  it("rejects public examples that advertise next instead of stable", () => {
+  it("rejects a version-pinned general install command", () => {
     const current = input();
     current.files.quickStart.en =
-      'docs v2.0.0; stable v1.0.2; "vextjs": "^2.0.0"';
+      "docs v2.0.0; stable v1.0.2; npm install vextjs@2.0.0";
     expect(
       validateVersionContract(current).errors.map((error) => error.description),
     ).toContain(
-      "en Quick Start uses stable while identifying the next docs version",
+      "en Quick Start identifies release versions without pinning general install commands",
+    );
+  });
+
+  it("rejects a version-pinned create command", () => {
+    const current = input();
+    current.files.quickStart.en += "; npx vextjs@2.0.0 create app";
+    expect(
+      validateVersionContract(current).errors.map((error) => error.description),
+    ).toContain(
+      "en Quick Start identifies release versions without pinning general install commands",
     );
   });
 

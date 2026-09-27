@@ -121,10 +121,13 @@ export function validateVersionContract(input) {
     addCheck(
       checks,
       typeof quickStart === "string" &&
-        quickStart.includes(`"vextjs": "^${stable}"`) &&
         quickStart.includes(`v${stable}`) &&
-        quickStart.includes(`v${next}`),
-      `${locale} Quick Start uses stable while identifying the next docs version`,
+        quickStart.includes(`v${next}`) &&
+        /\bnpm\s+install\s+vextjs\b/u.test(quickStart) &&
+        !/\b(?:npx\s+vextjs|npm\s+(?:install|i)\s+vextjs)@[^\s`"'<>]+/u.test(
+          quickStart,
+        ),
+      `${locale} Quick Start identifies release versions without pinning general install commands`,
     );
   }
 

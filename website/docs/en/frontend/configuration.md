@@ -1,9 +1,6 @@
 # Frontend Configuration
 
-This page is a decision guide, not a second copy of every type member. Start
-with the defaults, configure only the behavior that changes for your product,
-and use the canonical [VextFrontendConfig API reference](../api/config#vextfrontendconfig)
-when you need an exact field, default, or nested option.
+Use this page to change an existing full-stack app. Complete [Getting Started](/frontend/getting-started) first, then merge only needed fields into `src/config/default.ts` while retaining server settings. Start with defaults and configure behaviors the product actually changes; see the [VextFrontendConfig API reference](../api/config#vextfrontendconfig) for all type members.
 
 ## Table of Contents
 
@@ -12,6 +9,8 @@ when you need an exact field, default, or nested option.
 - [Complete Example](#complete-example)
 - [Production Delivery Profiles](#production-delivery-profiles)
 - [Core Fields](#core-fields)
+- [Render Fields](#render-fields)
+- [Style Fields](#style-fields)
 - [Build Fields](#build-fields)
 - [Deploy Fields](#deploy-fields)
 - [SEO Fields](#seo-fields)
@@ -20,47 +19,43 @@ when you need an exact field, default, or nested option.
 - [SPA Fallback Fields](#spa-fallback-fields)
 - [Verify a Configuration Change](#verify-a-configuration-change)
 
+## Minimal Config
+
+Enable frontend in the default config; page files and routes still need to follow Getting Started:
+
+```ts
+import type { VextConfigOverride } from "vextjs";
+
+export default {
+  frontend: true,
+} satisfies VextConfigOverride;
+```
+
+`frontend: true` uses the `src/frontend`, `pages`, `components`, `styles/index.css`, and `public` conventions. When using an object, set `enabled: true` explicitly; the object alone does not enable frontend. Production output defaults to `dist/client` with browser minification on and source maps off; the separate Node SSR bundle is unminified by default.
+
+To disable frontend entirely, use `frontend: false` and remove or adapt handlers that call `res.render()`. Disabling the setting does not automatically delete old generated directories.
+
 ## Choose What to Configure
 
 | If you need…                           | Start with           | Configure                                                        | What changes                                                                                          | Verify                                                     |
 | -------------------------------------- | -------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | Server-rendered React pages            | `frontend: true`     | Nothing else                                                     | Vext discovers `src/frontend`, builds browser + SSR output, and serves both at the application origin | `vext build`, then `vext start`                            |
 | A different source layout              | Built-in folders     | `root`, `pages`, `componentsDir`, `styles.entry`, or `assetsDir` | Only discovery paths change; generated entries remain Vext-owned                                      | Build and load one page plus its global style              |
-| A browser-size or compatibility target | Production defaults  | `build`, `vendorChunks`, or `budgets`                            | esbuild output, report thresholds, or browser support changes                                         | Inspect `size-report.json` and a production page           |
+| A browser-size or compatibility target | Production defaults  | `build.target`, `build.vendorChunks`, or `build.budgets`         | esbuild output, report thresholds, or browser support changes                                         | Inspect `size-report.json` and a production page           |
 | CDN-hosted immutable assets            | Same-origin delivery | `deploy.assetBaseUrl` and optionally `deploy.upload`             | Generated JS/CSS URLs point at the CDN; Node still owns HTML/SSR                                      | Dry-run the upload and request an SSR page + hashed asset  |
 | Search-visible public pages            | SEO disabled         | `seo`, plus route/render metadata                                | Canonical/meta output and optional sitemap/robots become framework-owned                              | Inspect two page canonicals and the selected SEO artifacts |
 | A client-router island                 | No fallback capture  | `spaFallback.scopes`                                             | Only declared paths are served by the browser shell                                                   | Check an in-scope URL and an excluded `/api/**` URL        |
-| Localized page copy                    | Disabled             | `i18n`                                                           | Locale artifacts and request-aware document language are generated                                    | Build and request two locales                              |
+| Localized page copy                    | Disabled             | `i18n`                                                           | Locale artifacts; document language uses an explicit render locale or concrete default                | Build and request two locales                              |
 
-Avoid adding a field merely because it exists. The defaults deliberately keep
-the runtime small: React + esbuild, SSR on, buffered streaming, browser code
-splitting on, production browser minification on, and no CDN/upload adapter.
-
-## Minimal Config
-
-```ts
-export default {
-  frontend: true,
-};
-```
-
-Use `false` to disable frontend completely:
-
-```ts
-export default {
-  frontend: false,
-};
-```
-
-`frontend: true` uses `src/frontend`, `pages`, `components`,
-`styles/index.css`, and `public` conventions. It creates `dist/client` in a
-production build; browser minification is enabled and browser source maps are
-disabled by default. The SSR renderer is a separate Node bundle and stays
-unminified by default for diagnostics.
+Avoid adding a field merely because it exists. Global defaults use React and esbuild, SSR on, buffered streaming, browser splitting and production minification on, and no CDN URL or upload. The full-stack starter separately configures `streaming: "auto"` and frontend i18n; inspect the app's actual configuration.
 
 ## Complete Example
 
+This same-origin object illustrates the field hierarchy for the default full-stack starter. Most values match defaults and do not all need to be written. Budget values are examples: gather a baseline with `warnOnly: true`. The starter has an `en-US` dictionary, so this example enables frontend i18n explicitly.
+
 ```ts
+import type { VextConfigOverride } from "vextjs";
+
 export default {
   frontend: {
     enabled: true,
@@ -95,6 +90,7 @@ export default {
         modules: true,
       },
       budgets: {
+        warnOnly: true,
         maxInitialJsBrotliBytes: 60_000,
         maxRouteInitialJsBrotliBytes: 80_000,
         maxAppOwnedInitialJsBrotliBytes: 40_000,
@@ -102,20 +98,6 @@ export default {
       diagnostics: {
         leakScan: true,
         performanceReport: true,
-      },
-    },
-    deploy: {
-      assetBaseUrl: "https://cdn.example.com/my-app/",
-      crossOrigin: "anonymous",
-      integrity: true,
-      upload: {
-        enabled: true,
-        adapter: "filesystem",
-        targetDir: ".vext/frontend-cdn",
-        publicBaseUrl: "https://cdn.example.com/my-app/",
-        prefix: "my-app",
-        stateFile: ".vext/deploy/frontend-assets-state.json",
-        exclude: ["**/*.map"],
       },
     },
     i18n: {
@@ -128,7 +110,7 @@ export default {
     },
     apiClient: true,
   },
-};
+} satisfies VextConfigOverride;
 ```
 
 ## Production Delivery Profiles
@@ -149,11 +131,12 @@ the baseline to keep when a separate static origin provides no material value.
 
 ### CDN plus incremental upload
 
-Add only the delivery fields required by the CDN path:
+Add these optional delivery fields only when a working CDN is available. Replace the example domain with the real asset address before using it:
 
 ```ts
 export default {
   frontend: {
+    enabled: true,
     deploy: {
       assetBaseUrl: "https://cdn.example.com/my-app/",
       integrity: true,
@@ -169,29 +152,40 @@ export default {
 };
 ```
 
-`filesystem` only stages a deploy tree. Use a custom adapter for a real
-provider; no cloud SDK or bundler-plugin ecosystem is implicitly installed.
-Keep the state file outside `frontend.outDir`, run `vext deploy assets --dry-run`,
-then deploy the matching Node `dist/` output.
+`filesystem` stages selected assets locally; it does not publish them to the example domain. Use a custom adapter or existing release process for a cloud provider. Keep the state file outside `frontend.outDir`, build, inspect `vext deploy assets --dry-run`, then deploy the Node output from the same build once assets are available. See [Static Assets and CDN](./static-assets-and-cdn).
 
 ## Core Fields
 
-| Field                    | Default                                                 | Meaning                                                                                            |
-| ------------------------ | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `frontend.enabled`       | `false`                                                 | Enable built-in frontend pipeline                                                                  |
-| `frontend.framework`     | `"react"`                                               | Framework label for built-in React support                                                         |
-| `frontend.root`          | `"src/frontend"`                                        | User frontend source root                                                                          |
-| `frontend.pages`         | Built-in page conventions                               | Page, document, and error-page discovery settings                                                  |
-| `frontend.componentsDir` | `"components"`                                          | Shared component directory resolved from `frontend.root`                                           |
-| `frontend.assetsDir`     | `"assets"`                                              | Imported image, font, and media source directory                                                   |
-| `frontend.indexHtml`     | `src/frontend/pages/_document.html`                     | Document template                                                                                  |
-| `frontend.outDir`        | `.vext/client` in dev, `dist/client` in build           | Frontend output directory                                                                          |
-| `frontend.publicDir`     | `"public"`                                              | Static public directory                                                                            |
-| `frontend.publicPath`    | `"/"`                                                   | Public asset URL prefix                                                                            |
-| `frontend.alias`         | Built-in `@frontend/@pages/@components/@styles/@assets` | Frontend-safe import aliases; do not alias all of `src` into browser code                          |
-| `frontend.apiClient`     | `true`                                                  | Emit route/client contract artifacts; set `false` only when no generated client artifact is wanted |
-| `frontend.errorPages`    | Built-in error page conventions                         | Map default or status-specific SSR errors to pages                                                 |
-| `frontend.adapter`       | none                                                    | Advanced compatible adapter seam; not a general plugin loader                                      |
+| Field                    | Default                                                                 | Meaning                                                                                            |
+| ------------------------ | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `frontend.enabled`       | `false`                                                                 | Enable built-in frontend pipeline                                                                  |
+| `frontend.framework`     | `"react"`                                                               | Framework label for built-in React support                                                         |
+| `frontend.root`          | `"src/frontend"`                                                        | User frontend source root                                                                          |
+| `frontend.pages`         | Built-in page conventions                                               | Page, document, and error-page discovery settings                                                  |
+| `frontend.componentsDir` | `"components"`                                                          | Shared component directory resolved from `frontend.root`                                           |
+| `frontend.assetsDir`     | `"assets"`                                                              | Imported image, font, and media source directory                                                   |
+| `frontend.indexHtml`     | Resolved `pages.document` (default `src/frontend/pages/_document.html`) | Document template; explicit path is relative to the project root                                   |
+| `frontend.outDir`        | `.vext/client` in dev, `dist/client` in build                           | Frontend output directory                                                                          |
+| `frontend.publicDir`     | `"public"`                                                              | Static public directory                                                                            |
+| `frontend.publicPath`    | `"/"`                                                                   | Public asset URL prefix                                                                            |
+| `frontend.alias`         | Built-in `@frontend/@pages/@components/@styles/@assets`                 | Frontend-safe import aliases; do not alias all of `src` into browser code                          |
+| `frontend.apiClient`     | `true`                                                                  | Emit route/client contract artifacts; set `false` only when no generated client artifact is wanted |
+| `frontend.errorPages`    | Built-in error page conventions                                         | Map default or status-specific SSR errors to pages                                                 |
+| `frontend.adapter`       | none                                                                    | Reserved public type extension field; current built-in build/render path does not call its methods |
+
+Relative directory bases and TypeScript paths are covered in [Project Structure](./project-structure). `assetsDir` and aliases do not add an SSR image-import loader; use the Public URL boundary described there.
+
+## Render Fields
+
+| Field                       | Default      | Meaning                                                                                                        |
+| --------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------- |
+| `frontend.render.ssr`       | `true`       | SSR default; a render option can override it, and route `clientOnly` disables server page content.             |
+| `frontend.render.streaming` | `"buffered"` | `auto` streams when conditions allow; not every adapter/response path guarantees streaming.                    |
+| `frontend.render.fallback`  | `"client"`   | Fallback after buffered SSR failure; may be `"error"`.                                                         |
+| `frontend.render.timeoutMs` | `3000`       | Render time budget in milliseconds.                                                                            |
+| `frontend.render.layout`    | `true`       | Parsed but not used by the current layout-selection path; select with the third `res.render` argument instead. |
+
+See [SSR](./ssr) and [Rendering Modes](./rendering-modes). A synchronous SSR timeout is checked after rendering returns and cannot preempt synchronous JavaScript. Once a streamed response starts, a failure cannot be rewritten like a normal buffered response. Disabling SSR and disabling browser hydration are separate settings; see [Hydration](./hydration).
 
 ## Style Fields
 
@@ -206,24 +200,24 @@ then deploy the matching Node `dist/` output.
 
 ## Build Fields
 
-| Field                                                            | Default               | Meaning                                                                                 |
-| ---------------------------------------------------------------- | --------------------- | --------------------------------------------------------------------------------------- |
-| `frontend.build.target`                                          | `"es2022"`            | Default browser target passed to esbuild; `build.client.target` overrides it            |
-| `frontend.build.minify`                                          | production `true`     | Minify browser output; distinct from the server renderer setting                        |
-| `frontend.build.sourcemap`                                       | dev `true`            | Emit browser source maps; production defaults to `false`                                |
-| `frontend.build.client.assetsDir`                                | `"assets"`            | Browser bundle asset subdirectory                                                       |
-| `frontend.build.client.entryNames` / `chunkNames` / `assetNames` | `"[name]-[hash]"`     | Hashed filename patterns; preserve hashing for immutable caching                        |
-| `frontend.build.client.splitting`                                | `true`                | Enable browser code splitting                                                           |
-| `frontend.build.client.external`                                 | `[]`                  | Browser external modules                                                                |
-| `frontend.build.client.externalRuntime`                          | `{}`                  | Import-map URLs for browser externals                                                   |
-| `frontend.build.server.outFile`                                  | `server/renderer.cjs` | SSR renderer bundle file under `frontend.outDir`; its default minify setting is `false` |
-| `frontend.build.vendorChunks`                                    | enabled               | Shared runtime chunk strategy; configure packages only for a measured reason            |
-| `frontend.build.budgets`                                         | all limits `0`        | Enforce raw/gzip/brotli budget thresholds; use `warnOnly` while baselines settle        |
-| `frontend.build.assets.inlineLimit`                              | `0`                   | Inline imported assets below this byte size                                             |
-| `frontend.build.css.modules`                                     | `true`                | Enable CSS Modules                                                                      |
-| `frontend.build.diagnostics.leakScan`                            | `true`                | Block server-only imports from browser graph                                            |
-| `frontend.build.diagnostics.sizeReport`                          | `true`                | Write `size-report.json`                                                                |
-| `frontend.build.diagnostics.performanceReport`                   | `true`                | Include route-level performance metrics                                                 |
+| Field                                                            | Default                               | Meaning                                                                                                                             |
+| ---------------------------------------------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `frontend.build.target`                                          | `"es2022"`                            | Default browser target passed to esbuild; `build.client.target` overrides it                                                        |
+| `frontend.build.minify`                                          | production `true`                     | Minify browser output; distinct from the server renderer setting                                                                    |
+| `frontend.build.sourcemap`                                       | dev `true`                            | Emit browser source maps; production defaults to `false`                                                                            |
+| `frontend.build.client.assetsDir`                                | `"assets"`                            | Browser bundle asset subdirectory                                                                                                   |
+| `frontend.build.client.entryNames` / `chunkNames` / `assetNames` | `"[name]-[hash]"`                     | Hashed filename patterns; preserve hashing for immutable caching                                                                    |
+| `frontend.build.client.splitting`                                | `true`                                | Enable browser code splitting                                                                                                       |
+| `frontend.build.client.external`                                 | `[]`                                  | Browser external modules                                                                                                            |
+| `frontend.build.client.externalRuntime`                          | `{}`                                  | Import-map URLs for browser externals                                                                                               |
+| `frontend.build.server.outFile`                                  | `frontend.outDir/server/renderer.cjs` | SSR bundle; an explicit path resolves from the project root and must stay inside `frontend.outDir`; server minify defaults to false |
+| `frontend.build.vendorChunks`                                    | enabled                               | Shared runtime chunk strategy; configure packages only for a measured reason                                                        |
+| `frontend.build.budgets`                                         | all limits `0`                        | Enforce raw/gzip/brotli budget thresholds; use `warnOnly` while baselines settle                                                    |
+| `frontend.build.assets.inlineLimit`                              | `0`                                   | Disabled at zero; supported browser assets no larger than the threshold can be inlined, without adding an SSR image loader          |
+| `frontend.build.css.modules`                                     | `true`                                | Enable CSS Modules; see [Styles and Assets](./styles-and-assets#css-modules) for SSR class-name limits                              |
+| `frontend.build.diagnostics.leakScan`                            | `true`                                | Block server-only imports from browser graph                                                                                        |
+| `frontend.build.diagnostics.sizeReport`                          | `true`                                | Write `size-report.json`                                                                                                            |
+| `frontend.build.diagnostics.performanceReport`                   | `true`                                | Include route-level performance metrics                                                                                             |
 
 React-related browser externals must define `externalRuntime` mappings. Otherwise the build fails with a friendly diagnostic.
 
@@ -249,33 +243,30 @@ into a release-blocking gate.
 | `frontend.deploy.upload.stateFile`              | `.vext/deploy/frontend-assets-state.json` | Incremental upload state                                                        |
 | `frontend.deploy.upload.exclude`                | `["**/*.map"]`                            | Files excluded from upload                                                      |
 
-`assetBaseUrl` must be an absolute URL. `deploy-manifest.json` uploads JS,
-CSS, imported media, and copied public files; it does not upload SSR HTML or
-source maps by default. Use `vext deploy assets --dry-run` before every new
-adapter, prefix, or include/exclude rule.
+`assetBaseUrl` must be an absolute URL. `deploy-manifest.json` describes deliverable JS, CSS, produced media, and selected public files; creating it does not upload anything. Source maps are excluded by default; SSR renderer and entry HTML are not CDN upload assets. Run `npx vextjs deploy assets --dry-run` before changing adapter, prefix, or include/exclude rules.
 
 ## SEO Fields
 
-`frontend.seo` is the framework-level SEO entry point. It is disabled when
-omitted; when the object is present, `enabled` defaults to `true`.
+`frontend.seo` is the global SEO entry. When the object is present, `enabled` defaults to `true`. Without that object, explicit route/render SEO can still work; sitemap and robots need their own configuration. Explicit `enabled: false` disables structured SEO while legacy head stays independent.
 
 ```ts
-frontend: {
-  seo: {
-    publicOrigin: process.env.PUBLIC_ORIGIN ?? "https://www.example.com",
-    titleTemplate: "%s | Example",
-    defaults: { description: "Example application" },
-    sitemap: {},
-    robots: {},
+import type { VextConfigOverride } from "vextjs";
+
+export default {
+  frontend: {
+    enabled: true,
+    seo: {
+      publicOrigin: process.env.PUBLIC_ORIGIN ?? "https://www.example.com",
+      titleTemplate: "%s | Example",
+      defaults: { description: "Example application" },
+      sitemap: {},
+      robots: {},
+    },
   },
-}
+} satisfies VextConfigOverride;
 ```
 
-`publicOrigin` identifies the deployment origin. Vext combines it with each
-request pathname, so dynamic pages do not share one fixed URL. Use route-level
-`frontend.seo` for static metadata and `res.render(..., { seo })` for metadata
-derived from page data. `sitemap` and `robots` can use `"build"` or `"runtime"`
-mode; named `origins` support a finite multi-domain deployment.
+Replace `publicOrigin` with the real deployment origin. Without an explicit canonical override, Vext combines it with the request pathname. Use route-level `frontend.seo` for static metadata and `res.render(..., { seo })` for metadata derived from page data. Sitemap and robots can use `"build"` or `"runtime"` mode; empty objects default to build. Named `origins` support a finite multi-domain deployment.
 
 See [SEO, Sitemap, and Robots](/frontend/seo-sitemap) for dynamic canonical,
 provider, host-selection, output, and no-hydration examples. The exact nested
@@ -283,15 +274,18 @@ field list is in the [API reference](../api/config#vextfrontendconfig).
 
 ## I18n Fields
 
-| Field                             | Default                    | Meaning                                                      |
-| --------------------------------- | -------------------------- | ------------------------------------------------------------ |
-| `frontend.i18n.enabled`           | `false`                    | Scan and bundle frontend page copy when explicitly enabled   |
-| `frontend.i18n.source`            | `locales`                  | Locale source directory resolved from `frontend.root`        |
-| `frontend.i18n.defaultLocale`     | `"inherit"`                | Fallback frontend locale; inherits request locale by default |
-| `frontend.i18n.detect` / `inject` | `accept-language` / `used` | SSR locale detection and message injection policy            |
-| `frontend.i18n.clientLoad`        | `"current"`                | Browser locale loading mode                                  |
-| `frontend.i18n.clientSwitch`      | `"reload"`                 | Browser behavior when the selected locale changes            |
-| `frontend.i18n.htmlLang`          | `true`                     | Write request-aware `{vext.lang}` / `<html lang>`            |
+| Field                             | Default                          | Meaning                                                                                                                               |
+| --------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `frontend.i18n.enabled`           | `false`                          | Scan and bundle frontend page copy when explicitly enabled                                                                            |
+| `frontend.i18n.source`            | `locales`                        | Locale source directory resolved from `frontend.root`                                                                                 |
+| `frontend.i18n.defaultLocale`     | `"inherit"`                      | Fallback setting; the current render path does not automatically inherit `req.locale`; set a concrete value or explicit render locale |
+| `frontend.i18n.detect` / `inject` | `["accept-language"]` / `"used"` | Parsed declarations; current render path does not automatically detect locale or trim messages by component                           |
+| `frontend.i18n.clientLoad`        | `"current"`                      | Browser locale loading mode                                                                                                           |
+| `frontend.i18n.clientSwitch`      | `"reload"`                       | Declared field; the app implements language choice and page navigation                                                                |
+| `frontend.i18n.htmlLang`          | `true`                           | Write request-aware `{vext.lang}` / `<html lang>`                                                                                     |
+| `frontend.i18n.vary`              | `true`                           | Declared field; the app configures language `Vary` for its actual locale source                                                       |
+
+See [Frontend I18n](./i18n) for the complete runnable example and SSR/browser loading boundary. A parsed field is not evidence of implemented automatic behavior.
 
 ## Dev Fields
 
@@ -323,21 +317,19 @@ Declare individual scopes instead of a site-wide catch-all. API, OpenAPI, and
 documentation routes stay excluded by default so a client-router shell cannot
 hide an operational endpoint.
 
+`spaFallback: true` is a special branch that creates a root `/` scope for page `index`; it is different from omitting the setting. A custom global `exclude` replaces the default array, so retain exclusions the app needs. Fallback also depends on method, `Accept`, and existing routes. See [CSR and SPA Fallback](./csr-and-spa-fallback). The current empty shell is still handled by `hydrateRoot`, which may mismatch before recovery; explicitly use `ssr: true` for the scope as that page describes.
+
 ## Verify a Configuration Change
 
 ```bash
-# Compile the backend, browser, and SSR closure.
-vext build
+# The default TypeScript starter runs typecheck and builds backend, browser, and SSR.
+npm run build
 
-# Required only when configuring an upload path; inspect before writing.
-vext deploy assets --dry-run
+# Only when upload is configured: inspect without uploading.
+npx vextjs deploy assets --dry-run
 
-# Verify the production closure and start the Node runtime.
-vext start
+# Start the matching production output.
+npm start -- --port 3000
 ```
 
-For a build or budget change, inspect `dist/client/size-report.json`. For a
-CDN change, request one SSR page and one hashed browser asset and confirm they
-belong to the same release. For SPA fallback, also request a deliberately
-excluded API path. The [API reference](../api/config#vextfrontendconfig) is
-the canonical source for less-common nested fields.
+Stop a development server using the same port before this check, and skip dry run when upload is not configured. Same-origin output should retain page content and loadable resources from Getting Started. For build or budget changes, inspect `size-report.json` in the actual output directory; `warnOnly: true` permits budget warnings, while exceeding an enabled budget without it fails the build. For CDN changes, request an SSR page and the browser asset it actually references; real CDN reachability needs deployment-environment verification. For SPA fallback, request both an in-scope URL and an excluded API path. Stop the server with Ctrl+C. See the [API reference](../api/config#vextfrontendconfig) for less common nested fields.

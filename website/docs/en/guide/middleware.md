@@ -1,27 +1,28 @@
-# middleware
+# Middleware
 
-VextJS's middleware uses the Onion Model to support pre-request processing and post-response processing. The framework provides two definition methods: `defineMiddleware` and `defineMiddlewareFactory`, which are automatically scanned and loaded through the agreed directory.
+VextJS middleware uses the **onion model** for work before and after the next step. Define ordinary middleware with `defineMiddleware` or parameterized middleware with `defineMiddlewareFactory`; the loader looks up explicitly allowlisted files in the conventional directory. This page starts with a complete example without business dependencies, then covers authentication, error handling, and lifecycle.
+
+For route references, registration order, and constraints, see the [HTTP and Routing Specification](/specification/http-and-routing). Start from a working project created with [Quick Start](/guide/quick-start): define two files, allowlist them, reference them from a route, and verify requests. The later authentication, API key, and cache examples require their own configuration or services.
 
 ## Onion model
 
-Middleware calls the next middleware via `await next()`. After `next()` returns, post-logic can be executed to form an onion-shaped execution process:
+Middleware calls the next step with `await next()`. When it returns, post-processing runs. The handler may already have sent or begun sending a response, so post-processing cannot assume that response headers are still writable:
 
 ```
-Request → [Middleware A-before] → [Middleware B-before] → [Handler] → [Middleware B-after] → [Middleware A-after] → Response
+Request → [Middleware A before] → [Middleware B before] → [Handler] → [Middleware B after] → [Middleware A after]
 ```
 
 ```typescript
 import type { VextMiddleware } from "vextjs";
 
 const timing: VextMiddleware = async (req, res, next) => {
-  //── Pre-logic (executed when the request enters)──
+  // Before the next step
   const start = Date.now();
 
   await next(); // Execute the next middleware / final handler
 
-  //── Post logic (executed when the response returns)──
+  // After the next step
   const ms = Date.now() - start;
-  res.setHeader("X-Response-Time", `${ms}ms`);
   req.app.logger.info(
     `${req.method} ${req.path} → ${res.statusCode} (${ms}ms)`,
   );
@@ -38,197 +39,181 @@ type VextMiddleware = (
 ) => Promise<void> | void;
 ```
 
-| Parameters | Description                                                                                   |
-| ---------- | --------------------------------------------------------------------------------------------- |
-| `req`      | Framework-unified request object (decoupled from Adapter)                                     |
-| `res`      | Framework-unified response object                                                             |
-| `next`     | Call the next middleware; must `await`, otherwise the post logic cannot be executed correctly |
+| Parameters | Description                                                                            |
+| ---------- | -------------------------------------------------------------------------------------- |
+| `req`      | Framework-unified request object (decoupled from Adapter)                              |
+| `res`      | Framework-unified response object                                                      |
+| `next`     | Call the next middleware; await it for post-processing, or return its Promise directly |
 
 ## Define middleware
 
-Middleware files are placed in the `src/middlewares/` directory and automatically scanned by `middleware-loader`. The file name is the middleware name.
+Put middleware files in `src/middlewares/`. The filename is the middleware name; the loader finds it through the configuration allowlist. A file existing in that directory does not enable it automatically.
 
 ### Common middleware — `defineMiddleware`
 
-For middleware that does not require configuration parameters, use the `defineMiddleware` tag:
+Use `defineMiddleware` when no options are needed. This complete file adds a response header and logs elapsed time:
 
 ```typescript
-// src/middlewares/auth.ts
+// src/middlewares/audit-log.ts
 import { defineMiddleware } from "vextjs";
 
 export default defineMiddleware(async (req, res, next) => {
-  const token = req.headers["authorization"]?.replace("Bearer ", "");
-
-  if (!token) {
-    req.app.throw(401, "Authorization token is required");
-  }
-
-  //Verify token (example)
+  res.setHeader("X-Audit", "visited");
+  const start = Date.now();
   try {
-    const payload = verifyJWT(token);
-    (req as any).user = payload;
-  } catch {
-    req.app.throw(401, "Invalid or expired token");
+    await next();
+  } finally {
+    req.app.logger.info(
+      { path: req.path, elapsedMs: Date.now() - start },
+      "Request finished",
+    );
   }
-
-  await next();
 });
-
-function verifyJWT(token: string) {
-  // JWT validation logic...
-  return { id: "1", role: "user" };
-}
 ```
 
 ### Factory middleware — `defineMiddlewareFactory`
 
-Middleware that requires runtime configuration parameters is marked with `defineMiddlewareFactory`. The factory function receives the `options` parameter and returns a `VextMiddleware`:
+Use `defineMiddlewareFactory` to accept options and return middleware. This complete file derives a response header from configuration:
 
 ```typescript
-// src/middlewares/check-role.ts
+// src/middlewares/response-label.ts
 import { defineMiddlewareFactory } from "vextjs";
 
-interface CheckRoleOptions {
-  roles: string[];
+interface LabelOptions {
+  value?: string;
 }
 
-export default defineMiddlewareFactory<CheckRoleOptions>((options) => {
-  const allowedRoles = options?.roles ?? [];
-
-  return async (req, res, next) => {
-    const user = (req as any).user;
-
-    if (!user) {
-      req.app.throw(401, "Authentication required");
-    }
-
-    if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
-      req.app.throw(403, "Insufficient permissions");
-    }
-
+export default defineMiddlewareFactory<LabelOptions>((options) => {
+  const value = options?.value ?? "default";
+  return async (_req, res, next) => {
+    res.setHeader("X-Route-Label", value);
     await next();
   };
 });
 ```
 
-:::tip Why do I need to explicitly mark it?
-`defineMiddleware` and `defineMiddlewareFactory` make middleware types explicit through Symbol tags. `middleware-loader` detects tags via `isMiddleware()` / `isMiddlewareFactory()`, distinguishing normal middleware from factory middleware with zero ambiguity.
+Set headers before `next()`. Post-processing suits logging and cleanup, but cannot assume that a response, especially a stream, has not started.
 
-Without marking, the framework cannot distinguish "whether a function is the middleware itself or a factory function that returns the middleware."
+:::tip Why mark middleware explicitly?
+`defineMiddleware` and `defineMiddlewareFactory` use Symbol tags. The loader checks `isMiddleware()` and `isMiddlewareFactory()` to distinguish ordinary middleware from factories. Untagged functions still have a compatibility inference path, but it emits a deprecation warning and depends on whether default options exist. Use explicit tags in new code.
 :::
 
 ## Registration and use
 
-The use of middleware is divided into two steps: **Configuration whitelist** → **Route reference**.
+Use middleware in two steps: **allowlist it in configuration**, then **reference it from a route**.
 
-### Step 1: Declare the whitelist in the configuration
+### Step 1: Declare the allowlist in configuration
 
-All route-level middleware must first be declared in the `middlewares` array of `config/default.ts`:
+Create the two files above, then add their names to your existing project configuration:
 
 ```typescript
 // src/config/default.ts
 export default {
-  port: 3000,
   middlewares: [
-    // Ordinary middleware - string declaration
-    "auth",
-
-    // Factory middleware — object declaration (with default parameters)
-    { name: "check-role", options: { roles: ["user"] } },
-
-    // Factory middleware - no default parameters
-    "rate-limit-api",
+    "audit-log",
+    { name: "response-label", options: { value: "configured" } },
   ],
 };
 ```
 
-Benefits of the whitelist mechanism:
+The allowlist declares availability and factory defaults; it does not apply middleware to every route. Ordinary middleware does not accept `options`; define a factory when parameters are needed.
 
-- **Security**: Prevent routes from arbitrarily referencing unaudited middleware
-- **Explicit Dependencies**: See at a glance which middleware is used by the project
-- **Parameter default value**: Centralized management of default parameters of factory middleware
-
-### Step 2: Reference in routing
-
-Specify middleware for routes via `options.middlewares`:
-
-For production authentication, prefer the built-in `auth()` middleware and declare the final `RouteOptions.auth` inline or in a statically projectable same-file `const`. Route-options helper calls are rejected by build indexing and Doctor. This section only demonstrates the lower-level middleware reference mechanism.
-
-:::tip Authentication and authorization
-Use `auth()` to resolve identity into `req.auth`, then use [`RouteOptions.auth`](../api/route-definition#auth) to protect a route and keep its OpenAPI security declaration aligned. Keep application-specific permission resources in the route file's final options constants. For a complete `permission-core` integration, see the [permission-core Auth example](../examples/permission-core-auth).
-:::
+### Step 2: Reference it in a route
 
 ```typescript
-// src/routes/admin.ts
+// src/routes/middleware-demo.ts
 import { defineRoutes } from "vextjs";
+
 export default defineRoutes((app) => {
-  // String reference - use default parameters from configuration
   app.get(
-    "/profile",
-    {
-      middlewares: ["audit-log"],
-    },
-    async (req, res) => {
+    "/",
+    { middlewares: ["audit-log", "response-label"] },
+    (_req, res) => {
       res.json({ ok: true });
     },
   );
-
-  // Object reference — override default parameters
-  app.delete(
-    "/users/:id",
+  app.get(
+    "/custom",
     {
       middlewares: [
-        "auth",
-        { name: "check-role", options: { roles: ["superadmin"] } },
+        "audit-log",
+        { name: "response-label", options: { value: "route" } },
       ],
     },
-    async (req, res) => {
-      const { id } = req.valid("param");
-      await app.services.user.delete(id);
-      res.status(204).json(null);
+    (_req, res) => {
+      res.json({ ok: true });
     },
   );
 });
 ```
 
-### Parameter priority
+### Step 3: Start and verify
 
-When the factory middleware specifies parameters in both configuration and routing, the routing-level parameters override the configuration-level default parameters:
+Merge the allowlist into the project's existing `src/config/default.ts`; run `npm run dev` from the project root. In another terminal, use the port shown on startup. On Windows PowerShell, call `curl.exe`:
+
+```bash
+curl -i http://localhost:3000/middleware-demo
+curl -i http://localhost:3000/middleware-demo/custom
+```
+
+| Request                   | Expected status and headers                          | Why                              |
+| ------------------------- | ---------------------------------------------------- | -------------------------------- |
+| `/middleware-demo`        | 200, `X-Audit: visited`, `X-Route-Label: configured` | Uses configured factory defaults |
+| `/middleware-demo/custom` | 200, `X-Audit: visited`, `X-Route-Label: route`      | Uses route options               |
+
+Both default-wrapped responses contain `data.ok: true`; the server logs `Request finished`. If an environment override is configured, check the section below.
+
+For a negative test, stop the dev process, remove `response-label` from the allowlist while keeping its route reference, and restart. Route loading should fail with an undeclared-middleware diagnostic naming `response-label`. Restore the allowlist and rerun both requests. A file's existence does not count as a configuration declaration.
+
+For authentication, use `auth()` to establish `req.auth`, then protect routes with [`RouteOptions.auth`](/api/route-definition#auth). Final options can be inline or a statically projectable same-file `const`; do not hide them behind a route-options helper call. See the [permission-core Auth example](/examples/permission-core-auth).
+
+### Option precedence
+
+Route-level `options` **replace the entire configured default options object** for a factory; fields are not merged one by one:
 
 ```
-Configure default parameters (config/default.ts) → Route coverage parameters (options.middlewares)
-{ roles: ['user'] } → { roles: ['superadmin'] }
+Configured defaults                 → Route options
+{ roles: ["user"] }                 → { roles: ["superadmin"] }
 ```
+
+### Environment-level configuration override
+
+An environment configuration can override factory defaults:
+
+```typescript
+// src/config/default.ts (continuing the complete example)
+export default {
+  middlewares: [
+    "audit-log",
+    { name: "response-label", options: { value: "configured" } },
+  ],
+};
+```
+
+```typescript
+// src/config/development.ts
+export default {
+  middlewares: [{ name: "response-label", options: { value: "development" } }],
+};
+```
+
+Configuration uses a smart patch strategy that matches and merges middleware array entries by `name`. This environment merge differs from route-level options replacement. `enabled: false` retains the name but loads a no-op instead of executing the middleware body. Treat that as ordinary middleware and reference its name only; passing `options` fails registration because the no-op accepts no parameters.
 
 ## Middleware execution sequence
 
 ### Global middleware
 
-VextJS has multiple built-in global middlewares that are automatically executed before all routes. Execution order:
+On production startup, enabled features enter these layers in order; disabled features are not installed:
 
-```
-Request entry
-  ↓
-1. requestId — generate/transmit the unique identifier of the request
-2. cors — CORS cross-domain processing
-3. bodyParser — request body parsing (JSON/URL-encoded)
-4. rateLimit — global rate limit (only when config.rateLimit.enabled === true)
-5. responseWrapper — Turn on response packaging ({ code, data, requestId })
-6. accessLog — access logging
-  ↓
-7. [Route-level middleware] — According to options.middlewares declaration order
-  ↓
-8. [validateMiddleware] — Parameter verification (if validate is configured)
-  ↓
-9. [handler] — route processing function
-  ↓
-errorHandler — global error handling (catch exceptions thrown at any stage)
-```
+1. Request metadata, request ID, auth context, and request hooks.
+2. Security headers, CORS, body parser, and explicitly enabled rate limiting.
+3. Response wrapper, frontend renderer, access log, and global Session.
+4. Global middleware registered by plugins with `app.use()`.
+5. Explicitly enabled CSRF, then the matching route chain.
 
-Built-in global middleware is controlled through configuration. Rate limiting is
-opt-in: when `rateLimit` is omitted, or when `rateLimit.enabled` is not exactly
-`true`, Vext does not install the middleware and therefore emits no rate-limit
-headers or HTTP 429 responses.
+The adapter registers the error handler separately for exceptions propagated from the chain; it is not an ordinary step guaranteed to run after every handler. A direct response, cache hit, or thrown error can prevent later steps from running.
+
+Rate limiting is opt-in. Only `rateLimit.enabled === true` installs the limiter. If `rateLimit` is absent or its `enabled` field is not exactly `true`, Vext emits no rate-limit headers or HTTP 429 from it.
 
 ```typescript
 // src/config/default.ts
@@ -242,28 +227,18 @@ export default {
 };
 ```
 
-After global rate limiting is enabled, a route can set
-`override: { rateLimit: false }` to skip it, or provide a route-level object to
-override `max`, `window`, or `keyBy`. The built-in limiter uses memory by
-default; use `rateLimit.store: { type: "redis", url }` or `rateLimit.store:
-"redis"` with `VEXT_REDIS_URL` / `REDIS_URL` for cluster and multi-instance
-counters. Vext creates one shared Redis store and derives a key prefix from the
-project, profile, runtime mode, and `rate-limit` module unless `namespace` or
-`keyPrefix` is provided. Calling `app.setRateLimiter()` replaces the limiter
-implementation but does not opt the application into rate limiting. The
-exported `createRateLimitMiddleware()` factory also remains available for
-explicit manual composition.
+Once enabled globally, a route can skip it with `override: { rateLimit: false }` or override `max`, `window`, or `keyBy`. The default store is in memory. For cluster or multiple instances, use `rateLimit.store: { type: "redis", url }`, or `rateLimit.store: "redis"` with `VEXT_REDIS_URL` or `REDIS_URL`. Vext creates one shared Redis store and derives a default key prefix from project, profile, runtime mode, and the `rate-limit` module. Specify `namespace` or `keyPrefix` only when explicit key sharing or isolation is needed. `app.setRateLimiter()` changes the limiter implementation but does not enable app rate limiting. The exported `createRateLimitMiddleware()` factory remains available for explicit manual composition.
 
-### Routing-level middleware
+### Route-level middleware
 
-Route-level middleware is executed in the order of declaration in the `options.middlewares` array:
+After the `route:matched` hook, the route chain runs enabled timeout/CORS/Session wrappers, multipart processing, custom middleware, auth guard, response cache and page freshness, automatic validation, and the handler. Custom middleware follows `options.middlewares` order. Its pre-processing cannot rely on automatic validation that has not yet run:
 
 ```typescript
 app.post(
   "/sensitive-action",
   {
     middlewares: ["auth", "check-role", "audit-log"],
-    // ↑ 1st ↑ 2nd ↑ 3rd
+    //            ↑ 1st    ↑ 2nd        ↑ 3rd
   },
   handler,
 );
@@ -271,7 +246,7 @@ app.post(
 
 ## Global middleware (plug-in registration)
 
-Plug-ins can register global middleware through `app.use()`, which will take effect on all routes. These middlewares are executed after the built-in global middleware and before the route-level middleware:
+Plugins can register global middleware with `app.use()`. It runs after the preceding global layers and before enabled CSRF and the route chain. If an earlier layer short-circuits or throws, this plugin middleware does not run:
 
 ```typescript
 // src/plugins/request-timing.ts
@@ -283,7 +258,10 @@ export default definePlugin({
     app.use(async (req, res, next) => {
       const startedAt = Date.now();
       await next();
-      res.setHeader("Server-Timing", `app;dur=${Date.now() - startedAt}`);
+      app.logger.info(
+        { elapsedMs: Date.now() - startedAt },
+        "Request finished",
+      );
     });
   },
 });
@@ -308,67 +286,41 @@ export default {
 
 ### Authentication middleware
 
+This business snippet requires an application `identity.verifyAccessToken` service that returns `null` for invalid credentials and a user ID and roles for valid ones. VextJS does not provide that business identity database.
+
 ```typescript
 // src/middlewares/auth.ts
-import { defineMiddleware } from "vextjs";
+import { auth, defineMiddleware } from "vextjs";
 
-export default defineMiddleware(async (req, res, next) => {
-  const header = req.headers["authorization"];
-
-  if (!header?.startsWith("Bearer ")) {
-    req.app.throw(401, "Missing or invalid Authorization header");
-  }
-
-  const token = header.slice(7);
-
-  try {
-    //Verify JWT token
-    const payload = await verifyToken(token);
-    (req as any).user = payload;
-  } catch (err) {
-    req.app.throw(401, "Token expired or invalid");
-  }
-
-  await next();
-});
-
-async function verifyToken(token: string) {
-  // In actual implementation, libraries such as jsonwebtoken or jose are used
-  return { id: "1", email: "user@example.com", role: "user" };
-}
+export default defineMiddleware(
+  auth({
+    source: "bearer",
+    async verify(credential, req) {
+      if (!credential) return null;
+      const user =
+        await req.app.services.identity.verifyAccessToken(credential);
+      if (!user) return null;
+      return { subject: user.id, userId: user.id, roles: user.roles };
+    },
+  }),
+);
 ```
+
+`auth()` establishes identity context. Missing or invalid credentials are recorded in `req.auth`; the guard on a protected route decides whether to reject the request. Do not use a placeholder that returns a fixed user as credential verification.
 
 ### Role checking middleware
 
+For ordinary role protection, declare the route options. Authentication middleware runs first, then the framework guard:
+
 ```typescript
-// src/middlewares/check-role.ts
-import { defineMiddlewareFactory } from "vextjs";
-
-interface RoleOptions {
-  roles: string[];
-}
-
-export default defineMiddlewareFactory<RoleOptions>((options) => {
-  return async (req, res, next) => {
-    const user = (req as any).user;
-
-    if (!user) {
-      req.app.throw(401, "Not authenticated");
-    }
-
-    const allowed = options?.roles ?? [];
-    if (allowed.length > 0 && !allowed.includes(user.role)) {
-      req.app.logger.warn(
-        { userId: user.id, role: user.role, required: allowed },
-        "Access denied: insufficient role",
-      );
-      req.app.throw(403, "Access denied");
-    }
-
-    await next();
-  };
-});
+// Use in a route's app.get(path, adminOptions, handler) in the same file
+const adminOptions = {
+  middlewares: ["auth"],
+  auth: { required: true, roles: ["admin"], security: "bearerAuth" },
+};
 ```
+
+Custom middleware can read `req.auth.isAuthenticated` and `req.auth.roles`. Writing private `req.user` does not synchronize it to `req.auth`. For fields and error codes, see the [Route API](/api/route-definition#auth).
 
 ### Request time-consuming record
 
@@ -381,7 +333,6 @@ export default defineMiddleware(async (req, res, next) => {
   await next();
 
   const duration = (performance.now() - start).toFixed(2);
-  res.setHeader("X-Response-Time", `${duration}ms`);
 
   req.app.logger.info(
     {
@@ -407,14 +358,12 @@ interface ApiKeyOptions {
 }
 
 export default defineMiddlewareFactory<ApiKeyOptions>((options) => {
-  const headerName = options?.header ?? "x-api-key";
+  const headerName = (options?.header ?? "x-api-key").toLowerCase();
   const validKeys = new Set(options?.keys ?? []);
 
   return async (req, res, next) => {
     if (validKeys.size === 0) {
-      // keys are not configured, skip verification
-      await next();
-      return;
+      req.app.throw(500, "API key middleware requires configured keys");
     }
 
     const apiKey = req.headers[headerName];
@@ -444,19 +393,21 @@ export default defineMiddlewareFactory<CacheOptions>((options) => {
   const value = maxAge > 0 ? `${directive}, max-age=${maxAge}` : "no-store";
 
   return async (req, res, next) => {
-    await next();
     res.setHeader("Cache-Control", value);
+    await next();
   };
 });
 ```
 
 ## Error handling middleware
 
-Global error handling is handled by the framework’s built-in `error-handler`, which catches all exceptions thrown in the middleware chain:
+The built-in `error-handler` handles exceptions thrown or awaited in the request middleware chain. This guarantee does not cover background Promises or timers detached from that chain:
 
-- `HttpError` (thrown by `app.throw()`) → converted to structured JSON response
-- `VextValidationError` (parameter validation failed) → 422 response + errors array
-- Other exceptions → 500 Internal Server Error
+- `HttpError` from `app.throw()` → retains its declared HTTP status and business error fields.
+- `VextValidationError` → 400 for path parameters, 422 for other locations, with an `errors` array.
+- Ordinary `Error` → defaults to HTTP 500 without a valid `status` or `statusCode`; a valid explicit status is normalized, so `Object.assign(new Error("Conflict"), { statusCode: 409 })` returns 409.
+
+For JSON API diagnostics, explicitly request `Accept: application/json`. A browser requesting HTML may receive the dev overlay or rendered error page. See [Error Handling](/guide/error-handling#differences-from-ordinary-error) for format, hidden-message, and `details` boundaries.
 
 ### When to use which error throwing method?
 
@@ -512,7 +463,7 @@ export default definePlugin({
 });
 ```
 
-You don't need to manually write error handling middleware. If you need to customize error handling logic (such as reporting to Sentry), it is recommended to use `app.use()` to register a try-catch middleware in the plug-in:
+You do not need to write a framework error handler. To observe errors propagated from downstream plugin middleware, register a try-catch through `app.use()`. It cannot catch parsing, rate limiting, or other stages before it. This snippet logs and rethrows; call an installed and initialized Sentry SDK at the comment if you integrate one:
 
 ```typescript
 // src/plugins/sentry.ts
@@ -544,7 +495,7 @@ Route-level middleware does not have the closure `app` of `defineRoutes`, so the
 export default defineMiddleware(async (req, res, next) => {
   //Access various framework capabilities through req.app
   req.app.logger.info("Middleware executing"); // Log
-  req.app.throw(403, "Forbidden"); // throw error
+  // req.app.throw(403, "Forbidden"); // Reject if needed; stops execution.
   const config = req.app.config; // Read configuration
   const userSvc = req.app.services.user; // Access services
 
@@ -552,43 +503,25 @@ export default defineMiddleware(async (req, res, next) => {
 });
 ```
 
-## Environment-level middleware configuration override
-
-The default parameters of the middleware can be overridden in the environment configuration file:
-
-```typescript
-// src/config/default.ts
-export default {
-  middlewares: ["auth", { name: "check-role", options: { roles: ["user"] } }],
-};
-```
-
-```typescript
-// src/config/development.ts — Turn off some middleware in the development environment
-export default {
-  middlewares: [
-    { name: "check-role", options: { roles: [] } }, // The development environment does not check roles
-  ],
-};
-```
-
-The configured `middlewares` array uses a smart patch strategy: matching and merging by `name`, the entire array is not simply replaced.
-
 ## Built-in middleware
 
-VextJS has the following built-in global middleware, which controls behavior through configuration items:
+Common built-in middleware and configuration are listed below. See the order above; the frontend renderer is installed only when frontend features are enabled.
 
-| Middleware          | Configuration items | Description                                                   |
-| ------------------- | ------------------- | ------------------------------------------------------------- |
-| **requestId**       | `config.requestId`  | Generate/transparently transmit request unique identifier     |
-| **cors**            | `config.cors`       | CORS cross-domain processing                                  |
-| **bodyParser**      | `config.bodyParser` | Request body parsing (JSON/URL-encoded)                       |
-| **rateLimit**       | `config.rateLimit`  | Opt-in global rate limit; installed only with `enabled: true` |
-| **accessLog**       | `config.accessLog`  | Access log (method/path/status/duration)                      |
-| **responseWrapper** | `config.response`   | Response export wrapper `{ code, data, requestId }`           |
-| **errorHandler**    | —                   | Global error handling (not configurable, always enabled)      |
+| Middleware          | Configuration            | Role                                                                                  |
+| ------------------- | ------------------------ | ------------------------------------------------------------------------------------- |
+| **requestId**       | `config.requestId`       | Generate or propagate a request ID                                                    |
+| **authContext**     | `config.requestContext`  | Synchronize auth context; does not verify credentials                                 |
+| **securityHeaders** | `config.securityHeaders` | Explicitly enable browser security response headers                                   |
+| **cors**            | `config.cors`            | Cross-origin handling                                                                 |
+| **bodyParser**      | `config.bodyParser`      | Parse JSON and URL-encoded bodies                                                     |
+| **rateLimit**       | `config.rateLimit`       | Global limiter installed only with `enabled: true`                                    |
+| **accessLog**       | `config.accessLog`       | Method, path, status, duration logging                                                |
+| **responseWrapper** | `config.response`        | Wrap output as `{ code, data, requestId }`                                            |
+| **session**         | `config.session`         | Enable globally or on individual routes                                               |
+| **csrf**            | `config.csrf`            | Explicit CSRF protection                                                              |
+| **errorHandler**    | —                        | Global error handling, with exposure and logging controlled by response configuration |
 
-See the [Configuration](/guide/configuration) chapter for details on various configuration options.
+See [Configuration](/guide/configuration) for options. The adapter initializes `req.auth` as anonymous when creating the request. `requestContext.enabled: false` skips the auth-context middleware and framework request ALS scope; it does not remove `req.auth` or disable explicitly registered `auth()` authentication and route guards.
 
 ## TypeScript type extensions
 
@@ -596,6 +529,8 @@ If the middleware mounts custom attributes on `req` (such as `req.user`), it is 
 
 ```typescript
 // src/types/extensions.d.ts
+import "vextjs";
+
 declare module "vextjs" {
   interface VextRequest {
     user?: {
@@ -613,7 +548,7 @@ After the extension, accessing `req.user` in all routes and middleware will get 
 
 ### 1. Keep middleware with a single responsibility
 
-Each middleware only does one thing. Authentication and authorization should be separated into two middlewares:
+Keep responsibilities focused. Let authentication middleware establish identity and use the `RouteOptions.auth` guard for ordinary authorization. Add custom authorization middleware when the application needs it:
 
 ```typescript
 // ✅ Correct — Single responsibility
@@ -623,9 +558,11 @@ middlewares: ["auth", "check-role"];
 middlewares: ["auth-and-role-check"];
 ```
 
-### 2. Always `await next()`
+<a id="2-always-await-next"></a>
 
-If the middleware needs to perform post-logic or allow the request to continue passing, it must `await next()`:
+### 2. Await or return `next()`
+
+Use `await next()` when post-processing follows. With no post-processing, `return next()` also passes the Promise upstream. Do not call it and discard the Promise:
 
 ```typescript
 // ✅ Correct
@@ -645,7 +582,7 @@ export default defineMiddleware(async (req, res, next) => {
 
 ### 3. Short circuit response
 
-Some middleware may need to respond directly without calling `next()` (such as authentication failure). In this case, just return directly without calling `next()`:
+To short-circuit, send a response with `res.json()` or a similar method and return, or throw with `app.throw()`. Neither path calls `next()`; merely returning does not create a response:
 
 ```typescript
 export default defineMiddleware(async (req, res, next) => {
@@ -669,20 +606,23 @@ Avoid hardcoding configuration values inside middleware. Use factory mode to rec
 export default defineMiddlewareFactory<{ maxAge: number }>((options) => {
   const maxAge = options?.maxAge ?? 3600;
   return async (req, res, next) => {
-    await next();
     res.setHeader("Cache-Control", `public, max-age=${maxAge}`);
+    await next();
   };
 });
 
 // ❌ Avoid — hard coding
 export default defineMiddleware(async (req, res, next) => {
+  res.setHeader("Cache-Control", "public, max-age=3600"); // Cannot vary by environment
   await next();
-  res.setHeader("Cache-Control", "public, max-age=3600"); // Cannot be changed according to the environment
 });
 ```
 
-## Next step- Learn [plugins](/guide/plugins) how to register global middleware through `app.use()`
+## Next step
+
+- Learn how [Plugins](/guide/plugins) register global middleware through `app.use()`
 
 - Understand the automatic generation of [Parameter Validation](/guide/validation) middleware
 - See the complete options for built-in middleware in [Configuration](/guide/configuration)
 - Explore [Testing](/guide/testing) how to test middleware logic
+- Check middleware Rule IDs in the [HTTP and Routing Specification](/specification/http-and-routing)

@@ -1,103 +1,111 @@
 # Deployment and production environment
 
-## Deploying job schedulers and workers
+This page follows the production path: prepare deliverables, start and check the service, connect a process manager and reverse proxy, then release or roll back. First complete the [CLI project workflow](/guide/cli#from-project-creation-to-production-startup) and [Build](/guide/build), then choose the deployment method for your environment.
 
-Deploy Job schedulers and workers as separate processes from HTTP servers. Start `vext job scheduler` to create scheduled runs, start `vext job worker` to claim and execute pending runs, and stop them through the process manager that owns each process. HTTP rolling restart does not imply a Job scheduler or worker restart. See [Jobs](/guide/jobs).
+## Verify one production start
 
-This guide explains how to deploy a VextJS application into production, covering practices such as building, Docker containerization, Nginx reverse proxy, PM2 process management, log collection, and health checks.
-
-## Publish the documentation site
-
-The VextJS documentation site is published from this repository to GitHub Pages:
-
-- URL: `https://devcodex-labs.github.io/vextjs/`
-- Base path: `/vextjs/`
-- Workflow: `.github/workflows/docs.yml`
-
-The workflow no longer publishes to an external organization homepage repository. The DevCodex Labs organization site is maintained separately in `devcodex-labs/devcodex-labs.github.io`.
-
-## Build production product
-
-### vext build
-
-Use `vext build` to refresh the generated / manifest tool artifact and compile the TypeScript source code into production-grade JavaScript:
+Prerequisites: a TypeScript API-only project with dependencies installed and the scaffold's `src/routes/index.ts` retaining `/` and `/health`. In the project root, run:
 
 ```bash
-vext build
+npx vextjs build --typecheck --outdir dist
+npx vextjs start --outdir dist --port 3000 --host 127.0.0.1
 ```
 
-The compiled product is output to the `dist/` directory, maintaining the same directory structure as `src/`:
+In another terminal, check both endpoints (use `curl.exe` in Windows PowerShell):
 
+```bash
+curl -i http://127.0.0.1:3000/
+curl -i http://127.0.0.1:3000/health
 ```
 
-If the deployment pipeline requires type checking, use `vext build --typecheck`. This command will first refresh `.vext/types/`, `src/types/generated/index.d.ts` and `.vext/manifest/` before executing `tsc --noEmit` and production compilation.
-src/dist/
-├── index.ts → ├── index.js + index.js.map
-├── config/ ├── config/
-│ ├── default.ts → │ ├── default.js
-│ └── production.ts → │ └── production.js
-├── routes/ ├── routes/
-│ └── users.ts → │ └── users.js
-├── services/ ├── services/
-│ └── user.ts → │ └── user.js
-├── plugins/ ├── plugins/
-│ └── redis.ts → │ └── redis.js
-└── middlewares/ └── middlewares/
-    └── auth.ts → └── auth.js
+Both should return HTTP 200, and the health response should contain `data.status: "ok"`. Press Ctrl+C in the server terminal, then confirm the process exits and releases the port. The fullstack scaffold uses `/api/health`; use your actual route if you changed it. The framework does not automatically add one universal health endpoint to every project.
+
+The remaining configurations are scenario-specific fragments; do not paste them sequentially over an entire config file. Docker, PM2, Nginx and Kubernetes examples require their corresponding platforms, permissions and real service addresses. A successful local start does not verify those deployments.
+
+## Build production output
+
+### `vext build`
+
+`vext build` refreshes generated and manifest tooling artifacts and compiles TypeScript sources to production JavaScript:
+
+```bash
+npx vextjs build --typecheck
 ```
 
-### Compile options
+Without an explicit output directory, environment override or existing build record, output goes to `dist/` and retains the source module layout. Examples on this page that use `dist` explicitly pass `--outdir dist` to both build and start. If you customize it, change both commands to avoid starting stale output.
 
-| Options      | Default                 | Description                                                           |
-| ------------ | ----------------------- | --------------------------------------------------------------------- |
-| Source Map   | On (external `.js.map`) | Error stack mapped back to TypeScript line numbers                    |
-| Minify       | On by default           | Minifies backend output; use `--no-minify` only for local diagnostics |
-| Target       | `node20`                | Align with `engines.node ^20.19.0 \|\| >=22.12.0`                     |
-| Format       | CJS                     | CommonJS output, Node.js runs stably                                  |
-| Tree Shaking | Enable                  | Remove unused exports                                                 |
-| Keep Names   | On                      | Keep function/class names (error stack readability)                   |
+`--typecheck` refreshes `.vext/types/`, `src/types/generated/index.d.ts` and `.vext/manifest/`, then runs `tsc --noEmit` and production compilation. This mapping illustrates optional business directories:
 
-This table is about the backend compiler. Frontend output follows its own
-production defaults: browser minification is on, browser source maps are off,
-and SSR-renderer minification is off unless explicitly configured.
+```text
+src/                          dist/
+├── config/                   ├── config/
+│   ├── default.ts      →     │   ├── default.js
+│   └── production.ts   →     │   └── production.js
+├── routes/                   ├── routes/
+│   └── users.ts        →     │   └── users.js
+├── services/                 ├── services/
+│   └── user.ts         →     │   └── user.js
+├── plugins/                  ├── plugins/
+│   └── redis.ts        →     │   └── redis.js
+└── middlewares/              └── middlewares/
+    └── auth.ts         →         └── auth.js
+```
 
-### Compile Exclusion
+### Compiler options
 
-Production compilation automatically excludes the following files:
+| Option       | Default                 | Meaning                                                              |
+| ------------ | ----------------------- | -------------------------------------------------------------------- |
+| Source Map   | On (external `.js.map`) | Emits separate maps; see automatic stack mapping limits below        |
+| Minify       | On                      | Minifies backend output; use `--no-minify` for local diagnostics     |
+| Target       | `node20`                | Matches `engines.node ^20.19.0 \|\| >=22.12.0`                       |
+| Format       | CJS                     | CommonJS output                                                      |
+| Tree Shaking | On                      | Removes detectable dead code while retaining separate module exports |
+| Keep Names   | On                      | Retains function and class names for readable stacks                 |
 
-- `*.d.ts` — type declaration
-- `*.test.*` / `*.spec.*` — test files
-- `__tests__/` — test directory
-- `config/development.*` — development environment configuration
-- `config/local.*` — local override configuration
-- `config/test.*` — test environment configuration
+This table describes the backend compiler. The frontend has separate production defaults: browser minification on, browser source maps off, and SSR renderer minification off unless configured.
 
-### Compile the bottom layer
+### Compile exclusions
 
-`vext build` uses [esbuild](https://esbuild.github.io/) for the backend compilation stage. Build time depends on project size, plugin transforms, source-map settings, filesystem performance, and hardware; measure your own CI or release build when setting deployment budgets.
+Production compilation excludes:
 
-`process.env.NODE_ENV = "production"` will be automatically injected during compilation, so the environment branch in the user source code after build will be statically folded according to production semantics; the runtime config profile is selected independently with `--config` or `VEXT_CONFIG`.
+- `*.d.ts`, `*.d.mts`, `*.d.cts` declaration files
+- `*.test.*` and `*.spec.*` test files
+- `__tests__/` directories
+- `config/development.*`, `config/local.*` and `config/test.*`
+
+### Compiler implementation
+
+The backend build stage uses [esbuild](https://esbuild.github.io/). Time depends on project size, plugins, source maps, filesystem and hardware. Measure your own CI or release build when setting a deployment budget.
+
+Compilation injects `process.env.NODE_ENV = "production"`, so source branches using that expression fold under production semantics. The runtime config profile is still chosen at startup: explicit `--config`, `VEXT_CONFIG`, compatible nonstandard `NODE_ENV`, then the build identity profile or production default. The corresponding compiled file must exist; changing only a profile name on the server is insufficient.
+
+### Complete delivery checklist
+
+| Project type             | Deliver                                                                                                                                                |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| TypeScript API-only      | Complete backend output (including output `package.json`, build identity, JSON and preload), root `package.json` and lockfile, production dependencies |
+| TypeScript with frontend | Backend output plus browser, SSR renderer and all manifests, including when the output directory is customized                                         |
+| JavaScript API-only      | Sources, config, project preload, root `package.json` and lockfile, production dependencies; backend build is not required                             |
+| JavaScript with frontend | JavaScript sources and dependencies plus complete frontend build output                                                                                |
+
+Output directory selection is explicit `--outdir`, then `VEXT_BUILD_OUTDIR`, then project build record, then `dist`. Pass `--outdir` explicitly in a new deployment environment with no local record. Do not copy only route and service JavaScript. Deliver external templates, upload directories, configuration and dynamically read resources at their actual paths. Preserve directory permissions and persistent data so the runtime user can write PID, uploads and app state.
+
+The backend does not bundle npm dependencies. Put `vextjs`, adapters and business runtime dependencies in the application's `dependencies`. TypeScript `start` does not fall back to source; JavaScript projects still need source. See the [deployment manifest](/guide/build#deployment-manifest) for more boundaries.
 
 ## Deliver the frontend in production
 
-When `frontend.enabled` is true, `vext build` also writes the browser and SSR
-closure to `dist/client/`: `index.html`, hashed assets, `render-manifest.json`,
-`deploy-manifest.json`, and the default `server/renderer.cjs`. The backend
-output remains source-layout based under `dist/`; do not deploy a fictional
-top-level `dist/server/` directory.
+When `frontend.enabled` is true, `vext build` also writes the browser and SSR output to `dist/client/`: `index.html`, hashed assets, `render-manifest.json`, `deploy-manifest.json` and the default `server/renderer.cjs`. Backend output retains the source directory layout under `dist/`; there is no fixed top-level `dist/server/` to deploy.
 
 ### Same-origin deployment
 
-The default needs no extra frontend configuration:
+First configure frontend role directories and render mode and confirm the build passes. Same-origin static assets do not need a CDN URL:
 
 ```bash
-vext build
-vext start
+npx vextjs build
+npx vextjs start
 ```
 
-`vext start` validates the frontend closure before listening. It then serves
-the client assets and uses the render manifest for SSR. This is the lowest-risk
-starting point for one Node service.
+`vext start` validates frontend output before listening, then serves static assets and SSR pages according to configuration. CSR SPA fallback additionally requires configured scopes; unknown URLs do not all automatically return `index.html`.
 
 ### CDN deployment and upload
 
@@ -106,10 +114,10 @@ Use a CDN only when it will own immutable browser assets. Set an absolute
 the upload plan before executing it:
 
 ```bash
-vext build
-vext deploy assets --dry-run
-vext deploy assets
-vext start
+npx vextjs build
+npx vextjs deploy assets --dry-run
+npx vextjs deploy assets
+npx vextjs start
 ```
 
 `deploy-manifest.json` contains uploadable JS, CSS, imported media, and
@@ -117,101 +125,73 @@ vext start
 and source maps. Keep `frontend.deploy.upload.stateFile` outside the output
 directory so an ordinary build cannot erase incremental-upload state.
 
-Only `filesystem` and `mock` adapters are built in. `filesystem` creates a
-local staging tree; an actual provider needs an explicit custom adapter. Vext
-does not silently add a cloud SDK or a bundler-plugin ecosystem. See
-[Build and Deploy](../frontend/build-and-deploy) for the full sequence and
-[Frontend Configuration](../frontend/configuration) for every field.
+Only `filesystem` and `mock` adapters are built in. `filesystem` creates a local staging tree; a real cloud provider requires an explicit custom adapter and application-configured dependencies and credentials. See [Build and Deploy](../frontend/build-and-deploy) for the full sequence and [Frontend Configuration](../frontend/configuration) for every field.
 
 ## Start production service
 
 ### Start directly
 
 ```bash
-# Use vext start (recommended)
-vext start
+npx vextjs start --outdir dist --port 3000 --host 0.0.0.0
 
-# You can also load a custom config profile (src/config/sg-sit.ts needs to exist)
-vext start --config sg-sit
-
-# Enable Source Map support (error stack shows TypeScript line numbers)
-NODE_OPTIONS=--enable-source-maps vext start
+# Include this profile in the build, then select it at startup.
+npx vextjs build --config sg-sit --typecheck --outdir dist
+npx vextjs start --outdir dist --config sg-sit --port 3000
 ```
 
-When deploying a TypeScript project, `vext start` will require the existence of a valid `dist/` build product:
-
-- **A valid build product exists** → directly use `node` to run the compiled code (does not depend on tsx)
-- **Does not exist or is incomplete** → Fails directly and prompts to execute `vext build` first
-
-Please use `vext dev` to start source code during the development period. Production `vext start` will not fall back to the TypeScript runtime.
+TypeScript projects require complete, valid build output; use `vext dev` during development. Do not hide missing production output by uploading source or installing `tsx`. Keep a fixed working directory when deploying: PID files and relative paths depend on it.
 
 ### Environment variables
 
-| Variable      | Description                                      | Recommended value        |
-| ------------- | ------------------------------------------------ | ------------------------ |
-| `NODE_ENV`    | Runtime mode; `vext start` sets it to production | Usually not set manually |
-| `VEXT_CONFIG` | Config profile; lower priority than `--config`   | `production`             |
-| `PORT`        | Listening port                                   | `3000`                   |
-| `HOST`        | Listening address                                | `0.0.0.0`                |
+| Variable                        | Purpose                                                         |
+| ------------------------------- | --------------------------------------------------------------- |
+| `NODE_ENV`                      | `start` sets the child process to production runtime mode       |
+| `VEXT_CONFIG`                   | Config profile, lower priority than explicit `--config`         |
+| `VEXT_PORT` / `VEXT_HOST`       | Listen address; explicit `--port` / `--host` take priority      |
+| `VEXT_BUILD_OUTDIR`             | Build output directory; explicit `--outdir` takes priority      |
+| `PORT` / `HOST` / `MONGODB_URL` | Application variables, effective only if your config reads them |
+
+### Shutdown and timeout budget
+
+On graceful shutdown, stop accepting traffic, then wait for in-flight requests and `onClose` cleanup. Single-app `shutdown.timeout` is in **seconds**, default 10. Cluster `reload.shutdownTimeout` is in **milliseconds**, default 10000. Allow extra time in the external process manager; internal 10 seconds and container or PM2 30 seconds are starting points to adjust against real request and connection behavior.
+
+On Unix, the CLI forwards SIGINT and SIGTERM. On Windows it uses child-process IPC for signals with a 15-second fallback. Forcibly killing a Windows process does not invoke application `onClose`. See [Cluster](/guide/cluster) for Cluster shutdown, PID and SIGHUP platform limits.
 
 ## Docker deployment
 
 ### Dockerfile
 
+This Dockerfile is for a TypeScript API-only project with default `dist`, without frontend, external templates or additional build resources. The build context needs the app's `package.json`, lockfile, `tsconfig.json` and `src`. Copy project preload or other build inputs if present. For frontend projects, include the role directories and output described above.
+
 ```dockerfile
-#──Phase 1: Build───────────────────────────────────────
 FROM node:22-alpine AS builder
-
-WORKDIR/app
-
-# Copy dependency files first (using Docker cache layer)
+WORKDIR /app
 COPY package.json package-lock.json ./
-
-# Install all dependencies (including devDependencies, required for compilation)
 RUN npm ci
-
-# Copy source code
 COPY src/ src/
 COPY tsconfig.json ./
+RUN ./node_modules/.bin/vext build --typecheck --outdir dist
 
-# compile
-RUN npx vext build
-
-# ── Stage 2: Run ──────────────────────────────────────
 FROM node:22-alpine AS runner
-
-WORKDIR/app
-
-# Only install production dependencies
+WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
-
-# Copy the compiled product
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/src ./src
-
-# Run as non-root user
-RUN addgroup --system --gid 1001 vext && \
-    adduser --system --uid 1001 vext
-USER vext
-
-# Environment variables
-ENV NODE_OPTIONS=--enable-source-maps
-ENV PORT=3000
-
+RUN npm ci --omit=dev
+COPY --from=builder --chown=node:node /app/dist ./dist
+RUN chown node:node /app
+USER node
+ENV VEXT_PORT=3000
+ENV VEXT_HOST=0.0.0.0
 EXPOSE 3000
-
-#HealthCheck
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
-
-# start
-CMD ["npm", "start"]
+  CMD wget -q -O /dev/null http://127.0.0.1:3000/health || exit 1
+CMD ["./node_modules/.bin/vext", "start", "--outdir", "dist"]
 ```
 
-### .dockerignore
+The health route belongs to this page's API-only scaffold. Use GET rather than assuming HEAD support. Exec-form CLI startup avoids an extra npm/shell wrapper affecting signal delivery. `EXPOSE` only declares the port; publish it with the runtime command below.
 
-```
+### `.dockerignore`
+
+```text
 node_modules
 dist
 .vext
@@ -227,16 +207,15 @@ reports
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   app:
     build: .
     ports:
       - "3000:3000"
     environment:
-      - PORT=3000
+      - VEXT_PORT=3000
       - MONGODB_URL=mongodb://mongo:27017/myapp
+    stop_grace_period: 30s
     depends_on:
       mongo:
         condition: service_healthy
@@ -249,8 +228,6 @@ services:
 
   mongo:
     image: mongo:7
-    ports:
-      - "27017:27017"
     volumes:
       - mongo-data:/data/db
     healthcheck:
@@ -263,26 +240,46 @@ volumes:
   mongo-data:
 ```
 
+The application must explicitly read the database variable. If no earlier config layer defines `database`, provide the complete value in production config, for example:
+
+```typescript
+// src/config/production.ts (merge with existing config)
+import type { VextConfigOverride } from "vextjs";
+
+export default {
+  database: {
+    databaseName: "myapp",
+    config: {
+      uri: process.env.MONGODB_URL ?? "mongodb://127.0.0.1:27017/myapp",
+    },
+  },
+} satisfies VextConfigOverride;
+```
+
+`depends_on: service_healthy` handles initial ordering. If Mongo becomes unavailable later, the app still needs retries, readiness checks and operational recovery. Keep the Mongo volume outside the app image. A container healthcheck alone does not make ordinary Docker restart an unhealthy process that is still running. See [Dockerfile health checks](https://docs.docker.com/reference/dockerfile/#healthcheck) and [Compose startup order](https://docs.docker.com/compose/how-tos/startup-order/).
+
 ### Build and run
 
 ```bash
-# Build image
 docker build -t myapp:latest .
 
-# Run container
 docker run -d \
   --name myapp \
   -p 3000:3000 \
+  --stop-timeout 30 \
   -e MONGODB_URL=mongodb://host.docker.internal:27017/myapp \
   myapp:latest
 
-# View log
 docker logs -f myapp
 ```
+
+The standalone `docker run` database address assumes Docker Desktop provides `host.docker.internal`. Linux hosts need an actually reachable address or explicit host-gateway setup. Compose uses the `mongo` service name.
 
 ## Nginx reverse proxy
 
 ### Basic configuration
+
+Prepare the domain, certificate and reachable backend port. This example proxies an HTTP API. Enable `trustProxy` only when the application needs forwarded addresses, and restrict backend access to trusted proxies.
 
 ```nginx
 # /etc/nginx/conf.d/myapp.conf
@@ -301,7 +298,7 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
     server_name api.example.com;
 
     # SSL Certificate
@@ -319,8 +316,7 @@ server {
     location / {
         proxy_pass http://vext_backend;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
+        proxy_set_header Connection "";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -332,8 +328,6 @@ server {
         proxy_send_timeout 60s;
         proxy_read_timeout 60s;
 
-        # cache
-        proxy_cache_bypass $http_upgrade;
     }
 
     # Health check endpoint (no logging)
@@ -350,6 +344,10 @@ server {
     }
 }
 ```
+
+Ordinary API requests should not all send `Connection: upgrade`. Configure conditional Upgrade only if your adapter actually supports WebSocket; see the [Nginx WebSocket guide](https://nginx.org/en/docs/http/websocket.html). Streaming SSE endpoints also need their own buffering and timeout settings. The `/static/` alias is a separate static directory example and does not automatically correspond to Vext's hashed frontend assets.
+
+After editing, run `nginx -t`, reload Nginx only if it passes, and check external HTTPS, forwarded headers, upload limits and the actual health route.
 
 ### Multi-instance load balancing
 
@@ -372,7 +370,9 @@ upstream vext_backend {
 npm install -g pm2
 ```
 
-### ecosystem configuration file
+### Ecosystem configuration
+
+This example targets a Unix host. Create the writable log directory first and replace `cwd` with your real release directory:
 
 ```javascript
 // ecosystem.config.cjs
@@ -380,84 +380,57 @@ module.exports = {
   apps: [
     {
       name: "myapp",
+      cwd: "/srv/myapp/current",
       script: "node_modules/vextjs/dist/cli/index.js",
-      args: "start",
-      node_args: "--enable-source-maps",
-
-      // Multiple instances (or use VextJS built-in Cluster mode)
+      args: "start --outdir dist --port 3000",
+      exec_mode: "fork",
       instances: 1,
-
-      // environment variables
-      env: {
-        PORT: 3000,
-      },
-
-      // log
+      env: { VEXT_HOST: "127.0.0.1" },
       error_file: "/var/log/myapp/error.log",
       out_file: "/var/log/myapp/out.log",
-      log_date_format: "YYYY-MM-DD HH:mm:ss.SSS",
       merge_logs: true,
-
-      // Automatically restart
       max_restarts: 10,
       min_uptime: "10s",
       restart_delay: 5000,
-
-      //Memory limit (restart if exceeded)
-      max_memory_restart: "500M",
-
-      //Close gracefully
-      kill_timeout: 10000,
-      listen_timeout: 10000,
-      shutdown_with_message: true,
-
-      // Monitor
-      exp_backoff_restart_delay: 100,
+      kill_timeout: 30000,
     },
   ],
 };
 ```
 
-### PM2 common commands
+PM2 manages the Vext CLI parent process; application work runs in its child process or Cluster Workers. Do not treat the PM2 parent's CPU and memory values as complete Worker metrics. Monitor business processes and containers separately.
+
+Keep PM2's default SIGINT shutdown path. Do not set `shutdown_with_message: true`: it sends a `"shutdown"` message that this CLI does not handle. See PM2's [shutdown mechanism](https://pm2.keymetrics.io/docs/usage/signals-clean-restart/) and [configuration fields](https://pm2.keymetrics.io/docs/usage/application-declaration/).
+
+### Common PM2 commands
 
 ```bash
-# start
 pm2 start ecosystem.config.cjs
-
-# Check status
 pm2 status
-
-# View log
 pm2 logs myapp
-
-# Restart
 pm2 restart myapp
 
-# Graceful reloading
+# Reload in fork mode does not guarantee zero interruption.
+# Check health and connection behavior before a release.
 pm2 reload myapp
 
-# stop
 pm2 stop myapp
-
-# Monitoring panel
-pm2monit
-
-#Set auto-start at boot
+pm2 monit
 pm2 startup
 pm2 save
 ```
 
-:::tip VextJS Cluster vs PM2 Cluster
-VextJS has built-in Cluster multi-process mode (`vext start --cluster`), providing advanced functions such as Rolling Restart and heartbeat monitoring. If you use the built-in Cluster, just set `instances` of PM2 to `1` and let VextJS manage the worker process by itself.
-
-See [Cluster multi-process](/guide/cluster) for details.
+:::tip VextJS Cluster and PM2 Cluster
+Enable VextJS's built-in Cluster with `cluster.enabled: true` or `VEXT_CLUSTER=1`; `cluster.workers` selects the Worker count. `start` does not support `--cluster` or `--workers` flags. When using built-in Cluster, keep PM2 `instances: 1` and let VextJS manage the Workers. Rolling replacement still depends on the platform and readiness conditions below. See [Cluster](/guide/cluster).
 :::
+
+PM2's single fork example provides no multi-instance rolling guarantee. Even with Vext Cluster, keep one outer instance. SIGHUP reload must target the Vext Master PID; do not assume `pm2 reload` invokes Vext's rolling protocol. Configure shared Sessions, rate limits and connection pools separately.
 
 ## Log collection
 
 ### JSON log format
 
-VextJS outputs JSON logs by default in the production runtime mode used by `vext start`, which is suitable for parsing by the log collection system. Pretty level colors only work in pretty text mode, and the produced JSON output will not contain ANSI:
+Set `pretty: false` explicitly for newline-delimited production JSON logs. CLI startup notices may share the same stream, so collectors must distinguish them. Do not add PM2 timestamp prefixes that break JSON parsing. These fields illustrate default ISO timestamps; see [Logger](/guide/logger) and [Access Log](/api/access-log) for actual request log formats:
 
 ```json
 {
@@ -495,18 +468,24 @@ pm2 start ecosystem.config.cjs
 ```yaml
 # filebeat.yml
 filebeat.inputs:
-  - type: log
+  - type: filestream
+    id: myapp-json
     paths:
       - /var/log/myapp/*.log
-    json.keys_under_root: true
-    json.overwrite_keys: true
+    parsers:
+      - ndjson:
+          target: ""
+          add_error_key: true
 
 output.elasticsearch:
   hosts: ["http://elasticsearch:9200"]
-  index: "myapp-%{+yyyy.MM.dd}"
 ```
 
+This uses [Filebeat filestream and ndjson](https://www.elastic.co/docs/reference/beats/filebeat/filebeat-input-filestream). Handle parser errors for mixed startup text and add the authentication, index policy and log rotation required by your deployment. The old `log` input is deprecated.
+
 #### Option 2: Docker log → Loki
+
+Install and configure the driver on the Docker host using the [Loki Docker driver instructions](https://grafana.com/docs/loki/latest/send-data/docker-driver/). This fragment only selects the driver; it does not install the driver or deploy Loki.
 
 ```yaml
 # docker-compose.yml
@@ -526,15 +505,17 @@ In platforms such as Kubernetes / AWS ECS / Cloud Run, output directly to stdout
 
 ```bash
 # No additional configuration is required, JSON logs are output directly to stdout
-vext start
+npx vextjs start
 ```
 
 ## Health Check
 
 ### Implement health check endpoint
 
+If the scaffold already has `/health`, replace its existing handler rather than registering it twice. Keep other routes in `src/routes/index.ts`.
+
 ```typescript
-// src/routes/health.ts
+// src/routes/index.ts
 import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
@@ -542,59 +523,42 @@ export default defineRoutes((app) => {
     "/health",
     {
       override: { rateLimit: false },
-      docs: { summary: "Health Check" },
+      docs: { summary: "Process liveness" },
     },
-    async (req, res) => {
-      const checks: Record<string, unknown> = {
-        status: "ok",
-        uptime: process.uptime(),
-        timestamp: new Date().toISOString(),
-        memory: {
-          rss: Math.round(process.memoryUsage().rss / 1024 / 1024) + "MB",
-          heap: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + "MB",
-        },
-      };
-
-      // Database connection check
-      if (app.db) {
-        try {
-          await app.db.client.db().admin().ping();
-          checks.database = "connected";
-        } catch {
-          checks.database = "disconnected";
-          checks.status = "degraded";
-        }
-      }
-      const statusCode = checks.status === "ok" ? 200 : 503;
-      res.json(checks, statusCode);
+    async (_req, res) => {
+      res.json({ status: "ok", uptime: process.uptime(), pid: process.pid });
     },
   );
 
-  // Readiness check (Kubernetes readinessProbe)
+  // Readiness check (Kubernetes readinessProbe).
   app.get(
     "/ready",
     {
       override: { rateLimit: false },
+      docs: { summary: "Ready for traffic" },
     },
-    async (req, res) => {
-      // Check if all key dependencies are ready
-      const ready = app.db !== undefined;
-
-      if (ready) {
-        res.json({ status: "ready" });
-      } else {
-        res.json({ status: "not_ready" }, 503);
-      }
+    async (_req, res) => {
+      // This API has no external dependencies. Check real availability here if yours does.
+      res.json({ status: "ready" });
     },
   );
 });
 ```
 
+`index.ts` adds no filename prefix. If you move this to `health.ts`, register `"/"` there; registering `"/health"` would create `/health/health`. The default response wrapper puts status under `data.status`. Configure bypasses for global auth, middleware or caching as needed; disabling rate limits alone does not bypass them.
+
+- **Liveness** asks whether the process responds. Do not restart every instance repeatedly for a brief database outage.
+- **Readiness** asks whether critical dependencies work. Return 503 on failure and 200 after recovery. `app.db !== undefined` does not prove a live connection. An initialized `req.app.db.client` can perform a real ping with a timeout; first configure [Database](/guide/database).
+- **Cluster:** one HTTP probe reaches only one Worker. `vext status` checks `/health`, but does not replace all-Worker, dependency and business checks. Exit code 0 is insufficient as a deployment health gate.
+
+After checking the 200 path, deliberately make a critical dependency unavailable, confirm readiness returns 503 and the instance leaves traffic, then restore and verify again.
+
 ### Kubernetes probe configuration
 
 ```yaml
-# k8s deployment.yaml
+# Fragment inside a Deployment's spec.template
 spec:
+  terminationGracePeriodSeconds: 30
   containers:
     - name: myapp
       image: myapp:latest
@@ -623,6 +587,8 @@ spec:
           cpu: "1000m"
 ```
 
+Put this fragment in a Deployment's `spec.template`; a complete resource also needs metadata, selector, replicas and image pull configuration. Consider `startupProbe` based on actual startup time. Replicas, readiness and a termination grace period work together to drain traffic; a readiness probe alone does not guarantee zero interruption. See [Kubernetes probes](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/).
+
 ## Abnormal crash notification (onFatalError)
 
 VextJS has a built-in process-level exception catching mechanism. When an `uncaughtException` or `unhandledRejection` occurs, the framework will:
@@ -638,15 +604,18 @@ Add the `onFatalError` callback in the `shutdown` configuration to access alarm 
 
 ```typescript
 // src/config/production.ts
+import type { VextConfigOverride } from "vextjs";
+
 export default {
   shutdown: {
-    timeout: 10,
+    timeout: 10, // Seconds; separate from the fatal callback's wait.
     onFatalError: async (error, origin) => {
       // origin: 'uncaughtException' | 'unhandledRejection'
 
       // Example: Send DingTalk Webhook
       await fetch("https://oapi.dingtalk.com/robot/send?access_token=xxx", {
         method: "POST",
+        signal: AbortSignal.timeout(3000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           msgtype: "markdown",
@@ -665,8 +634,10 @@ export default {
       });
     },
   },
-};
+} satisfies VextConfigOverride;
 ```
+
+Replace the Webhook URL with your own. The target service determines notification format and access. Each following snippet replaces the same `onFatalError` callback. Give external requests a timeout and check the response; a non-2xx HTTP response is not a successful notification.
 
 ### Enterprise WeChat Webhook Example
 
@@ -674,6 +645,7 @@ export default {
 onFatalError: async (error, origin) => {
   await fetch('https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx', {
     method: 'POST',
+    signal: AbortSignal.timeout(3000),
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       msgtype: 'markdown',
@@ -697,6 +669,7 @@ onFatalError: async (error, origin) => {
 onFatalError: async (error, origin) => {
   await fetch('https://hooks.slack.com/services/T00/B00/xxx', {
     method: 'POST',
+    signal: AbortSignal.timeout(3000),
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       text: `🚨 *Service Crash* (${origin})\nError: ${error.message}\nTime: ${new Date().toISOString()}`,
@@ -711,6 +684,7 @@ onFatalError: async (error, origin) => {
 onFatalError: async (error, origin) => {
   await fetch(process.env.ALERT_WEBHOOK_URL!, {
     method: 'POST',
+    signal: AbortSignal.timeout(3000),
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       app: 'my-service',
@@ -729,13 +703,13 @@ onFatalError: async (error, origin) => {
 
 ### Notes
 
-| Project                  | Description                                                                                                                                |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Timeout Protection**   | The `onFatalError` callback has a 10-second timeout, and the process will be forced to exit after the timeout                              |
-| **Error Isolation**      | Exceptions thrown inside the callback will be caught and recorded, and will not prevent the process from exiting                           |
-| **Unrecoverable**        | After `uncaughtException`, the process is in an uncertain state, the callback should be as light as possible (just send a notification)    |
-| **Test Mode**            | Do not register fatal error handlers under `_testMode` to avoid interfering with testing                                                   |
-| **Cooperating with PM2** | PM2 itself also has restart notification capabilities (plug-ins such as `pm2-slack`), which can be used in conjunction with `onFatalError` |
+| Project                  | Description                                                                                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Timeout Protection**   | `onFatalError` is awaited for at most 10 seconds before shutdown; this is not a total exit deadline and does not cancel network requests automatically |
+| **Error Isolation**      | Exceptions thrown inside the callback will be caught and recorded, and will not prevent the process from exiting                                       |
+| **Unrecoverable**        | After `uncaughtException`, the process is in an uncertain state, the callback should be as light as possible (just send a notification)                |
+| **Test Mode**            | Do not register fatal error handlers under `_testMode` to avoid interfering with testing                                                               |
+| **Cooperating with PM2** | PM2 itself also has restart notification capabilities (plug-ins such as `pm2-slack`), which can be used in conjunction with `onFatalError`             |
 
 :::tip Why can’t it be implemented using middleware?
 `uncaughtException` and `unhandledRejection` occur outside the HTTP middleware execution chain (such as exceptions in scheduled tasks and event listeners), and middleware cannot catch such errors. Therefore, `process` level event listeners must be registered in the framework bootstrap layer.
@@ -745,18 +719,18 @@ onFatalError: async (error, origin) => {
 
 ### Production environment list
 
-| #   | Check items               | Description                                                                                                                                |
-| --- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | **HTTPS**                 | Terminates TLS via Nginx/CDN, does not handle SSL at the Node.js layer                                                                     |
-| 2   | **CORS**                  | Configure `config.cors` to limit allowed source domain names                                                                               |
-| 3   | **Rate Limit**            | Configure `config.rateLimit` to set stricter rate limits for sensitive interfaces such as login                                            |
-| 4   | **Security Headers**      | Configure `config.securityHeaders` for low-impact defaults and opt-in strict/custom browser response headers                               |
-| 5   | **Environment variables** | Sensitive information (database password, API Key) is passed in through environment variables and is not written to the configuration file |
-| 6   | **config/local.ts**       | Make sure `.gitignore` contains `config/local.*`                                                                                           |
-| 7   | **Log**                   | Do not output sensitive data (password, token, etc.) to the log                                                                            |
-| 8   | **Dependency Audit**      | Regular `npm audit` to fix known vulnerabilities in a timely manner                                                                        |
-| 9   | **Non-root**              | Running as a non-root user in a Docker container                                                                                           |
-| 10  | **Graceful shutdown**     | Ensure `SIGTERM` signal is handled correctly (VextJS built-in support)                                                                     |
+| #   | Check items               | Description                                                                                                         |
+| --- | ------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| 1   | **HTTPS**                 | Choose TLS termination at Nginx, CDN or another layer according to the deployment architecture                      |
+| 2   | **CORS**                  | Configure `config.cors` to limit allowed source domain names                                                        |
+| 3   | **Rate Limit**            | Configure `config.rateLimit` to set stricter rate limits for sensitive interfaces such as login                     |
+| 4   | **Security Headers**      | Configure `config.securityHeaders` for low-impact defaults and opt-in strict/custom browser response headers        |
+| 5   | **Environment variables** | Follow project policy for environment variables, config files or a secret service; verify the real injection source |
+| 6   | **config/local.ts**       | Make sure `.gitignore` contains `config/local.*`                                                                    |
+| 7   | **Log**                   | Do not output sensitive data (password, token, etc.) to the log                                                     |
+| 8   | **Dependency Audit**      | Regular `npm audit` to fix known vulnerabilities in a timely manner                                                 |
+| 9   | **Non-root**              | Running as a non-root user in a Docker container                                                                    |
+| 10  | **Graceful shutdown**     | Ensure `SIGTERM` signal is handled correctly (VextJS built-in support)                                              |
 
 ### Environment variable management
 
@@ -769,7 +743,7 @@ Git protection does not mean Vext loads those files.
 
 ```bash
 # Shell or CI-owned injection for one process
-PORT=3000 MONGODB_URL=mongodb://localhost:27017/myapp npm start
+VEXT_PORT=3000 MONGODB_URL=mongodb://localhost:27017/myapp npm start
 
 # Container/platform-owned injection
 docker run -e MONGODB_URL=mongodb://mongo:27017/myapp myapp
@@ -781,26 +755,34 @@ docker run -e MONGODB_URL=mongodb://mongo:27017/myapp myapp
 ### Node.js Parameters
 
 ```bash
-# Increase the memory limit (default ~1.5GB)
-NODE_OPTIONS=--max-old-space-size=4096 vext start
+# Set the V8 old-space limit in MiB for a measured workload.
+NODE_OPTIONS=--max-old-space-size=4096 npx vextjs start
 
-# Enable Source Map (recommended)
-NODE_OPTIONS=--enable-source-maps vext start
-
-# Use in combination
-NODE_OPTIONS="--enable-source-maps --max-old-space-size=4096" vext start
+# POSIX shell example; PowerShell uses $env:NODE_OPTIONS.
 ```
+
+Node's default heap limit depends on version, platform and available memory; it is not a fixed 1.5 GB. This flag limits V8 old space, not process RSS or the entire container.
+
+### Source Map
+
+Backend build emits `.js.map` files by default, but esbuild's `external` mode does not write `sourceMappingURL`. Setting only `NODE_OPTIONS=--enable-source-maps` therefore **does not guarantee that current stack traces map to TypeScript**. Associate JS and maps in your diagnostic platform and verify with an actual exception; see [Build Source Map boundaries](/guide/build#source-map).
 
 ### Cluster multi-process
 
-VextJS has built-in Cluster mode to make full use of multi-core CPUs:
+Merge these settings into existing production config, then build and start. Validate a fixed Worker count against real CPU, memory and connection pool budgets. With `"auto"`, the framework uses detected available CPUs, capped at 64.
+
+```typescript
+// src/config/production.ts (merge with existing config)
+import type { VextConfigOverride } from "vextjs";
+
+export default {
+  cluster: { enabled: true, workers: 4 },
+} satisfies VextConfigOverride;
+```
 
 ```bash
-# Automatically use workers with the number of CPU cores
-vext start --cluster
-
-# Specify the number of workers
-vext start --cluster --workers 4
+npx vextjs build --typecheck --outdir dist
+npx vextjs start --outdir dist --port 3000
 ```
 
 See [Cluster multi-process](/guide/cluster) for details.
@@ -810,16 +792,17 @@ See [Cluster multi-process](/guide/cluster) for details.
 ```typescript
 // src/config/production.ts
 export default {
-  // HTTP fetch connection optimization
+  // Request timeout and retry budget, not connection pool size.
   fetch: {
     timeout: 5000, // Shorten timeout for production environment
     retry: 2, // Idempotent method automatically retries
   },
 
-  //Database connection pool
+  // Database connection pool.
   database: {
+    databaseName: "myapp",
     config: {
-      url: process.env.MONGODB_URL,
+      uri: process.env.MONGODB_URL ?? "mongodb://127.0.0.1:27017/myapp",
       options: {
         maxPoolSize: 20,
         minPoolSize: 5,
@@ -829,6 +812,8 @@ export default {
   },
 };
 ```
+
+Each Worker creates its own pool. Estimate the maximum connection budget as pool limit × Workers × replicas, plus monitoring and other processes. Fetch retries apply only to supported idempotent methods and replayable requests; include every attempt timeout and backoff in the total budget. See [HTTP Client](/guide/fetch).
 
 ## Deployment process suggestions
 
@@ -844,26 +829,36 @@ Push to main
   → Health Check (verification)
 ```
 
-### Grayscale release
+### Gradual rollout
+
+1. Build an image with a unique version tag, retaining the current image and matching configuration.
+2. Deploy the new version on a new port or replica, then directly verify real health, readiness and business requests.
+3. Check and reload proxy configuration before introducing weighted traffic. A weight is a scheduling ratio, not an exact count per ten requests.
+4. Observe errors, latency, dependency load and session compatibility. Increase traffic after validation; switch back to the old instance on failure.
+5. Drain the old instance, wait for in-flight requests and long connections, then stop it. Database schema changes need their own compatibility and rollback plan.
 
 ```bash
-# 1. Build a new version of the image
-docker build -t myapp:v1.2.0 .# 2. Deploy to grayscale environment
-docker run -d --name myapp-canary -p 3001:3000 myapp:v1.2.0
-
-# 3. Nginx grayscale routing (10% of traffic goes to the new version)
-upstream vext_backend {
-    server 127.0.0.1:3000 weight=9; # Old version
-    server 127.0.0.1:3001 weight=1; # New version (grayscale)
-}
-
-# 4. Observe monitoring indicators (error rate, delay)
-# 5. Confirm that there are no abnormalities and then switch to full volume.
+docker build -t myapp:v1.2.0 .
+docker run -d --name myapp-canary -p 3001:3000 --stop-timeout 30 myapp:v1.2.0
+curl -i http://127.0.0.1:3001/health
 ```
+
+Supply the actual database connection config above when this app needs a database. Replace the Nginx upstream with:
+
+```nginx
+upstream vext_backend {
+    server 127.0.0.1:3000 weight=9;
+    server 127.0.0.1:3001 weight=1;
+}
+```
+
+Vext Cluster reload does not update Master configuration, publish images, change a database schema or preserve every long connection. Current `sticky: "ip"` does not map client IPs to Workers. Do not depend on all Workers dying to make the Master exit and trigger a PM2 restart. Cover these limits with external health checks, capacity alarms and an explicit recovery procedure.
 
 ## Monitor alarms
 
 ### Key monitoring indicators
+
+This table is only a starting point for alert design. Adjust it for business SLOs, baselines and resource limits; these values are not framework metrics or performance guarantees.
 
 | Indicators                   | Normal range | Alarm conditions    |
 | ---------------------------- | ------------ | ------------------- |
@@ -880,11 +875,19 @@ Initialize a real Prometheus Exporter following the [OpenTelemetry example](/exa
 
 ## Shared resources across services
 
-Each service uses its own cwd, profile, business port, generated outputs and persistent data directory. Different ports do not isolate same-domain cookies. Choose cookie names, path/domain and Session store namespaces according to whether sessions should be shared.
+Each service uses its own cwd, profile, business port, generated outputs and persistent data directory. Different ports do not isolate same-domain cookies. Choose cookie names, path/domain and Session store namespaces according to whether sessions should be shared. Configure isolation explicitly when separate Sessions are needed; changing only the port is insufficient.
 
 Response caching, MonSQLize query caching, Session and rate limiting are different systems. Check key prefixes/namespaces, TTL units and invalidation scope before sharing stores. Vext does not rename user configuration based on inferred intent. Estimate connections as each process's pool limit × workers × services, plus independent pools/proxies; actual external limits need deployment evidence.
 
 Model registrations in multiple apps within one process have owners: equivalent definitions can share a key; conflicting definitions fail before registration; closing one app releases only its references. Registry keys and databases/pools are distinct; see [Database](/guide/database). Separate processes have separate registries but may still share external stores.
+
+## Deploy Job schedulers and workers
+
+Run Job schedulers and workers as processes separate from HTTP. `npx vextjs job scheduler` creates scheduled runs, while `npx vextjs job worker` claims and executes pending runs. Configure cwd, profile, persistent storage, logs and shutdown for each process. An HTTP rolling restart does not restart them. See [Jobs](/guide/jobs).
+
+## Publish the documentation site
+
+When maintaining this VextJS repository, `.github/workflows/docs.yml` publishes the documentation to [GitHub Pages](https://devcodex-labs.github.io/vextjs/) with base path `/vextjs/`. Automatic publishing follows a successful main push CI and checks out that exact SHA. This is separate from application deployment above. The DevCodex Labs organization homepage is maintained in a separate repository.
 
 ## Next step
 

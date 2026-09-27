@@ -1,8 +1,6 @@
 # Service layer
 
-VextJS adopts a **layered architecture** and concentrates business logic on the service layer (Service Layer). Service files are placed in the `src/services/` directory, automatically scanned, instantiated and injected into `app.services` by the framework, and accessed through `app.services.xxx` in the routing handler.
-
-When `createTestApp()` loads TS service sources directly, it uses the framework's compiler and native ESM execution without an additional TS loader. Loading a TS service again evaluates it again and creates a new instance. Its `import.meta.url` / `filename` / `dirname` identify the source file, and owned temporary execution files are checked and cleaned before loading returns. Dev and compiled production runtime continue to use their respective compiled outputs and existing reload lifecycle.
+The service layer concentrates business logic. Put a default-exported service class in `src/services/`; the framework discovers and instantiates it, then attaches it to `app.services` for route handlers to use. This page starts with an example that needs no database, then covers naming, dependencies, and lifecycle.
 
 ## Design concept
 
@@ -15,7 +13,7 @@ Data layer (models) ← Data access (provided through plugins)
 ```
 
 - **Route handler** is only responsible for extracting parameters from the request, calling the service, and returning the response
-- **Service layer** carries all business logic and is not aware of the HTTP protocol (does not access `req` / `res`)
+- **Service layer** owns business use cases; avoid direct access to `req` / `res` so routes and Jobs can share it
 - **Data layer** provided by plugins (such as database ORM), accessed through the `app` object
 
 This layering enables:
@@ -24,11 +22,22 @@ This layering enables:
 - The service layer can be unit tested independently (not relying on HTTP)
 - Switching the underlying Adapter does not affect the business code
 
+These are recommended responsibilities, not framework-enforced restrictions on every cross-layer call. A service may still use `app.throw()` for HTTP errors; non-HTTP consumers must decide how to handle those exceptions. See [Architecture](/specification/architecture) and [Validation and contracts](/specification/validation-and-contracts).
+
 ## Basic writing method
 
 ### Service class
 
-Each service file exports a **class**, and the constructor receives the `app` parameter:
+Each service file must default-export a class or another constructor that can be called with `new` and accepts `app`. A class is recommended. This runnable example returns mock data, verifies service injection and validation, and does not persist users.
+
+Prerequisite: a TypeScript application from [Quick Start](/guide/quick-start) that runs with `npm run dev`. Merge this configuration into the starter application, then add the service and route files. Merge or replace existing files with the same names; do not declare duplicate default exports. The requests below use port 3000. If local configuration, the provider, or the CLI overrides it, check the actual listening port in [Configuration](/guide/configuration).
+
+```typescript
+// src/config/default.ts
+import type { VextUserConfig } from "vextjs";
+
+export default { port: 3000 } satisfies VextUserConfig;
+```
 
 ```typescript
 // src/services/user.ts
@@ -43,7 +52,7 @@ export default class UserService {
 
   async findAll(options?: { page?: number; limit?: number }) {
     const { page = 1, limit = 20 } = options ?? {};
-    //Business logic...
+    // Business logic...
     return {
       items: [],
       total: 0,
@@ -53,7 +62,7 @@ export default class UserService {
   }
 
   async findById(id: string) {
-    //Business logic...
+    // Business logic...
     const user = { id, name: "Alice", email: "alice@example.com" };
     return user;
   }
@@ -75,14 +84,14 @@ export default class UserService {
 }
 ```
 
-### used in routing
+### Use in a route
 
 ```typescript
 // src/routes/users.ts
 import { defineRoutes } from "vextjs";
 
 export default defineRoutes((app) => {
-  app.get("/", async (_req, res) => {
+  app.get("/", {}, async (_req, res) => {
     // Access the injected service instance through app.services
     const users = await app.services.user.findAll();
     res.json(users);
@@ -107,8 +116,6 @@ export default defineRoutes((app) => {
       validate: {
         body: { name: "string:1-50!", email: "email!" },
       },
-      middlewares: ["auth"],
-      auth: { required: true, security: "bearerAuth" },
     },
     async (req, res) => {
       const data = req.valid("body");
@@ -118,6 +125,34 @@ export default defineRoutes((app) => {
   );
 });
 ```
+
+Start `npm run dev`, then make these requests from another terminal. For Bash and other POSIX shells:
+
+```bash
+curl -i http://127.0.0.1:3000/users
+curl -i http://127.0.0.1:3000/users/42
+curl -i -H "Content-Type: application/json" -d '{"name":"Bob","email":"bob@example.com"}' http://127.0.0.1:3000/users
+curl -i -H "Content-Type: application/json" -d '{"name":"Bob","email":"invalid"}' http://127.0.0.1:3000/users
+```
+
+On Windows PowerShell, use `Invoke-RestMethod` so older PowerShell versions do not alter JSON quotes passed to a native command:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:3000/users
+Invoke-RestMethod http://127.0.0.1:3000/users/42
+Invoke-RestMethod http://127.0.0.1:3000/users -Method Post -ContentType 'application/json' -Body '{"name":"Bob","email":"bob@example.com"}'
+try {
+  Invoke-RestMethod http://127.0.0.1:3000/users -Method Post -ContentType 'application/json' -Body '{"name":"Bob","email":"invalid"}'
+} catch {
+  [int]$_.Exception.Response.StatusCode # Expected: 422
+}
+```
+
+Expect, in order: 200 (`data.items` is empty, `page` is 1, `limit` is 20), 200 (`data.id` is the string `42`), 201 (`data.id` is a generated UUID), and 422 (field validation fails). This example allows unauthenticated requests. To require authentication, register the complete authentication middleware and Guard as described in [Security](/guide/security); copying an unregistered `auth` name is insufficient.
+
+After checking development requests, stop the development server, run `npm run build` (including `--typecheck`) and `npm start` as configured in Quick Start, then repeat the requests. The list is still empty after creating a user because this example has no persistence.
+
+Later sections show separate patterns and extensions. Replace or merge their `UserService` methods as needed; do not paste multiple default exports into one file.
 
 ## File naming and mapping
 
@@ -139,6 +174,8 @@ export default defineRoutes((app) => {
 1. The file path is relative to the `services/` directory, with the extension removed.
 2. The file name is automatically converted from `kebab-case` to `camelCase`
 3. Subdirectories are mapped to nested objects
+
+`index` is an ordinary service key, unlike route index collapsing: `services/payment/index.ts` maps to `app.services.payment.index`. Every path segment participates in name conversion. Duplicate keys after conversion, or a key used both for a service and a directory namespace, cause a load-time conflict.
 
 ### Nested service example
 
@@ -177,7 +214,7 @@ export default class StripeService {
 
 ```typescript
 // Use nested services in routes
-app.post("/pay", async (req, res) => {
+app.post("/pay", {}, async (_req, res) => {
   const result = await app.services.payment.stripe.createPayment(100, "usd");
   res.json(result);
 });
@@ -186,6 +223,8 @@ app.post("/pay", async (req, res) => {
 ## Service Hooks
 
 Vext installs lightweight wrappers for instance methods loaded into `app.services`. When the service hook is not registered, the call will go directly to the original method; after registering the hook, you can observe the before and after calls and errors:
+
+Only ordinary methods on the prototype chain are wrapped. Constructors, instance arrow-function fields, getters, and setters are excluded. A `service:beforeCall` listener that throws prevents the original method from running; `afterCall` and `error` observers are dispatched safely and do not replace the method result.
 
 ```typescript
 // src/plugins/service-observer.ts
@@ -209,7 +248,7 @@ export default definePlugin({
 
 ## Inter-service calls
 
-Services can call each other. It is recommended to access on-demand (delayed access) in the \*\*method through `this.app.services` instead of directly referencing it in the constructor:
+Services can call each other. Access `this.app.services` on demand **inside a method** rather than capturing another service in the constructor:
 
 ```typescript
 // src/services/order.ts
@@ -265,7 +304,9 @@ export default class OrderService {
 
 Comments, strings, and unrelated local objects do not create dependencies. Dynamic service names, reassignment, inheritance, and untraceable origins report incomplete analysis. The runtime precheck warns and Doctor retains that incomplete status. A static graph does not prove that every runtime path is cycle-free, and analysis does not execute business code to fill its gaps.
 
-**✅ DON'T DO** — Delay access in a method:
+**✅ Recommended** — Defer access until the method runs:
+
+Deferred access addresses initialization order only. If A and B still call each other's methods, they may form a static cycle or runtime recursion. Change the dependency direction instead.
 
 ```typescript
 export default class OrderService {
@@ -312,7 +353,7 @@ export default class UserService {
   async findById(id: string) {
     //Check cache first
     const cached = await (this.app as any).redis.get(`user:${id}`);
-    if (cached) return cached;
+    if (cached) return JSON.parse(cached) as { id: string; name: string };
 
     // Cache miss, check database
     const user = await this.queryDatabase(id);
@@ -337,6 +378,8 @@ Use `declare module` to extend the `VextApp` interface to get full type hints:
 
 ```typescript
 // src/types/extensions.d.ts
+import "vextjs";
+
 declare module "vextjs" {
   interface VextApp {
     redis: {
@@ -347,12 +390,12 @@ declare module "vextjs" {
 }
 ```
 
-After extending `this.app.redis`, you can get IDE auto-completion.
+The extension gives `this.app.redis` IDE completion. Its declaration must match the client API that the plugin actually injects. This example describes an application contract; Redis SDKs do not all share this `set` signature or return type. A type declaration does not establish a runtime connection.
 ::::
 
 ## Use `app.throw()` to throw an error
 
-HTTP errors can be thrown in the service layer through `this.app.throw()`. The framework will automatically capture and convert into a unified error response, eliminating the need for manual try-catch at the routing layer:
+Services may throw HTTP errors through `this.app.throw()`. When an HTTP request calls the service and lets the exception propagate, the framework catches it and produces a unified error response. A Job or another non-HTTP caller receives an exception, not an HTTP response:
 
 - When you need to actively return `404`, `409`, `401` and other clear HTTP semantics, use `this.app.throw(...)`
 - When field-level validation details need to be returned, `VextValidationError` is thrown
@@ -394,9 +437,9 @@ If `throw new Error("...")` is directly inside the service, the framework will a
 
 ## Validate non-HTTP input in the service
 
-Route entry parameters are first declared through `RouteOptions.validate`, and `req.valid()` is used in the handler to read the verified data. For non-HTTP inputs processed directly by the service, such as scheduled tasks, message queues, external callbacks or other service calls, you can reuse the current global validation engine through `this.app.getValidator()`.
+Route inputs are declared through `RouteOptions.validate`, and the handler reads validated data with `req.valid()`. For non-HTTP inputs processed directly by a service, such as scheduled tasks, message queues, external callbacks, or other service calls, reuse the application's validation engine through `this.app.getValidator()`.
 
-`getValidator()` returns the validator based on schema-dsl by default; if the plug-in is replaced by Zod, Yup, etc. through `app.setValidator()`, the replaced validator will be obtained in the service.
+`getValidator()` returns the synchronous schema-dsl validator by default. A plugin may replace it with an adapter implementing `VextValidator`; a raw Zod or Yup instance cannot be assumed to have the same interface. This example compiles and stores a validation function in the constructor. Replace the engine before loading services: a later replacement does not recompile an already stored function.
 
 ```typescript
 import { VextValidationError, type VextApp, type VextValidator } from "vextjs";
@@ -434,13 +477,13 @@ export default class UserService {
 
 ::::tip
 
-Do not directly `import "schema-dsl"` in service. Directly referencing schema-dsl will bypass the global replacement capability of `app.setValidator()`, causing service verification and route verification to use different engines.
+Use `app.getValidator()` for inputs that should follow the framework's shared validation contract. A separate schema library bypasses `app.setValidator()`; if you choose one deliberately, document its different syntax, error, and conversion semantics. Schema validation does not replace business checks such as inventory, eligibility, or uniqueness.
 
 ::::
 
 ## Use `app.logger` to record logs
 
-The service layer recommends logging structured logs through `this.app.logger`. Logs automatically carry requestId (propagated through AsyncLocalStorage context):
+Use `this.app.logger` for structured service logs. An HTTP call with an established request context can carry `requestId` through AsyncLocalStorage. Startup code, Jobs, and calls outside that context cannot assume an HTTP `requestId` exists:
 
 ```typescript
 export default class PaymentService {
@@ -448,6 +491,7 @@ export default class PaymentService {
 
   async processPayment(orderId: string, amount: number) {
     this.app.logger.info({ orderId, amount }, "Processing payment");
+
     try {
       // Call external payment API...
       const result = { transactionId: "txn_xxx" };
@@ -474,7 +518,7 @@ In the `bootstrap` startup process, `service-loader` is executed in the followin
 1. config → load configuration
 2. locales → load language pack
 3. plugins → execute plugin setup()
-4. middlewares → scanning middleware
+4. middlewares → load configured middleware names
 5. services → ⭐ Instantiate services (here)
 6. routes → Register routes (app.services can be safely accessed in handler)
 ```
@@ -489,28 +533,34 @@ This means:
 
 ### Instantiation process
 
-1. **Scanning** — Recursively scan all `.ts` / `.js` files in the `src/services/` directory
+1. **Scanning** — Recursively discover `.ts` / `.mts` / `.cts` / `.js` / `.mjs` / `.cjs` service files, excluding auxiliary files as described below
 2. **Sort** — Sort alphabetically by file path (to ensure deterministic loading order)
 3. **Instantiation** — Create instances of `new ServiceClass(app)` one by one
-4. **Mount** — Mount the instance to the corresponding property of `app.services`
+4. **Mount** — Wrap service methods for Service Hooks, then attach the instance to its property on `app.services`
 5. **Detection** — Perform circular dependency detection (optional, enabled by default)
+
+When `createTestApp()` loads TS service sources directly, it uses the framework's compiler and native ESM execution without an additional TS loader. Loading a TS service again evaluates it again and creates a new instance. Its `import.meta.url` / `filename` / `dirname` identify the source file; owned temporary execution files are checked and cleaned before loading returns. Development and compiled production runtimes continue to use their respective compiled outputs and reload lifecycle.
 
 ### Exclusion rules
 
 The following files will be automatically skipped:
 
-- Test files: `*.test.ts`, `*.spec.ts`
+- Test files: names containing `.test.` or `.spec.`
+- Declaration files: `.d.ts`, `.d.mts`, `.d.cts`
 - Files/directories starting with `_` or `.`
-- `node_modules` directory
+- Temporary execution files with `.__vext_compiled__` in the name
 
-You can use the `_` prefix to create service-shared tool modules:
+These exclusions do not mean arbitrary helper content belongs in the scanned directory. The current Service Loader has no dedicated exclusion branch for `node_modules` inside the service directory. Install dependencies at the project root and keep only service entry points in the service directory.
+
+The `_` prefix skips automatic injection, but shared utilities and type dependencies should live outside the scan directory, according to their actual consumers:
 
 ```
-src/services/
-├── _base.ts # Base class, will not be loaded as a service
-├── _types.ts # Shared types
-├── user.ts
-└── order.ts
+src/
+├── services/
+│   ├── user.ts
+│   └── order.ts
+├── modules/shared/base-service.ts  # Shared base class when genuinely reused
+└── types/server/services/order.ts   # Type-only contract shared by server code
 ```
 
 ## Service layer best practices
@@ -547,10 +597,10 @@ services/
 
 ### 3. Use base classes to share common logic
 
-For services with common behavior, you can create a base class (prefixed with `_` to prevent it from being loaded as a service):
+Use a base class when services genuinely share behavior; a plain function is often enough for stateless logic. This example places the base class outside the scan directory. Inheritance can make static dependency analysis incomplete, so check behavior with tests rather than treating unrecognized dependencies as absent:
 
 ```typescript
-// src/services/_base.ts (will not be automatically loaded)
+// src/modules/shared/base-service.ts
 import type { VextApp } from "vextjs";
 
 export abstract class BaseService {
@@ -578,7 +628,7 @@ export abstract class BaseService {
 
 ```typescript
 // src/services/user.ts
-import { BaseService } from "./_base.js";
+import { BaseService } from "../modules/shared/base-service.js";
 
 export default class UserService extends BaseService {
   async findAll(page = 1, limit = 20) {
@@ -607,20 +657,22 @@ Add a type declaration for `app.services` to get full IDE support:
 It is recommended to use the generation command provided by the framework first:
 
 ```bash
-vext typegen
+npm exec -- vext typegen
 ```
 
 This command will automatically generate the `VextServices` extension declaration in `.vext/types/services.generated.d.ts`, access the TypeScript project through `src/types/generated/index.d.ts`, and perform a round of tooling layer service dependency checking.
 
-Starting from `0.3.7`, `vext dev` will also automatically perform the basic version of this step in preflight to ensure that the generated declaration in the development state is synchronized with the current `services` / `plugins` definition; if you need `--check`, `--write-manifest` or independent CI control, you should still run `vext typegen` explicitly.
+`vext dev` runs basic typegen during preflight to keep generated declarations in sync with current `services` and `plugins` definitions. For `--check`, `--write-manifest`, or independent CI control, run `vext typegen` explicitly.
 
 If you also want to provide the service index, `app.extend()` aggregation results and dependency graph summary to the editor, CI or other tool chain for consumption, you can additionally execute:
 
 ```bash
-vext typegen --write-manifest
+npm exec -- vext typegen --write-manifest
 ```
 
-The corresponding product will be written: `.vext/manifest/services.json`.If you need to handwrite or add a few advanced declarations, you can still keep the custom `.d.ts` file; the generated file and the handwritten file are isolated and will not overwrite each other.
+The corresponding artifact is `.vext/manifest/services.json`.
+
+You can keep a custom `.d.ts` file for a few advanced declarations. Generated and handwritten files are separate, but TypeScript merges their declarations. Properties with the same name must have compatible, identical types; do not duplicate generated properties with conflicting declarations. The following manual example assumes those service files exist and is unnecessary when their properties have already been generated.
 
 ```typescript
 // src/types/services.d.ts
@@ -639,6 +691,24 @@ declare module "vextjs" {
 ```
 
 Once added, calls like `app.services.user.findById()` will get full method signature hints and type checking.
+
+### Instance scope and resource shutdown
+
+Each application load creates one instance per service, shared by that application's requests. Services are not instantiated per request. Do not store the current user, request object, or temporary request result in an instance field that concurrent requests can overwrite. Each worker has its own instances and memory state.
+
+The framework does not automatically call a service method merely because it is named `close()` or `init()`. Resource owners must register cleanup needed at application shutdown through `app.onClose()`. Prefer plugins to own long-lived connections; a service borrowing a connection should avoid closing it twice.
+
+Targeted service reload in development has a separate, optional `dispose()` convention. The old instance being replaced or removed has that method called and awaited; a thrown error is logged as a warning and reload continues. This does not mean application shutdown automatically calls `dispose()`. If a later load fails, restoring the old instance reference does not reverse resource cleanup that has already happened. Make cleanup repeatable and do not assume a restored reference restores connection state. See [Hot Reload](/guide/hot-reload).
+
+### Troubleshooting and verification
+
+| Symptom                                    | Check                                                                                                  | Verify again                                        |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
+| Service is `undefined`                     | Path key, default export, exclusion rules, and whether loading succeeded                               | Run the complete example on this page after startup |
+| `Failed to instantiate service`            | Whether the default export supports `new` and whether the constructor accesses an unmounted dependency | Fix initialization and restart                      |
+| Circular dependency or incomplete analysis | Dependency direction and dynamic access; do not hide a cycle with deferred calls                       | Rerun typegen/doctor and relevant business tests    |
+| Stale IDE types                            | Whether `tsconfig` includes the generated entry and whether source changed                             | Run `vext typegen`, then independent type checking  |
+| Data mixed across requests                 | Whether instance fields store request state                                                            | Call concurrently under different identities        |
 
 ## Next step
 

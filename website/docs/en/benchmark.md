@@ -2,10 +2,16 @@
 
 These benchmarks help you choose a Vext HTTP adapter. They keep the Vext application fixed and compare the five supported adapters under the same light Normal workload. They are an input to adapter selection—not a substitute for load-testing your application with its real middleware, authentication, logging, database access, and deployment topology.
 
+## Applicable version and evidence
+
+This page preserves a historical measurement from 2026-08-15 using Vext 1.0.1 at the specified source revision. **It is not a performance baseline for the current Vext 2.0.0 code.** “Current results” in the generated section below means the most recent sample retained in this repository; it does not mean the current code was measured again.
+
+The sample values correspond to the run described in the repository's [RESULTS.md](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md). This working copy contains the results Markdown but lacks the original `adapter-matrix-formal-release.json`. This documentation review did not rerun the benchmark or verify the generated section against that original JSON. When citing these numbers, retain the date, version, workload, and evidence limits; do not turn them into cross-version performance guarantees.
+
 ## At a glance
 
 - **This is an adapter comparison, not a cross-framework league table.** Each row runs the same Vext routes, Normal bootstrap, handler mode, HTTP contract, middleware fixture, and load protocol; only the adapter changes.
-- **Native has the highest throughput in this host and workload.** That is a local observation, not a claim that it is universally best.
+- **Native has the highest throughput in this historical sample's host and workload.** That is a local observation, not a claim that it is universally best.
 - **Fastify and Koa are the next fastest adapters in this sample; Hono and Express trade throughput for their own programming and ecosystem choices.** Use the detailed CV and latency data before treating small differences as meaningful.
 - **Choose for integration and migration needs first, then reproduce with your workload.** Native is the dependency-light default. Select Fastify, Express, Koa, or Hono when their ecosystem is the better fit.
 
@@ -172,15 +178,17 @@ npm ci
 npm run verify:benchmark-deps
 ```
 
-Run the public adapter comparison with the same protocol used on this page:
+From the repository root, run the adapter comparison from clean source with the same protocol. Today's code and dependencies produce a **new** baseline. The historical lockfile and today's `latest` can differ; if the `latest` gate fails, do not skip it and still call the run formal:
 
 ```bash
-node --expose-gc --max-old-space-size=512 test/benchmark/run-adapter-matrix.mjs --formal --scenario all --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 7 --max-cv 20 --process-priority 0 --handler-mode sync
+node --expose-gc --max-old-space-size=512 test/benchmark/run-adapter-matrix.mjs --formal --scenario all --duration 10 --connections 50 --pipelining 10 --warmup 5 --rounds 7 --max-cv 20 --process-priority 0 --handler-mode sync --results-json test/benchmark/.artifacts/adapter-matrix-formal-release.json
 ```
+
+The full formal matrix takes about 55 minutes and uses local resources; prepare an idle environment first. The command updates test reports and starts/stops local benchmark targets. If interrupted, check for leftover measured processes. Maintainers should update the site with the existing generator only after the new result passes all gates. Without the raw JSON, `verify:benchmark-docs` fails; do not reconstruct an original artifact from the displayed table.
 
 This sample uses synchronous handlers. If your platform or permissions require a different priority, choose an available value and treat the result as a new environment baseline rather than comparing absolute numbers with this page.
 
-The runner uses the local Autocannon **programmatic API** and starts and stops its targets automatically. This page includes every sample, P50/P99, exact versions, provenance, and route-lifecycle telemetry. See the [benchmark README](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/README.md) for all runner options and artifact merge rules.
+The runner uses the local Autocannon **programmatic API** and starts and stops its targets automatically. This page includes every sample, P50/P99, exact versions, provenance, and route-lifecycle telemetry. See the [benchmark README](https://github.com/devcodex-labs/vextjs/blob/main/test/benchmark/README.md) for all runner options, the adapter matrix command, and artifact merge rules.
 
 ### Test your application
 
@@ -193,6 +201,7 @@ A framework microbenchmark answers only “what does the core HTTP path cost?”
 
 ## Limitations
 
+- P50/P99 come from the round corresponding to the median RPS, rather than percentiles across requests from all seven rounds. CV describes relative variation in throughput across rounds; it is not a confidence interval.
 - The current results come from one Windows host; they do not represent Linux, containers, or cloud platforms.
 - These are small HTTP microbenchmarks. They do not measure developer experience, plugin quality, maintainability, or complete business latency.
 - Do not combine absolute values from different dates, machines, dependency versions, handler modes, or load protocols into one ranking.

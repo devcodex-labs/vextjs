@@ -1,56 +1,292 @@
 ﻿# Database (MonSQLize)
 
-VextJS has a built-in [MonSQLize](https://github.com/devcodex-labs/monSQLize) database plug-in, providing out-of-the-box MongoDB database support. Just add the `database` field in the configuration file, and the framework will automatically complete connection management, model loading and resource cleanup.
+VextJS includes a [MonSQLize](https://github.com/devcodex-labs/monSQLize) database integration for MongoDB. Configuring `database` enables connection management, Model loading and resource cleanup. The application must still supply a reachable database and a valid configuration.
 
 ## Quick Start
 
-### 1. Add database configuration
+First prepare the TypeScript project from [Quick Start](/guide/quick-start) with npm scripts `dev: vext dev`, `build: vext build` and `start: vext start`. Vext includes the MonSQLize runtime dependency; this path needs no second installation.
 
-VextJS pins `monsqlize@3.3.0` as a direct runtime dependency, so a Vext
-application does not need to install a second copy. Add `config.database` to
-activate the built-in lifecycle.
+The following five files form a complete user CRUD example. Prepare a reachable MongoDB, or follow [In-memory database](#use-an-in-memory-database) to add a verification profile and dependency, then start with `npm run dev -- --config database-check`. It uses a separate database name and UUID string `_id`, without ObjectId conversion. This illustrates data access; real account management also needs authentication and authorization.
+
+### 1. Add database config
 
 ```typescript
 // src/config/default.ts
-export default {
-  port: 3000,
+import type { VextUserConfig } from "vextjs";
 
+export default {
+  host: "127.0.0.1",
+  port: 3000,
+  adapter: "native",
+  frontend: { enabled: false },
   database: {
-    config: {
-      uri: "mongodb://localhost:27017/myapp",
-    },
+    databaseName: "vext_docs_database",
+    config: { uri: "mongodb://127.0.0.1:27017/vext_docs_database" },
+    // The startup plugin waits for indexes before accepting requests.
+    monsqlizeOptions: { autoIndex: false },
   },
-};
+} satisfies VextUserConfig;
 ```
 
-### 2. Use in service
+### 2. Define a Model
+
+`collection: "users"` selects both the registration key and collection name here. The interface describes query result types, the schema validates at runtime, and the unique index constrains concurrent writes. Put `unique` beside `key`; `options: { unique: true }` does not create the intended unique constraint.
+
+```typescript
+// src/models/user.ts
+import type { VextModelDefinition } from "vextjs";
+
+export type UserRole = "admin" | "editor" | "viewer";
+
+export interface UserDocument {
+  _id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export default {
+  collection: "users",
+  schema: {
+    _id: "uuid!",
+    name: "string:1-50!",
+    email: "email!",
+    role: "admin|editor|viewer",
+  },
+  indexes: [{ key: { email: 1 }, unique: true }],
+  options: { timestamps: true },
+} satisfies VextModelDefinition;
+```
+
+### 3. Wait for the unique index
+
+The built-in database connects and registers Models before user plugins. This plugin waits for index creation before HTTP listens; a failure stops startup. Checking whether an email exists before insertion alone cannot prevent duplicate concurrent writes.
+
+`VextPluginContext` currently treats extension properties as `unknown`. Based on the built-in initialization contract, this example narrows `db` to `VextDatabase | undefined` and checks it. `VextApp.db` in Services is already typed.
+
+```typescript
+// src/plugins/database-indexes.ts
+import { definePlugin, type VextDatabase } from "vextjs";
+
+export default definePlugin({
+  name: "database-indexes",
+  async setup(app) {
+    const db = app.db as VextDatabase | undefined;
+    if (!db) throw new Error("Database is not configured");
+    await db.model("users").ensureIndexes({ throwOnError: true });
+  },
+});
+```
+
+<a id="2-in-service"></a>
+
+### 4. Use it in a Service
+
+A Service must be the default export. Select input fields to avoid writing extra request properties. Handle unique conflicts on create and update, and propagate other errors.
 
 ```typescript
 // src/services/user.ts
-export class UserService {
-  constructor(private app: any) {}
+import { randomUUID } from "node:crypto";
+import type { VextApp } from "vextjs";
+import type { UserDocument, UserRole } from "../models/user.js";
 
-  async findById(userId: string) {
-    return this.app.db.collection("users").findOne({ _id: userId });
+type UserInput = { name: string; email: string; role?: UserRole };
+
+export default class UserService {
+  constructor(private app: VextApp) {}
+
+  private get users() {
+    if (!this.app.db) throw new Error("Database is not configured");
+    return this.app.db.model<UserDocument>("users");
   }
 
-  async create(data: { name: string; email: string }) {
-    return this.app.db.collection("users").insertOne(data);
+  private rethrowWriteError(error: unknown): never {
+    const code =
+      typeof error === "object" && error !== null && "code" in error
+        ? error.code
+        : undefined;
+    if (code === 11000 || code === "DUPLICATE_KEY") {
+      this.app.throw(409, "User ID or email already exists");
+    }
+    throw error;
+  }
+
+  async findById(id: string) {
+    const user = await this.users.findOne({ _id: id });
+    if (!user) this.app.throw(404, "User not found");
+    return user;
+  }
+
+  async findAll({
+    page = 1,
+    limit = 20,
+    role,
+  }: {
+    page?: number;
+    limit?: number;
+    role?: UserRole;
+  } = {}) {
+    const filter = role ? { role } : {};
+    const { data, total } = await this.users.findAndCount(filter, {
+      skip: (page - 1) * limit,
+      limit,
+      sort: { _id: 1 },
+    });
+    return {
+      items: data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  async create(input: UserInput) {
+    const doc = {
+      _id: randomUUID(),
+      name: input.name,
+      email: input.email,
+      role: input.role ?? "viewer",
+    };
+    try {
+      await this.users.insertOne(doc);
+    } catch (error) {
+      this.rethrowWriteError(error);
+    }
+    return this.findById(doc._id);
+  }
+
+  async update(id: string, input: Partial<UserInput>) {
+    const changes: Partial<UserInput> = {};
+    if (input.name !== undefined) changes.name = input.name;
+    if (input.email !== undefined) changes.email = input.email;
+    if (input.role !== undefined) changes.role = input.role;
+    if (Object.keys(changes).length === 0)
+      this.app.throw(400, "No fields to update");
+    try {
+      const result = await this.users.updateOne({ _id: id }, { $set: changes });
+      if (result.matchedCount === 0) this.app.throw(404, "User not found");
+    } catch (error) {
+      this.rethrowWriteError(error);
+    }
+    return this.findById(id);
+  }
+
+  async delete(id: string) {
+    const result = await this.users.deleteOne({ _id: id });
+    if (result.deletedCount === 0) this.app.throw(404, "User not found");
   }
 }
 ```
 
-It's that simple! The framework automatically connects to the database when it starts and disconnects when it shuts down.
+### 5. Register routes
+
+The `src/routes/users.ts` filename provides the `/users` prefix. Register `"/"` and `"/:id"` inside it. Pagination accepts bounded integers and partial updates use PATCH. Validate inputs when calling these methods directly from background work or another Service too.
+
+```typescript
+// src/routes/users.ts
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  app.get(
+    "/",
+    {
+      validate: {
+        query: {
+          page: "integer:1-1000",
+          limit: "integer:1-100",
+          role: "admin|editor|viewer",
+        },
+      },
+    },
+    async (req, res) => {
+      res.json(await app.services.user.findAll(req.valid("query")));
+    },
+  );
+  app.get(
+    "/:id",
+    { validate: { param: { id: "uuid!" } } },
+    async (req, res) => {
+      res.json(await app.services.user.findById(req.valid("param").id));
+    },
+  );
+  app.post(
+    "/",
+    {
+      validate: {
+        body: {
+          name: "string:1-50!",
+          email: "email!",
+          role: "admin|editor|viewer",
+        },
+      },
+    },
+    async (req, res) => {
+      const user = await app.services.user.create(req.valid("body"));
+      res.setHeader("Location", `/users/${user._id}`);
+      res.json(user, 201);
+    },
+  );
+  app.patch(
+    "/:id",
+    {
+      validate: {
+        param: { id: "uuid!" },
+        body: {
+          name: "string:1-50",
+          email: "email",
+          role: "admin|editor|viewer",
+        },
+      },
+    },
+    async (req, res) => {
+      res.json(
+        await app.services.user.update(
+          req.valid("param").id,
+          req.valid("body"),
+        ),
+      );
+    },
+  );
+  app.delete(
+    "/:id",
+    { validate: { param: { id: "uuid!" } } },
+    async (req, res) => {
+      await app.services.user.delete(req.valid("param").id);
+      res.json(null, 204);
+    },
+  );
+});
+```
+
+### 6. Start and verify
+
+Run `npx vext typegen` to generate Service types, then `npm run dev`. For a temporary database, select `--config database-check` as described in testing below. Create a record with a new email: the response is 201, and `data._id` is the ID used for later requests:
+
+```powershell
+$body = @{ name = "Alice"; email = "alice@example.com" } | ConvertTo-Json
+$created = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:3000/users -ContentType "application/json" -Body $body
+$userId = $created.data._id
+Invoke-RestMethod "http://127.0.0.1:3000/users/$userId"
+Invoke-RestMethod "http://127.0.0.1:3000/users?page=1&limit=20"
+$change = @{ name = "Alice Updated" } | ConvertTo-Json
+Invoke-RestMethod -Method Patch -Uri "http://127.0.0.1:3000/users/$userId" -ContentType "application/json" -Body $change
+Invoke-WebRequest -Method Delete -Uri "http://127.0.0.1:3000/users/$userId"
+```
+
+After creating, POST the same email again and expect 409. An invalid email or fractional page returns 422; an invalid path UUID returns 400. DELETE succeeds with an empty 204 body; a later GET returns 404. Restart after changing environment or config. Stop dev, run `npm run build -- --typecheck` and `npm start`, and repeat. With a temporary database, pass `--config database-check` to both commands as described below; data does not survive restart.
 
 ## Working principle
 
 ### Conditional loading
 
-The MonSQLize plugin uses a **conditional loading** strategy: it is enabled only when `config.database` exists. Without database configuration, Vext skips plugin setup and does not install its database runtime or hooks.
+MonSQLize initializes only when `config.database` is a **nonempty object**. Absent or empty config skips setup, connection and hooks; the package remains a Vext runtime dependency.
 
 ```
 bootstrap()
-  → Check whether config.database exists
+  → Check whether config.database is a nonempty object
   → Yes → Create MonSQLize instance → Connect → Load Model → Mount app.db
   → No → Skip plugin setup
 ```
@@ -60,7 +296,7 @@ bootstrap()
 MonSQLize is loaded before user plugins, ensuring that `app.db` can be used safely in `setup()` of user plugins:
 
 ```
-createApp(config)
+CLI bootstrap
   → Built-in MonSQLize plugin setup() ← here
   → User plugin plugin-loader ← app.db is available
   → middleware-loader
@@ -83,14 +319,13 @@ When the database connection fails, the plug-in will directly throw an error and
 
 ### Basic connection
 
+The built-in integration currently uses MongoDB. Put the connection string in `config.uri`; `config.url` is a compatibility alias. An explicit `databaseName` takes priority; otherwise Vext tries to extract it from the URI path. Set it explicitly for tests and multi-node URIs.
+
 ```typescript
 // src/config/default.ts
 export default {
   database: {
-    // Connection type (default 'url')
-    type: "url",
-
-    //Connection configuration
+    // Connection configuration.
     config: {
       uri: "mongodb://localhost:27017/myapp",
     },
@@ -100,18 +335,14 @@ export default {
 
 ### Replica set connection
 
+Put node addresses, authentication and replica-set options in the MongoDB URI:
+
 ```typescript
 export default {
   database: {
-    type: "replica",
-
+    databaseName: "myapp",
     config: {
-      hosts: ["mongo1:27017", "mongo2:27017", "mongo3:27017"],
-      database: "myapp",
-      replicaSet: "rs0",
-      username: "admin",
-      password: "secret",
-      authSource: "admin",
+      uri: "mongodb://admin:secret@mongo1:27017,mongo2:27017,mongo3:27017/myapp?replicaSet=rs0&authSource=admin",
     },
   },
 };
@@ -122,40 +353,39 @@ export default {
 ```typescript
 export default {
   database: {
-    type: "srv",
-
+    databaseName: "myapp",
     config: {
-      host: "cluster0.abc123.mongodb.net",
-      database: "myapp",
-      username: "admin",
-      password: "secret",
+      uri: "mongodb+srv://admin:secret@cluster0.abc123.mongodb.net/myapp",
     },
   },
 };
 ```
 
+Percent-encode URI reserved characters in usernames or passwords. Driver options can go in `config.options`. Legacy `database.type` values `url/replica/srv` remain in compatibility types, but the current plugin creates a MongoDB instance for each and does not assemble an address from that field. Separate `host`, `hosts` or `username` fields cannot replace `config.uri`.
+
 ### Complete configuration items
 
-| Configuration item    | Type                          | Default value            | Description                                                                                                                     |
-| --------------------- | ----------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| `type`                | `'url' \| 'replica' \| 'srv'` | `'url'`                  | connection type                                                                                                                 |
-| `config`              | `object`                      | —                        | Connection parameters (url/hosts/host, etc.)                                                                                    |
-| `maxTimeMS`           | `number`                      | `2000`                   | Global query timeout (milliseconds)                                                                                             |
-| `findLimit`           | `number`                      | `10`                     | `find` returns the number of items by default                                                                                   |
-| `findPageMaxLimit`    | `number`                      | `500`                    | Maximum paging limit                                                                                                            |
-| `slowQueryMs`         | `number`                      | `500`                    | Slow query threshold (milliseconds)                                                                                             |
-| `autoConvertObjectId` | `boolean \| object`           | —                        | Automatic ObjectId conversion                                                                                                   |
-| `namespace`           | `{ scope: string }`           | `{ scope: 'database' }`  | cache namespace                                                                                                                 |
-| `cursorSecret`        | `string`                      | —                        | Deep paged cursor encryption key                                                                                                |
-| `useMemoryServer`     | `boolean`                     | `false`                  | Use in-memory database (for testing)                                                                                            |
-| `logger`              | `'app' \| false`              | `'app'`                  | Log bridging (`'app'` uses app.logger)                                                                                          |
-| `cache`               | `object`                      | —                        | Cache configuration (see below)                                                                                                 |
-| `models`              | `object`                      | —                        | Model loading configuration (see below)                                                                                         |
-| `databaseName`        | `string`                      | URI automatic extraction | Default database name (cross-database routing fallback value, extracted from the path segment of `config.uri` if not filled in) |
-| `pools`               | `array`                       | —                        | Multiple connection pool configuration                                                                                          |
-| `poolStrategy`        | `string`                      | `'auto'`                 | Connection pool selection strategy                                                                                              |
-| `slowQueryLog`        | `object`                      | —                        | Slow query persistence configuration                                                                                            |
-| `monsqlizeOptions`    | `VextMonSQLizeOptions`        | —                        | Controlled advanced MonSQLize options; connection and Vext lifecycle keys remain protected                                      |
+| Configuration item    | Type                          | Default value                       | Description                                                                                |
+| --------------------- | ----------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------ |
+| `type`                | `'url' \| 'replica' \| 'srv'` | `'url'`                             | Compatibility field; URI determines the actual connection method                           |
+| `config`              | `object`                      | —                                   | `uri` connection string and driver `options`; `url` is compatibility-only                  |
+| `maxTimeMS`           | `number`                      | `2000`                              | Global query timeout (milliseconds)                                                        |
+| `findLimit`           | `number`                      | `10`                                | `find` returns the number of items by default                                              |
+| `findPageMaxLimit`    | `number`                      | `500`                               | Maximum paging limit                                                                       |
+| `slowQueryMs`         | `number`                      | `500`                               | Slow query threshold (milliseconds)                                                        |
+| `autoConvertObjectId` | `boolean \| object`           | Enabled by upstream MongoDB default | Common cases use a boolean; the UUID example does not depend on conversion                 |
+| `namespace`           | `{ scope: string }`           | `{ scope: 'database' }`             | cache namespace                                                                            |
+| `cursorSecret`        | `string`                      | —                                   | Deep-pagination cursor signing key; signing does not hide cursor content                   |
+| `useMemoryServer`     | `boolean`                     | `false`                             | Start a temporary MongoDB process for tests; extra dependency required                     |
+| `memoryServerOptions` | `object`                      | —                                   | Options passed to `MongoMemoryServer.create()`, such as binary version                     |
+| `logger`              | `'app' \| false`              | `'app'`                             | Log bridging (`'app'` uses app.logger)                                                     |
+| `cache`               | `object`                      | —                                   | Cache configuration (see below)                                                            |
+| `models`              | `object`                      | —                                   | Model loading configuration (see below)                                                    |
+| `databaseName`        | `string`                      | Attempt URI extraction              | Explicit value takes priority; set it for temporary servers and multi-node URIs            |
+| `pools`               | `array`                       | —                                   | Multiple connection pool configuration                                                     |
+| `poolStrategy`        | `string`                      | `'auto'`                            | Connection pool selection strategy                                                         |
+| `slowQueryLog`        | `object`                      | —                                   | Slow query persistence configuration                                                       |
+| `monsqlizeOptions`    | `VextMonSQLizeOptions`        | —                                   | Controlled advanced MonSQLize options; connection and Vext lifecycle keys remain protected |
 
 ### Controlled advanced MonSQLize options
 
@@ -164,7 +394,7 @@ constructor capability that does not replace a Vext-owned connection or
 lifecycle setting:
 
 ```typescript
-import type { VextConfig } from "vextjs";
+import type { VextUserConfig } from "vextjs";
 
 export default {
   database: {
@@ -178,7 +408,7 @@ export default {
       writePathPolicy: { default: "model-only" },
     },
   },
-} satisfies VextConfig;
+} satisfies VextUserConfig;
 ```
 
 The public `VextMonSQLizeOptions` type is picked directly from the pinned
@@ -202,7 +432,7 @@ loading, and shutdown remain deterministic.
 
 ### Cache configuration
 
-MonSQLize supports two levels of cache: L1 memory LRU + L2 Redis (optional).
+MonSQLize supports L1 memory LRU and optional L2 Redis. Configuring storage does not automatically cache every query; pass a TTL in milliseconds, such as `users.findOne(filter, { cache: 5_000 })`. Write invalidation does not provide cross-process transaction consistency.
 
 ```typescript
 export default {
@@ -231,6 +461,8 @@ export default {
 
 Use `uri` as the Redis cache connection field. `url` is kept only as a compatibility alias for older configs; new projects should use `uri`.
 
+The TTLs above are explicit values. When a `cache` object is supplied without disabling memory, Vext currently fills missing `memory.ttl` with **300 milliseconds** and `maxSize` with 1000; set TTL explicitly. `memory.enabled: false` only prevents Vext from passing that branch; upstream may still create its default L1. Without query caching, do not pass a positive query `cache` option. Likewise, `logger: false` disables only the Vext logger bridge and does not guarantee upstream silence.
+
 ### Multiple environment configuration
 
 Runtime deep merge supports environment-specific database patches, but the TypeScript files have different responsibilities. `default.ts` is the complete base and uses `VextUserConfig`; profile files are later patches and use `VextConfigOverride`.
@@ -238,6 +470,8 @@ Runtime deep merge supports environment-specific database patches, but the TypeS
 :::warning Do not split a half database across layers
 Do not put only `findLimit` / `models` in `default.ts` and leave the required `config.uri` for `development.ts`. The `database` object written in `default.ts` must satisfy `MonSQLizeDatabaseConfig` by itself; TypeScript does not postpone that check until runtime merging. Put a complete connection in the base, then override only environment differences later.
 :::
+
+`MonSQLizeDatabaseConfig` requires a `config` object, but its compatibility-typed `uri/url` fields are optional. Type checking alone therefore does not prove a connection string exists or is reachable; verify with an actual startup.
 
 There are two sound layouts. Either keep one complete `database` in
 `default.ts` and use `VextConfigOverride` for partial profile differences, as
@@ -296,11 +530,12 @@ export default config;
 ```
 
 ```typescript
-// src/config/test.ts — The test environment uses an in-memory database
+// src/config/database-check.ts — Temporary database for verification.
 import type { VextConfigOverride } from "vextjs";
 
 const config: VextConfigOverride = {
   database: {
+    databaseName: "vext_docs_database_test",
     useMemoryServer: true, // use mongodb-memory-server-core
   },
 };
@@ -341,9 +576,17 @@ soft-delete result compatibility, so upstream instance methods such as
 `withTransaction()`, `on()`, `sync()`, `pool()`, and `scopedModel()` remain
 available from the single `app.db` entry point.
 
+The following snippets assume the database is configured and `app` comes from
+a Service or plugin. In TypeScript, first check
+`if (!app.db) throw new Error("Database is not configured")`. Supply IDs,
+amounts, and vectors from application inputs; these snippets are not additional
+complete project files.
+
 ### collection(name)
 
-Get the collection operation object, this is the most commonly used API:
+Get a collection operation object. Direct collection writes bypass Model
+schemas, hooks, and timestamps. Use `model()` when those semantics are needed;
+`writePathPolicy` can restrict the write path:
 
 ```typescript
 // Get the users collection
@@ -402,6 +645,18 @@ TypeScript consumers use `app.db.model<PostDocument>(registeredKey)` for native 
 
 Query `cache`, `cache.memory.ttl`, and `cache.redis.ttl` values are milliseconds. Session store `ttlSeconds` uses seconds and is converted by its adapter. Configuration values are forwarded unchanged; this documentation correction does not convert runtime values.
 
+<a id="pagination-and-validation-boundaries"></a>
+
+### Pagination totals and caching
+
+In current MonSQLize, totals from `findPage({ totals: { mode: "sync" } })` can
+still come from a separate cache; `totals.ttlMs` defaults to 600000 ms.
+`cache: 0` does not force a recount. Do not display a count failure returned as
+`null/error` as zero. For numbered pagination that needs a direct count, use
+`findAndCount()` from the Quick Start and consume `data/total`. Its two reads
+are not a transaction snapshot. See Model definition and Services for array
+fields and unique error codes.
+
 ### use(dbName)
 
 Switch to the specified database (default connection pool), suitable for single connection and multiple database scenarios:
@@ -412,7 +667,7 @@ const billing = app.db.use("billing");
 const invoice = await billing.collection("invoices").findOne({ _id: id });
 
 // Can also be called directly in a chain
-const invoice = await app.db
+const anotherInvoice = await app.db
   .use("billing")
   .collection("invoices")
   .findOne({ _id: id });
@@ -423,6 +678,22 @@ const Invoice = app.db.use("billing").model("BillingInvoice");
 ```
 
 ### pool(poolName)
+
+First configure pool names and reachable addresses, for example by merging
+this fragment into the application's `database` configuration:
+
+```typescript
+// Inside database; prepare these two MongoDB instances first.
+pools: [
+  { name: "cn", config: { uri: "mongodb://127.0.0.1:27018/myapp" } },
+  { name: "billing", config: { uri: "mongodb://127.0.0.1:27019/billing" } },
+],
+poolStrategy: "auto",
+```
+
+Put pool driver options in `options` alongside `name/config`. A Model lookup
+below also requires a registered definition or alias; configuring a database
+connection alone does not create a Model.
 
 Switch to the specified connection pool and return accessors containing `collection` / `model` / `use`:
 
@@ -459,7 +730,11 @@ const Order2 = app.db.pool("cn").use("billing").model("CnBillingOrder");
 
 ### client
 
-Get the original MongoDB Client instance (for advanced scenarios such as transactions):
+The read-only `client` getter points to the default connection's raw MongoDB
+Client. This transaction example requires a replica set or sharded cluster;
+a standalone temporary instance cannot validate it. `fromId`, `toId`, and
+`amount` come from application input. Pass the same `session` to operations in
+one transaction, and do not use it across pools belonging to another Client:
 
 ```typescript
 const session = app.db.client.startSession();
@@ -495,7 +770,7 @@ monsqlize.on("slow-query", (info) => {
 });
 
 // app.db returns upstream Collection / Model instances.
-const hits = await app.db?.collection("products").vectorSearch({
+const hits = await monsqlize.collection("products").vectorSearch({
   index: "product_embedding",
   path: "embedding",
   queryVector: embedding,
@@ -503,9 +778,9 @@ const hits = await app.db?.collection("products").vectorSearch({
   limit: 10,
 });
 
-const Product = app.db?.model("Product");
-const usage = await Product?.checkRelationUsage({ _id: productId });
-await Product?.deleteOneWithRelations({ _id: productId });
+const Product = monsqlize.model("Product");
+const usage = await Product.checkRelationUsage({ _id: productId });
+await Product.deleteOneWithRelations({ _id: productId });
 ```
 
 :::tip
@@ -523,16 +798,18 @@ MonSQLize-specific classes and types from `monsqlize` when you need them.
 ### Typed descriptors for manual registration (3.3.0)
 
 MonSQLize 3.3.0 can infer a Model document type from an object-literal schema.
-If application code imports this package-level API, declare `monsqlize@3.3.0`
-as an explicit application dependency instead of relying on dependency
-hoisting. Register the descriptor once before resolving it from the raw
-instance:
+If application code imports this package-level API, declare a compatible
+`monsqlize` version as a direct application dependency and confirm that it
+resolves to the same Model registry as Vext, instead of relying on accidental
+dependency hoisting. Version 3.3.0 identifies the upstream version checked in
+this repository; it does not pin the Vext installation version. Register the
+descriptor once before resolving it from the raw instance:
 
 ```typescript
 import { defineModel, Model } from "monsqlize";
 import type { VextApp } from "vextjs";
 
-const UserDescriptor = defineModel("users", {
+const UserDescriptor = defineModel("manual_users", {
   schema: {
     email: "email!",
     age: "number?",
@@ -552,6 +829,10 @@ as the default value of a `src/models/*` file: Vext's automatic Model loader
 continues to accept definition objects and derives the registry key using the
 rules below. Because `app.db` is the raw instance, manual code may pass either
 an exact string key or an upstream typed descriptor to `app.db.model()`.
+Manual registration is outside Vext's automatic loader ownership and hot
+reload plan. The application must arrange one-time registration, conflict
+handling, and cleanup. Do not run `Model.define()` for every request or module
+reload.
 
 ## Model definition
 
@@ -562,6 +843,9 @@ Model is an encapsulation of collection operations and provides advanced capabil
 > The MonSQLize Model layer integrates **schema-dsl**, and the schema field supports DSL concise syntax.
 
 #### Recommended writing method: schema-dsl concise syntax + options.timestamps
+
+This reference snippet shows fields and compound indexes. If combining it
+with the UUID Quick Start, retain the original `_id` schema and result types.
 
 ```typescript
 // src/models/user.ts
@@ -578,7 +862,7 @@ export default {
 
   // index
   indexes: [
-    { key: { email: 1 }, options: { unique: true } },
+    { key: { email: 1 }, unique: true },
     { key: { role: 1, createdAt: -1 } },
   ],
 
@@ -589,48 +873,51 @@ export default {
 };
 ```
 
-#### Object format (complex scenes)
+#### Object format (complex cases)
 
-When a field requires advanced capabilities such as `default` function, nested schema, etc., the object format can be used:
+Fields can use JSON Schema objects. Mark required fields with a `!` suffix on
+their names. Put dynamic defaults in top-level Model `defaults`; enforce
+uniqueness with `indexes` rather than a field-level `unique: true`. This
+example uses a separate `members` registry key and can coexist with the
+`users` Model in the Quick Start.
 
 ```typescript
-// src/models/user.ts
+// src/models/member.ts
+import { randomUUID } from "node:crypto";
+import type { VextModelDefinition } from "vextjs";
+
 export default {
-  collection: "users",
-
-  //Field definition (object format)
+  collection: "members",
   schema: {
-    name: { type: "string", required: true },
-    email: { type: "string", required: true, unique: true },
-    role: {
-      type: "string",
-      enum: ["admin", "editor", "viewer"],
-      default: "viewer",
-    },
-    avatar: { type: "string" },
+    "_id!": { type: "string", format: "uuid" },
+    "name!": { type: "string", minLength: 1, maxLength: 50 },
+    "email!": { type: "string", format: "email" },
+    role: { type: "string", enum: ["admin", "editor", "viewer"] },
+    tags: { type: "array", items: { type: "string" } },
+    slug: { type: "string" },
   },
-
-  // index
-  indexes: [
-    { key: { email: 1 }, options: { unique: true } },
-    { key: { role: 1, createdAt: -1 } },
-  ],
-
-  // Hook (only for custom logic other than timestamps)
+  defaults: { _id: () => randomUUID(), role: "viewer" },
+  indexes: [{ key: { email: 1 }, unique: true }],
   hooks: {
-    beforeInsert(context: { data?: any }) {
-      // Custom logic example
+    beforeInsert(context) {
       const doc = context.data;
-      if (!doc?.name) return;
-      doc.slug = doc.name.toLowerCase().replace(/\s+/g, "-");
+      if (typeof doc !== "object" || doc === null || !("name" in doc)) return;
+      if (typeof doc.name === "string") {
+        Object.assign(doc, {
+          slug: doc.name.toLowerCase().replace(/\s+/g, "-"),
+        });
+      }
     },
   },
-
-  options: {
-    timestamps: true,
-  },
-};
+  options: { timestamps: true },
+} satisfies VextModelDefinition;
 ```
+
+For arrays, use explicit `{ type: "array", items: { type: "string" } }` or
+the `array<string>` DSL. The current schema-dsl 3.0.4 does not compile the
+`["string"]` shorthand correctly; static candidate checks also require an
+explicit structure. Validate schema behavior with a real write; TypeScript
+alone cannot prove runtime validation.
 
 ### Model options
 
@@ -743,6 +1030,8 @@ src/models/
 
 ```typescript
 // src/models/billing/invoice.ts
+import type { VextModelDefinition } from "vextjs";
+
 // No need to manually write connection - automatically inferred from directory path
 export default {
   schema: {
@@ -794,12 +1083,16 @@ In a microservice architecture, multiple services may share the same set of Mode
 
 ```typescript
 //Loading order: shared package first → then local models/
-// Local Model can overwrite the Model with the same name in the shared package
+// A local Model can override a shared Model with the same primary key.
 models: {
   sharedPackage: '@myproject/shared-models',
-  dir: 'models', // Local Model (can override shared)
+  dir: 'models', // Local Models
 }
 ```
+
+Local overriding applies only to the same primary registration key. Alias
+and other registration group conflicts still follow discovery and
+registration rules.
 
 The shared package must default-export a model-definition object such as `{ User: { schema: ... } }`. Callback-style `registerModels()` packages are rejected because Vext cannot preflight, attribute ownership, or roll back keys registered through an opaque callback.
 
@@ -809,248 +1102,75 @@ Shared packages resolve from the service root, including hoisted monorepo depend
 
 ### Basic CRUD service
 
-```typescript
-// src/services/user.ts
-export class UserService {
-  private logger;
+The [Quick Start](#quick-start) contains this page's complete
+`src/services/user.ts`: a default-exported class, explicit input and result
+types, Model validation and timestamps, conversion of unique index conflicts,
+bounded pagination, and 404 handling. The Service obtains the Model through a
+getter so a long-lived object does not retain a stale Model instance.
 
-  constructor(private app: any) {
-    this.logger = app.logger.child({ service: "UserService" });
-  }
+`findAndCount(query, { skip, limit, sort })` returns `data/total`. Do not
+first fetch a fixed number of documents and then filter or `slice` the array.
+The two reads are not a transaction snapshot and can differ under concurrent
+writes. Request validation bounds page and limit; other callers must enforce
+the same constraints.
 
-  async findById(id: string) {
-    this.logger.debug({ id }, "Finding user by ID");
-    const user = await this.app.db.collection("users").findOne({ _id: id });
+### Use with routes
 
-    if (!user) {
-      this.app.throw(404, "User does not exist");
-    }
+Reuse `src/routes/users.ts` from the Quick Start: GET/POST `/users` and
+GET/PATCH/DELETE `/users/:id`. Do not register `"/users"` a second time in
+this page. The default JSON response wrapper places the result in `data`; a
+204 response has no body.
 
-    return user;
-  }
-
-  async findAll(
-    options: { page?: number; limit?: number; role?: string } = {},
-  ) {
-    const { page = 1, limit = 20, role } = options;
-    const filter: Record<string, unknown> = {};
-    if (role) filter.role = role;
-
-    const skip = (page - 1) * limit;
-    const [items, total] = await Promise.all([
-      this.app.db.collection("users").find(filter, { skip, limit }),
-      this.app.db.collection("users").countDocuments(filter),
-    ]);
-
-    return {
-      items,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
-  }
-
-  async create(data: { name: string; email: string; role?: string }) {
-    // Check email uniqueness
-    const existing = await this.app.db.collection("users").findOne({
-      email: data.email,
-    });
-    if (existing) {
-      this.app.throw(409, "Email has been registered", "EMAIL_EXISTS");
-    }
-
-    const doc = {
-      ...data,
-      role: data.role ?? "viewer",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    const result = await this.app.db.collection("users").insertOne(doc);
-    this.logger.info(
-      { id: result.insertedId, email: data.email },
-      "User created",
-    );
-
-    return { id: result.insertedId, ...doc };
-  }
-
-  async update(
-    id: string,
-    data: Partial<{ name: string; email: string; role: string }>,
-  ) {
-    const result = await this.app.db
-      .collection("users")
-      .updateOne({ _id: id }, { $set: { ...data, updatedAt: new Date() } });
-
-    if (result.matchedCount === 0) {
-      this.app.throw(404, "User does not exist");
-    }
-
-    return this.findById(id);
-  }
-
-  async delete(id: string) {
-    const result = await this.app.db.collection("users").deleteOne({ _id: id });
-
-    if (result.deletedCount === 0) {
-      this.app.throw(404, "User does not exist");
-    }
-
-    this.logger.info({ id }, "User deleted");
-  }
-}
-```
-
-### Used in conjunction with routing
-
-```typescript
-// src/routes/users.ts
-import { defineRoutes } from "vextjs";
-
-export default defineRoutes((app) => {
-  app.get(
-    "/users",
-    {
-      validate: {
-        query: {
-          page: "number:1-",
-          limit: "number:1-100",
-          role: "admin|editor|viewer",
-        },
-      },
-      docs: { summary: "Get user list" },
-    },
-    async (req, res) => {
-      const { page, limit, role } = req.valid("query");
-      const result = await app.services.user.findAll({ page, limit, role });
-      res.json(result);
-    },
-  );
-
-  app.get(
-    "/users/:id",
-    {
-      validate: { param: { id: "string!" } },
-      docs: { summary: "Get user details" },
-    },
-    async (req, res) => {
-      const { id } = req.valid("param");
-      const user = await app.services.user.findById(id);
-      res.json(user);
-    },
-  );
-
-  app.post(
-    "/users",
-    {
-      validate: {
-        body: {
-          name: "string:1-50!",
-          email: "email!",
-          role: "admin|editor|viewer",
-        },
-      },
-      docs: { summary: "Create User" },
-    },
-    async (req, res) => {
-      const data = req.valid("body");
-      const user = await app.services.user.create(data);
-      res.json(user, 201);
-    },
-  );
-
-  app.put(
-    "/users/:id",
-    {
-      validate: {
-        param: { id: "string!" },
-        body: {
-          name: "string:1-50?",
-          email: "email?",
-          role: "admin|editor|viewer",
-        },
-      },
-      docs: { summary: "Update Users" },
-    },
-    async (req, res) => {
-      const { id } = req.valid("param");
-      const data = req.valid("body");
-      const user = await app.services.user.update(id, data);
-      res.json(user);
-    },
-  );
-  app.delete(
-    "/users/:id",
-    {
-      validate: { param: { id: "string!" } },
-      docs: { summary: "Delete User" },
-    },
-    async (req, res) => {
-      const { id } = req.valid("param");
-      await app.services.user.delete(id);
-      res.json({ success: true });
-    },
-  );
-});
-```
+A MongoDB unique key error may have numeric code `11000` or an upstream
+normalized code `"DUPLICATE_KEY"`. The Service maps the unique user ID and
+email constraints in this example to 409 and propagates other errors. Do not
+swallow failures by searching for a word in error text. Validate both request
+and Model schemas; a TypeScript pass does not prove a database write is valid.
 
 ## Used in plugins
 
-Custom plugins can be executed after MonSQLize is initialized via `dependencies`:
+Built-in MonSQLize initializes before user plugins as part of bootstrap. User
+plugins do not need to name the built-in plugin in `dependencies`. The
+`database-indexes` plugin in the Quick Start is a complete example of waiting
+for database work in `setup`.
 
-```typescript
-// src/plugins/seed-data.ts
-import { definePlugin } from "vextjs";
-
-export default definePlugin({
-  name: "seed-data",
-
-  async setup(app) {
-    // MonSQLize has been initialized when the plug-in is loaded, and app.db is available
-    if (!app.db) {
-      app.logger.debug("[seed-data] No database configured, skipping");
-      return;
-    }
-
-    const count = await app.db.collection("users").countDocuments({});
-    if (count === 0) {
-      app.logger.info("[seed-data] Seeding initial admin user...");
-      await app.db.collection("users").insertOne({
-        name: "Admin",
-        email: "admin@example.com",
-        role: "admin",
-        createdAt: new Date(),
-      });
-      app.logger.info("[seed-data] Admin user seeded");
-    }
-  },
-});
-```
+You can initialize data in `setup`, but every process runs it. Checking
+whether the count is zero before inserting an admin is not safe under
+concurrency. Initialize accounts according to application authentication,
+idempotency keys, and unique constraints, and handle multi-process races.
+The `dependencies` field orders user plugins that actually exist.
 
 ## Used in testing
 
-### Use in-memory database
+### Use an in-memory database
 
-Use mongodb-memory-server-core to run an in-memory database in a test environment without an external MongoDB instance:
+Install `mongodb-memory-server-core` to run a test database without an
+external MongoDB instance:
 
 ```bash
 npm install -D mongodb-memory-server-core
 ```
 
-Vext uses the core package to avoid the `mongodb-memory-server` wrapper triggering binary downloads during the `npm install` phase. The MongoDB binary may still be downloaded when the test is started for the first time; it is recommended to set `MONGOMS_DOWNLOAD_DIR=.cache/mongodb-binaries` and `MONGOMS_PREFER_GLOBAL_PATH=false` in CI, and cache the directory; after the cache hit, `MONGOMS_RUNTIME_DOWNLOAD=false` can be used to verify that it will not be downloaded again.
+Vext uses the core package so the `mongodb-memory-server` wrapper does not
+download a binary during `npm install`. The first test start may still
+download a MongoDB binary. In CI, set
+`MONGOMS_DOWNLOAD_DIR=.cache/mongodb-binaries` and
+`MONGOMS_PREFER_GLOBAL_PATH=false`, and cache that directory. After a cache
+hit, use `MONGOMS_RUNTIME_DOWNLOAD=false` to confirm that no new download is
+needed.
 
-The partial `test.ts` below is valid only when an earlier layer already owns a
-complete database configuration. If `default.ts` omits `database`, provide the
-full `MonSQLizeDatabaseConfig` in this profile instead.
+The partial `database-check.ts` profile below is valid only when an earlier layer already owns
+the complete database config. If `default.ts` omits
+`database`, this profile must supply a complete
+`MonSQLizeDatabaseConfig` instead.
 
 ```typescript
-// src/config/test.ts
+// src/config/database-check.ts
 import type { VextConfigOverride } from "vextjs";
 
 const config: VextConfigOverride = {
   database: {
+    databaseName: "vext_docs_database_test",
     useMemoryServer: true,
   },
 };
@@ -1058,51 +1178,74 @@ const config: VextConfigOverride = {
 export default config;
 ```
 
+Vext creates the temporary instance on startup and stops it on shutdown. It
+is a real `mongod` child process with a local temporary data directory. The
+built-in option replaces the original URI; specify the test database name.
+From the project directory, run:
+
+```bash
+npm run dev -- --config database-check
+```
+
+Press Ctrl+C when done. Select a profile with `--config` or `VEXT_CONFIG`;
+`NODE_ENV=test` does not select it. To verify a production build, run
+`npm run build -- --typecheck --config database-check`, then
+`npm start -- --config database-check`. Select the application's own profile
+for normal startup.
+
+The custom name `database-check` is intentional. Build excludes
+`config/development.*`, `config/local.*`, and `config/test.*`, so a
+development `test.ts` profile cannot be assumed to exist in production output.
+Confirm the selected config is present before startup.
+
 ### Test example
 
-```typescript
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { createTestApp } from "vextjs/testing";
+Run database end-to-end tests against the CLI application already started
+above with `--config database-check`. `createTestApp()` does not load the
+project configuration or initialize built-in MonSQLize automatically. It
+returns `{ app, request, close }`, not an object with `app.inject()`.
+You may inject a mock for route or Service tests, but those results do not
+prove database integration.
 
-describe("UserService", () => {
-  let app;
+This example uses Node's built-in test runner and needs no extra test
+dependency. In another terminal, save and run
+`node --test test/database.test.mjs`:
 
-  beforeAll(async () => {
-    app = await createTestApp();
-  });
+```javascript
+// test/database.test.mjs
+import test from "node:test";
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 
-  afterAll(async () => {
-    await app.close();
-  });
-
-  it("should create a user", async () => {
-    const res = await app.inject({
+test("creates a user, rejects a duplicate email, and cleans up", async () => {
+  const base = "http://127.0.0.1:3000";
+  const body = { name: "Alice", email: `reader-${randomUUID()}@example.com` };
+  const create = () =>
+    fetch(`${base}/users`, {
       method: "POST",
-      url: "/users",
-      body: { name: "Zhang San", email: "zhangsan@test.com" },
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
     });
-
-    expect(res.statusCode).toBe(201);
-    expect(res.json().name).toBe("Zhang San");
-  });
-
-  it("should reject duplicate email", async () => {
-    await app.inject({
-      method: "POST",
-      url: "/users",
-      body: { name: "Zhang San", email: "dup@test.com" },
+  const created = await create();
+  assert.equal(created.status, 201);
+  const { data } = await created.json();
+  try {
+    assert.equal(data.name, "Alice");
+    const duplicate = await create();
+    assert.equal(duplicate.status, 409);
+    await duplicate.text();
+  } finally {
+    const removed = await fetch(`${base}/users/${data._id}`, {
+      method: "DELETE",
     });
-
-    const res = await app.inject({
-      method: "POST",
-      url: "/users",
-      body: { name: "Li Si", email: "dup@test.com" },
-    });
-
-    expect(res.statusCode).toBe(409);
-  });
+    assert.equal(removed.status, 204);
+  }
 });
 ```
+
+This tests real HTTP, framework loading, the Model, and the unique index.
+Transactions, replica sets, multiple pools, and Redis caching need their
+respective test environments; a single-instance CRUD test cannot prove them.
 
 ## Slow query monitoring
 
@@ -1131,37 +1274,45 @@ Example of log output:
 
 ## Model hot reload (development mode)
 
-In the `vext dev` development mode, modifying the Model definition file in the `src/models/` directory will automatically trigger **Tier 2 soft reload**, and the framework will reload the changed Model definition without the need to manually restart the server.
+In `vext dev` mode, changing a Model definition under `src/models/`
+triggers a soft reload marked `T1:code`. The framework reloads the changed
+definition without a manual server restart.
 
 ### Working principle
 
 ```
-Modify src/models/item.ts
+Edit src/models/item.ts
   ↓
-esbuild recompile → dist/models/item.js
+esbuild recompiles → .vext/dev/models/item.js
   ↓
-model-reloader detected invalidated files
+model-reloader sees the invalidated file
   ↓
 Build and validate the complete replacement plan
   ↓
-Atomically replace owned definitions with a rollback journal
+Atomically replace this application's affected definitions with a rollback journal
   ↓
-New requests use new Model definition
+Newly acquired Models use the new definition
 ```
 
-### Overloading behavior description
+### Reload behavior
 
-| Scene                                 | Behavior                                                                                                                               |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Modify schema field type              | Use new schema validation rules for next write                                                                                         |
-| Modify hooks                          | New hooks will take effect immediately for subsequent operations                                                                       |
-| Modify indexes                        | Index changes require a cold restart to be synchronized to MongoDB                                                                     |
-| Reload failure (such as syntax error) | Automatically roll back to the old definition and the service continues to run                                                         |
-| Concurrent Requests                   | Requests being processed during reload are completed using the old definition, and new requests are completed using the new definition |
+| Scenario                                    | Behavior                                                                                                                                               |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Change schema or hooks                      | Newly acquired Models use the new definition; existing long-lived instances do not turn into new instances.                                            |
+| Change indexes                              | A definition change does not prove a database migration completed. Verify automatic index policy and any explicit `ensureIndexes()` result separately. |
+| Replacement plan validation or commit fails | The registration plan rolls back and reports the error. A validation error only triggered by a runtime write is not proof that reload was rejected.    |
+| Concurrent requests                         | Operations already holding an old Model may continue using it. Do not promise an atomic switch for all in-flight requests.                             |
 
-### Log output example
+Existing data and unique constraints make index changes sensitive. A cold
+restart alone does not prove index synchronization. The Quick Start disables
+automatic index creation and waits explicitly in a startup plugin; hot
+reloading a Model does not rerun that plugin. After an index change, repeat
+the index check under the deployment procedure, handle conflicts, and
+validate writes.
 
-After saving `src/models/item.ts`, the terminal will output:
+### Example log output
+
+After saving `src/models/item.ts`, the terminal may show:
 
 ```
 [vext dev] 1 file(s) changed:
@@ -1171,76 +1322,66 @@ After saving `src/models/item.ts`, the terminal will output:
 [hot-reload] [OK] 48ms [T1:code] (compile:3ms cache:2ms i18n:0ms mw:5ms svc:8ms model:3ms route:25ms swap:2ms) [12 modules evicted] #3
 ```
 
-Note the `model:3ms` timing segment in the log, which indicates the time it takes to reload the Model.
+The `model:3ms` segment records Model reload time.
 
 :::tip Rollback guarantee
-If there is a problem with the new Model definition (for example, the schema definition throws an exception), the framework will automatically re-register the old definition to ensure that the service is not interrupted. After fixing the code and saving it, the reload will trigger again.
+Discovery, preflight, or registration commit failure rolls back. Not every
+field semantic error appears at that stage, so also verify the corresponding
+database write. Saving a fix triggers reload again.
 :::
 
-:::info framework internal mechanism
-`Model.redefine()` / `Model.undefine()` is a native Model API provided by monSQLize, which is automatically called by the vext framework during the hot reload process, and users do not need to call it manually.
+:::info Framework internals
+`Model.redefine()` and `Model.undefine()` are native MonSQLize Model APIs.
+Vext calls them during hot reload; application code need not call them.
 :::
 
 ## Graceful shutdown
 
-The MonSQLize plugin registers the database connection closing hook in `app.onClose()`. When an application receives a `SIGTERM` / `SIGINT` signal:
+The MonSQLize plugin registers a connection close hook with `app.onClose()`.
+When the application receives `SIGTERM` or `SIGINT`:
 
-1. Stop accepting new requests
-2. Wait for the in-flight request to complete
-3. Execute `onClose` hook (LIFO order)
-4. MonSQLize closes the database connection
-5. Process exits
+1. Stop accepting new requests.
+2. Wait for in-flight requests.
+3. Run `onClose` hooks in LIFO order.
+4. Close MonSQLize connections.
+5. Exit the process.
 
-No need to manually manage connection closures.
+Built-in connections, this application's owned Model registrations, and a
+temporary MongoDB started by the plugin are cleaned up together. Do not
+manually close `app.db`; manage any other connections and manually
+registered Models yourself. Shutdown has a timeout and does not wait forever.
+
+<a id="older-code-compatibility"></a>
+
+## Compatibility of older code with the current API
+
+<a id="app-db-db-and-use"></a>
+
+### B1: `app.db.db()` and `use()`
+
+The current raw MonSQLize instance exposes `db(name?)`, so it is incorrect
+to claim that `db()` was removed or always throws. `db()` gives database
+collection access. For a scope that handles both collections and Models,
+this guide uses `use(dbName)`:
+
+```typescript
+const logsDb = app.db.use("logs");
+const logsCollection = app.db.db("logs").collection("events");
+// To select both pool and database:
+const regionalLogs = app.db.pool("cn").use("logs");
+```
+
+### B2: `app.db.use()` takes one argument
+
+The current signature is `use(dbName)`. Do not pass pool and database
+as two arguments. Compose `app.db.pool("cn").use("billing")` explicitly.
+When migrating older extensions, check the actual upstream version and
+return type used there.
 
 ## Next step
 
-- Understand the three-tier merging mechanism and environment coverage in [Configuration](/guide/configuration)
-- See [plugins](/guide/plugins) how to extend the framework through `definePlugin()`
-- Learn how to use `createTestApp()` for integration testing in [Testing](/guide/testing)
-- Explore [app.fetch built-in HTTP client](/guide/fetch) to call other services in microservices
-
-## Migration Guide (v0.2.x → v0.3.0)
-
-### B1: `app.db.db()` has been removed
-
-Old usage (v0.2.x, runtime bug - monSQLize does not provide `db()` method):
-
-```typescript
-// ❌ v0.2.x — Will actually report an error when running
-const logsDb = app.db.db("logs");
-```
-
-New usage (v0.3.0):
-
-```typescript
-// ✅ v0.3.0 — Switch database (default connection pool)
-const logsDb = app.db.use("logs");
-
-// If you need to switch the connection pool at the same time
-const logsDb = app.db.pool("cn").use("logs");
-```
-
-### B2: `app.db.use()` becomes single parameter
-
-Old usage (if you want to extend it by yourself and pass in two parameters):
-
-```typescript
-// ❌ v0.2.x non-standard usage
-app.db.use("cn", "billing");
-```
-
-New usage:
-
-```typescript
-// ✅ v0.3.0 — Switch connection pool first, then switch database
-app.db.pool("cn").use("billing");
-```
-
-## Pagination and validation boundaries verified by MCP consumers
-
-In monSQLize 3.3.0, `findPage({ totals: { mode: "sync" } })` may still read totals from an independent cache, with a default `totals.ttlMs` of 600000 milliseconds. `cache: 0` does not force a recount; a failed count reported as `null/error` must not become zero. For numbered pages requiring a fresh count, use native `findAndCount(query, { skip, limit, sort })` and consume `data/total`. Its two reads do not form a transaction snapshot under concurrent writes.
-
-Use `{ type: "array", items: { type: "string" } }` or `array<string>` DSL for model arrays. The installed schema-dsl 3.0.4 does not correctly compile `["string"]` shorthand, so MCP static candidate checks request an explicit form. Verify model validation with real writes; successful TypeScript compilation alone is insufficient.
-
-monSQLize may map MongoDB duplicate-key code 11000 to `code: "DUPLICATE_KEY"`. Map the actual code and constraint to the business conflict response while propagating other database failures. Do not swallow errors based on loose message matching.
+- Read [Configuration](/guide/configuration) for base config, environment profiles, and overlays.
+- See [Plugins](/guide/plugins) for setup ordering and resource management.
+- Read [Testing](/guide/testing) to distinguish mocks, HTTP, and database integration tests.
+- Use [Data access specification](/specification/data-access) for Model, pagination, and write boundaries.
+- Explore the [built-in app.fetch HTTP client](/guide/fetch) for service calls.

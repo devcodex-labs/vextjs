@@ -2,82 +2,90 @@
 
 Frontend data in Vext starts on the server. Route handlers call services, prepare JSON-safe values, and pass them into `res.render()`.
 
+Following [Full-Stack Quick Start](/frontend/getting-started), this page uses the same `/dashboard` route for first-screen data, navigation, and local loading. Complete the [Layouts and Components](/frontend/layouts-and-components) example before adding layout data. Add business authentication using [Authentication and Security](/guide/security).
+
 ## First-screen Data
 
-```ts
-export default (app) => {
-  app.get(
-    "/dashboard",
-    { auth: true, cache: { ttl: 30_000 } },
-    async (req, res) => {
-      const { userId } = req.auth;
-      if (!userId) {
-        req.app.throw(401, "Dashboard requires an authenticated user ID");
-      }
+Create these two files. The example uses an in-memory summary so it can be verified directly. In real business code, call a registered service from the handler and select the fields returned to the browser.
 
-      const summary = await app.services.dashboard.summary(userId);
-      res.render("dashboard", {
-        summary,
-      });
-    },
-  );
-};
+```ts
+// src/routes/dashboard.ts
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  app.get("/", { validate: { query: { view: "string?" } } }, (req, res) => {
+    const summary = {
+      label: req.valid("query").view === "compact" ? "Compact" : "Dashboard",
+      total: 42,
+    };
+    res.render("dashboard", { summary });
+  });
+});
 ```
 
 After the app registers `auth()`, `auth: true` protects the route while `req.auth` carries the framework identity and claims. A user profile is application data: load it through your own service instead of assuming that Vext injects `req.user`.
 
-The page receives the same object during SSR and hydration:
+The page receives the same serializable data during SSR and hydration:
 
 ```tsx
+// src/frontend/pages/dashboard.tsx
+type DashboardSummary = { label: string; total: number };
+
 export default function DashboardPage(props: { summary: DashboardSummary }) {
-  return <Dashboard summary={props.summary} />;
+  return (
+    <main>
+      {props.summary.label}: {props.summary.total}
+    </main>
+  );
 }
 ```
 
 ## Layout Data
 
-Use `options.layoutData` for shell-level data such as navigation, user menus, workspace metadata, or admin permissions. The following handler fragment assumes the route is protected with `auth: true`:
+Put shell data such as navigation, user menus, and workspace information in `options.layoutData`. This replaces the render call in the `admin/dashboard` handler from the completed layout example. The layout IDs are root `.` and `admin`:
 
 ```ts
-const { userId } = req.auth;
-if (!userId) {
-  req.app.throw(401, "Dashboard requires an authenticated user ID");
-}
+const user = { name: "Ada" };
+const metrics = { totalUsers: 42 };
+const nav = [{ label: "Dashboard", href: "/admin/dashboard" }];
 
-const user = await app.services.user.findById(userId);
+res.render("admin/dashboard", metrics, {
+  layoutData: {
+    ".": { user },
+    admin: { menu: nav },
+  },
+});
+```
 
+Layouts consume the object under their ID through `props.data`; they do not import services directly. Query real profile data by `req.auth.userId` in an authenticated handler. Navigation visibility affects UI only; the server must check permissions independently.
+
+## Locale Messages
+
+Page copy comes from `src/frontend/locales/**` and optional render messages. With frontend i18n enabled, a handler may explicitly supply the messages for this render. They replace the current messages object rather than recursively patching it. This can replace the dashboard render call above:
+
+```ts
 res.render(
-  "admin/dashboard",
-  { metrics },
+  "dashboard",
+  { summary },
   {
-    layoutData: {
-      user,
-      nav: await app.services.nav.admin(userId),
+    locale: "en-US",
+    messages: {
+      settings: { title: "Settings" },
     },
   },
 );
 ```
 
-Layouts do not import services directly. They consume data passed by the route handler.
-
-## Locale Messages
-
-Page copy comes from `src/frontend/locales/**` and optional render messages:
-
-```ts
-res.render("settings", props, {
-  locale: req.locale,
-  messages: {
-    settings: { title: "Settings" },
-  },
-});
-```
-
-Client code reads a typed object:
+This component can read the messages in a page or layout. Its generic parameter is only a TypeScript declaration; configuration or render options must actually provide the messages. See [Frontend i18n](/frontend/i18n) for complete type generation and fallback rules.
 
 ```tsx
-const i18n = useVextI18n(locale);
-return <h1>{i18n.settings.title}</h1>;
+// src/frontend/components/SettingsTitle.tsx
+import { useVextI18n } from "vextjs/frontend";
+
+export function SettingsTitle() {
+  const i18n = useVextI18n<{ settings: { title: string } }>();
+  return <h1>{i18n.settings.title}</h1>;
+}
 ```
 
 ## Same-route Navigation
@@ -86,7 +94,10 @@ After hydration, Vext can request the same document route as a versioned page re
 
 The stable surface is `Link`, `Form`, `navigate`, `prefetch`, `revalidate`, `useNavigation`, `useFetcher`, and `useRouteData`.
 
+Keep the route above unchanged and replace its dashboard page with this interactive version. Links and forms still request `/dashboard`; the GET form demonstrates a query without requiring another mutation endpoint.
+
 ```tsx
+// src/frontend/pages/dashboard.tsx (replaces the earlier page)
 import {
   Form,
   Link,
@@ -96,31 +107,38 @@ import {
   useRouteData,
 } from "vextjs/frontend";
 
-export default function DashboardPage() {
-  const data = useRouteData<{ summary: DashboardSummary }>();
+type DashboardSummary = { label: string; total: number };
+type DashboardProps = { summary: DashboardSummary };
+
+export default function DashboardPage(props: DashboardProps) {
+  const data = useRouteData<DashboardProps>() ?? props;
   const navigation = useNavigation();
   const details = useFetcher<{ summary: DashboardSummary }>();
 
   return (
     <main>
       <h1>Dashboard</h1>
-      <p data-state={navigation.phase}>{data?.summary.label}</p>
-      <Link href="/reports" prefetch="click">
-        Reports
+      <p data-state={navigation.phase}>
+        {data.summary.label}: {data.summary.total}
+      </p>
+      <Link href="/dashboard?view=full" prefetch="click">
+        Full summary
       </Link>
-      <Form action="/reports" method="post">
-        <button type="submit">Create report</button>
+      <Form action="/dashboard" method="get">
+        <input type="hidden" name="view" value="compact" />
+        <button type="submit">View compact summary</button>
       </Form>
-      <button onClick={() => details.load("/reports?view=compact")}>
-        Load compact data
+      <button onClick={() => details.load("/dashboard?view=compact")}>
+        Load summary
       </button>
+      <p>{details.data?.summary.label}</p>
       <button onClick={() => revalidate()}>Refresh</button>
     </main>
   );
 }
 ```
 
-`Link` accepts `prefetch="none" | "click" | "visible"` and defaults to `"click"`. `Form` keeps a normal string `action` and HTTP method, so it still submits as a document request when JavaScript is unavailable. `useFetcher()` runs the same route without changing browser history.
+`useRouteData()` may return `undefined` on the server, where a browser runtime is not configured. Falling back to page props keeps first-screen content. `Link` accepts `prefetch="none" | "click" | "visible"` and defaults to `"click"`. `Form` retains a native form; this GET example still submits a document request with JavaScript disabled. A mutation form needs a handler for its method and must meet its auth, CSRF, and validation requirements. `useFetcher()` uses the same route without changing browser history.
 
 ## Navigation Lifecycle
 
@@ -131,3 +149,7 @@ The browser requests `application/vnd.vext.page+json;v=1` only for enhanced navi
 ## Client API Calls and Cache Boundary
 
 Use the generated typed API client or plain `fetch` for JSON API calls that are not page navigation. First-screen and page-navigation data should normally flow through `res.render()`. Vext's browser cache is partitioned by route, normalized URL, locale, auth/session identity, protocol, and contract digest; authenticated or `no-store` page results are not stored in the shared public cache.
+
+## Verify Data Flow
+
+Run `npm run build` and start `npm start -- --port 3000`. Direct access to `/dashboard` should show `Dashboard: 42`; `?view=compact` should show `Compact: 42`, including in the response source. With the interactive version, the GET form should switch to the compact summary; local loading should update its own result without changing the address; refresh should retain the current page until a new result arrives. Disable JavaScript and submit the GET form again to confirm a full page can still open. Stop the service afterward. See [Render Data and Cache](/frontend/render-data-and-cache) for cache policy and [API Client and Contracts](/frontend/api-client-and-contracts) for JSON APIs.

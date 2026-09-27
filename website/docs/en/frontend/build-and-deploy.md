@@ -5,11 +5,17 @@ page is the production delivery recipe; use [Frontend Configuration](./configura
 for the field-by-field reference and [Static Assets and CDN](./static-assets-and-cdn)
 for cache and media behavior.
 
+## Verify Same-Origin Delivery First
+
+Start from a [full-stack app](./getting-started) with frontend enabled. Run `npm run build` in the app root, then `npm start -- --port 3000`. Visit an existing SSR route and confirm raw HTML has content, browser interaction works, and referenced JS/CSS return 200. Stop the server afterward. App scripts invoke the locally installed CLI; the `vext` commands below likewise require an environment where that local CLI resolves.
+
+Complete this path before configuring CDN and upload. The example domain below is not a working CDN; replace it with a real address that serves the assets.
+
 ## Output
 
 Generated sources and final frontend assets commit in one transaction. Browser and server compilation, media, static pages, SEO, deploy metadata, and budgets all consume the current candidates before replacing the previous generation. Failures preserve old files; unrecorded files remain private. A later build with project ownership recovers interrupted commits. Replacement is atomic per file, so consumers use the completed build result as the consistency boundary. Upload runs after a successful build; upload failures do not roll back committed local assets. See the [build workflow](../guide/build).
 
-Static HTTP serving and deployment upload use `public-manifest.json`, generated from public files, browser outputs, media, static pages, and SEO artifacts. Server renderer outputs, their source maps, and internal metadata remain private, including when `build.server.outFile` is customized. Files manually added to outDir after a build are not automatically public. Rebuild older output to generate the required public manifest. Upload validates this boundary before applying include/exclude patterns or invoking an adapter.
+Static HTTP serving and deployment upload use `public-manifest.json`, generated from public files, browser outputs, media, static pages, and SEO artifacts. Server renderer outputs, their source maps, and internal metadata remain private, including when `build.server.outFile` is customized. Files manually added to outDir after a build are not automatically public. Upload validates the public boundary before applying include/exclude patterns or invoking an adapter.
 
 When frontend is enabled, production output includes:
 
@@ -42,11 +48,11 @@ still useful build evidence. `size-report.json` is deliberately omitted when
 configuration-dependent: browser production builds default to no source maps,
 while the backend CLI compiler defaults to external source maps.
 
-`vext start` serves the built client assets and uses `render-manifest.json` for
+`vext start` serves only files declared by `public-manifest.json` and uses `render-manifest.json` for
 SSR. In production, startup fails before listening when `index.html`,
 `render-manifest.json`, `public-manifest.json`, route asset metadata, or the referenced server renderer
 is missing or invalid; run `vext build` again to regenerate the complete
-closure.
+closure. Upload validates the public manifest too, so an input deploy manifest cannot make a private file uploadable by itself.
 
 ## Choose a Delivery Shape
 
@@ -74,13 +80,13 @@ This is the complete same-origin production path. The build creates backend
 JavaScript plus the frontend closure; the start command validates the closure
 before it accepts traffic.
 
-To upload static assets after build:
+After configuring a resolvable upload target, build and upload static assets:
 
 ```bash
 vext build --upload-assets
 ```
 
-Or run upload separately:
+Or upload an existing successful build separately, with the same target requirement:
 
 ```bash
 vext deploy assets --dry-run
@@ -107,9 +113,7 @@ Use `vext deploy assets` for ordinary deployments. Tooling that owns its own rel
 - SRI for eligible assets
 - upload key and public URL
 
-HTML is not uploaded by default because SSR still belongs to the server runtime.
-Source maps are also excluded by default; keep them on the diagnostic path
-unless a separate, deliberate source-map publication policy requires them.
+The top-level `index.html` template is not part of the upload set; dynamic SSR remains on Node. However, registered nested static HTML such as `posts/hello/index.html` and its data file can enter the upload plan. Do not interpret this as a rule that all HTML is excluded. Source maps are excluded by default; the dry run shows the actual set.
 
 ## Safe Release Sequence
 
@@ -141,29 +145,34 @@ One writer owns a state file or known storage target at a time. Partial failures
 
 Different prefixes in the same known storage namespace are serialized too, preventing parent/child prefix overlap. This coordinates local writers, not writers on different machines. State reads are bounded to 64 MiB; oversized or unverifiable files fail without replacing the original bytes. With `--json`, argument and execution failures both produce one JSON line and a nonzero exit code.
 
-Keep `stateFile` outside the frontend outDir because build output is normally cleaned.
+Keep `stateFile` outside the frontend outDir to avoid conflicts with build ownership and cleanup. Preservation of unregistered files is not a reason to mix deployment state with build output.
 
 ## Configuration Example
 
 ```ts
-frontend: {
-  deploy: {
-    assetBaseUrl: "https://cdn.example.com/my-app/",
-    integrity: true,
-    upload: {
-      enabled: true,
-      adapter: "filesystem",
-      targetDir: ".vext/frontend-cdn",
-      publicBaseUrl: "https://cdn.example.com/my-app/",
-      prefix: "my-app",
-      stateFile: ".vext/deploy/frontend-assets-state.json",
-      exclude: ["**/*.map"],
+export default {
+  frontend: {
+    enabled: true,
+    deploy: {
+      assetBaseUrl: "https://cdn.example.com/my-app/",
+      integrity: true,
+      upload: {
+        enabled: true,
+        adapter: "filesystem",
+        targetDir: ".vext/frontend-cdn",
+        publicBaseUrl: "https://cdn.example.com/my-app/",
+        prefix: "my-app",
+        stateFile: ".vext/deploy/frontend-assets-state.json",
+        exclude: ["**/*.map"],
+      },
     },
   },
-}
+};
 ```
 
 `assetBaseUrl` must be an absolute URL. `publicBaseUrl` is the public address
 reported by the upload plan, whereas `targetDir` is only a local destination
 used by the built-in filesystem adapter. Add `include`, `exclude`, and
 `concurrency` only when the default whole-manifest upload is not appropriate.
+
+Merge this into `src/config/default.ts` while retaining other app settings. This example writes only to a local staging tree; deploy that tree to a real CDN yourself, keeping URLs and upload keys aligned. A passing dry run proves the local build and plan, not remote asset availability. See [Static Assets and CDN](./static-assets-and-cdn) for cache headers, media, and cross-origin settings.

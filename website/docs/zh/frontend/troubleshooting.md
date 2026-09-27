@@ -28,7 +28,7 @@ role: troubleshooting
 
 同时确认 `frontend.enabled`、实际配置的页面根与扩展名；默认目录之外不能仅按文件名猜page id。页面存在也不会自动创建URL，需要后端路由调用 `res.render()`。
 
-**复验：** 重新dev/build，在实际路由URL请求HTML，确认返回预期页面且日志不再报页面查找失败；分别检查“HTTP路由404”和“已进入handler但render找不到page”，二者修复位置不同。详见[页面与渲染](/zh/frontend/pages-and-rendering)。
+**复验：** 重新dev/build，在实际路由URL请求HTML，确认返回预期页面且日志不再报页面查找失败；分别检查“HTTP路由404”和“已进入handler但render找不到page”，二者修复位置不同。详见[路由与页面](/zh/frontend/routing-and-pages)。
 
 ## 服务端代码进入浏览器 bundle
 

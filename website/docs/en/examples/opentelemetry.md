@@ -1,21 +1,27 @@
 # OpenTelemetry Observability
 
-This document only introduces how to access `@devcodex/opentelemetry` in the **VextJS** scenario.
+This page covers VextJS OpenTelemetry integration: confirm the plugin works,
+verify Traces, Metrics, and Logs with local files, then connect a Collector.
+Start from a TypeScript API project in [Quick Start](/guide/quick-start).
+The published package checked on 2026-09-25 was
+`@devcodex/opentelemetry@2.1.17`, with a Vext peer range of `>=0.2.5`.
+These versions describe the checked scope; the install command does not pin
+the framework version.
 
 > For access instructions to other frameworks (Egg.js/Koa/Express/Hono/Fastify), please check the GitHub repository directly:
-> [`vextjs/vextjs-plugins`](https://github.com/devcodex-labs/opentelemetry)
+> [`devcodex-labs/opentelemetry`](https://github.com/devcodex-labs/opentelemetry)
 
 ---
 
 ## Directory overview (VextJS-only)
 
-- [Quick Start (VextJS Framework)](#Quick Start vextjs-framework)
-- [Understand first: VextJS dual-entry priority](#Understand vextjs-dual-entry priority first)
-- [Local testing (without Docker)](#Local testing without-docker)
-- [`/_otel/status` status check interface](#\_otelstatus-status check interface)
-- [Configuration method (VextJS)](#Configuration method vextjs)
-- [Declarative capture (`capture`)](#Declarative capture capture)
-- [Complete Configuration Reference](#Complete Configuration Reference)
+- [Quick start (VextJS framework)](#quick-start-vextjs-framework)
+- [VextJS configuration and initialization](#understand-vextjs-configuration-and-initialization-order)
+- [Local testing without Docker](#local-testing-no-docker-required)
+- [`/_otel/status` status endpoint](#_otelstatus-status-check-interface)
+- [VextJS configuration](#configuration-method-vextjs)
+- [Declarative capture](#declarative-capture-capture)
+- [Complete configuration reference](#complete-configuration-reference)
 - [Production Best Practices](#production-best-practices)
 - [FAQ](#faq)
 
@@ -46,102 +52,150 @@ export default opentelemetryPlugin({ serviceName: "my-app" });
 > **Note**: `opentelemetryPlugin` is imported through the `@devcodex/opentelemetry/vextjs` subpath (VextJS specific).
 > The main entrance `@devcodex/opentelemetry` only exports framework-independent tools (`createWithSpan`, `getOtelStatus`).
 
-### 3. Start
+### 3. Add a verifiable route and start
+
+Merge this config into the project:
+
+```typescript
+// src/config/default.ts
+export default { host: "127.0.0.1", port: 3000, adapter: "native" };
+```
+
+This route performs one local demo operation. It does not contact a payment
+service or database and assumes this page's plugin remains enabled:
+
+```typescript
+// src/routes/otel-demo.ts
+import { defineRoutes } from "vextjs";
+
+export default defineRoutes((app) => {
+  app.get("/", {}, async (req, res) => {
+    const result = await req.app.otel!.withSpan("demo.work", async (span) => {
+      span.setAttribute("demo.kind", "local");
+      req.app.logger.info({ demo: true }, "otel demo completed");
+      return { ok: true };
+    });
+    res.json(result);
+  });
+});
+```
 
 ```bash
-vext start # production mode
-vext dev # development mode
+npm run dev
 ```
 
-> `vext start` / `vext dev` automatically runs the OTel SDK initialization script (`@devcodex/opentelemetry` has declared `"vext.preload": "./dist/instrumentation.js"` in its `package.json`, VextJS CLI automatically scans and injects it with `--import`, no manual configuration is required).
-> **Not reported by default** - The SDK initialization script reads the `vext.otel.endpoint` field of the **project's own `package.json`** at startup to determine the reporting address. When not configured, it is a safe noop (the data is discarded and will not be sent to any address).
+For production, stop dev first, then run `npm run build -- --typecheck` and
+`npm start`. Do not run both servers on the same port simultaneously.
 
-### 4. Verification
+The CLI discovers `vext.preload` from installed dependencies and injects the
+instrumentation entry. The current package's default preload prepares that
+entry; SDK initialization may wait until plugin setup. With no export target
+and no forced SDK preload, the SDK is not initialized. Set `preloadSdk: true`
+as described below when auto-instrumentation must start before app modules.
+
+### 4. Verify the default state
+
+With no other OTel environment settings:
 
 ```bash
-curl http://localhost:3000/_otel/status
+curl -i http://127.0.0.1:3000/_otel/status
+curl -i http://127.0.0.1:3000/otel-demo
 ```
 
-```json
-{
-  "sdk": "initialized",
-  "serviceName": "my-app",
-  "exportMode": "otlp-http",
-  "exportTarget": "http://otel-collector.internal:4318",
-  "protocol": "http",
-  "autoInstrumentation": true,
-  "samplingRatio": 1
-}
-```
-
-**Done.** All telemetry features are automatically enabled.
+Expect `sdk: "noop"` and `exportMode: "none"` in status; the business route
+still returns 200. No telemetry is exported, so this does not prove a
+Collector received data. Use the local file workflow below to verify output.
 
 ---
 
-## First understand: VextJS dual entry priority
+<a id="understand-vextjs-configuration-and-initialization-order"></a>
 
-OpenTelemetry configuration under VextJS is divided into two formal entrances, but with different responsibilities:
+## Understand VextJS configuration and initialization order
 
-| Entrance                                        | Effective stage                  | What is most suitable to put                                                                                                               | What is not recommended                                                              |
-| ----------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| `package.json` → `vext.otel`                    | preload / before process startup | `serviceName`, `endpoint`, `protocol`, `headers`, `sampling` and other "SDK needs to know from the beginning" default export configuration | `ignorePaths`, `capture`, log bridging, request-level side effects                   |
-| `src/plugins/otel.ts` → `opentelemetryPlugin()` | plugin setup + request           | `tracing`, `metrics`, `lifecycle`, `logs.bridgeAppLogger`, and the addition/override of the exporter in the setup phase                    | Expect it to write back the SDK that has been started in the preload phase. Resource |
+There are three configuration locations. Keep SDK lifecycle and request
+observation responsibilities separate:
+
+| Entry                          | Current responsibility                                                                                                           |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `package.json` `vext.otel`     | Preload config: `enabled`, `preloadSdk`, `serviceName`, `endpoint`, `protocol`, `headers`, `sampling.ratio`, `metricIntervalMs`. |
+| `app.config.otel`              | Plugin fallback for `enabled`, `serviceName`, `endpoint`, `protocol`, `headers`, `insecure`.                                     |
+| `opentelemetryPlugin(options)` | Explicit plugin options take priority for tracing, metrics, capture, lifecycle, log bridging, and exporters not yet configured.  |
 
 ### Recommended order
 
-1. **First solidify the default export target in `package.json vext.otel`**: Make CLI preload, startup log and `/_otel/status` consistent from the beginning.
-2. **Add request-side behavior** in `opentelemetryPlugin()`: such as `ignorePaths`, `capture`, log bridging and runtime additional tags.
-3. **If `endpoint/protocol/headers` is written in both places, try to keep it consistent**: avoid the cognitive bias of "one address at startup and another address at runtime".
+1. Set `serviceName` and the default export target in `package.json`.
+   Set `preloadSdk: true` if early auto-instrumentation is needed.
+2. Add request observation behavior in the plugin. Keep its export target
+   consistent with package config.
+3. **An already configured exporter is not replaced by a later call.**
+   Current `attachExporterToSdk` fills only an unconfigured delegate, even
+   though the environment variables displayed by status may change later.
+   The status endpoint is therefore not complete evidence of the actual
+   delivery target. Restart after changing target or sampling, then inspect
+   the output file or Collector.
+4. In default delayed mode, plugin exporter options resolve in order:
+   options → `app.config.otel` → package. They do not reread every OTel
+   environment variable. If relying only on environment variables, enable
+   early SDK initialization explicitly and verify actual output.
 
-### `endpoint` / `protocol` quick check
+### `endpoint` and `protocol` quick reference
 
-| Target                 | Recommended configuration                             | `protocol`         | Results                             |
-| ---------------------- | ----------------------------------------------------- | ------------------ | ----------------------------------- |
-| Do not export any data | Do not write `endpoint`, or explicitly write `"none"` | —                  | SDK security noop / Do not report   |
-| Local file debugging   | `"./otel-data"`                                       | —                  | Press `pid` to write `*.jsonl` file |
-| OTLP HTTP Collector    | `"http://otel-collector.internal:4318"`               | `"http"` (default) | Escalation via OTLP/HTTP            |
-| OTLP gRPC Collector    | `"otel-collector.internal:4317"`                      | `"grpc"`           | Report via gRPC h2c                 |
+| Target              | Recommended configuration               | `protocol`         | Result                                                                             |
+| ------------------- | --------------------------------------- | ------------------ | ---------------------------------------------------------------------------------- |
+| Export nothing      | Omit endpoint or set `none`             | —                  | SDK stays off by default; explicit `preloadSdk: true` may start it without export. |
+| Local file debug    | `"./otel-data"`                         | —                  | Write per-PID `*.jsonl` files.                                                     |
+| OTLP HTTP Collector | `"http://otel-collector.internal:4318"` | `"http"` (default) | Export via OTLP/HTTP.                                                              |
+| OTLP gRPC Collector | `"otel-collector.internal:4317"`        | `"grpc"`           | Exporter details depend on initialization path; see below.                         |
 
----
+The current package has two gRPC paths. Early SDK Trace/Metrics use a gRPC
+exporter, while Logs still construct an HTTP exporter. When the plugin
+attaches an exporter, `insecure: true` uses h2c and `false` uses TLS; the
+h2c branch does not forward configured headers. For all three signals or
+authenticated delivery, verify the OTLP/HTTP path on this page. Do not
+infer successful delivery from `protocol: "grpc"` or status alone.
 
-## What will happen if the reporting address is not configured?
+## What happens without an export address?
 
-| scenario                                                   | endpoint value      | behavior                                                                                                   |
-| ---------------------------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------- |
-| No endpoint configured                                     | `"none"`            | **SDK starts but does not export data** (auto-instrumentation still takes effect, but no telemetry output) |
-| The address is configured but the Collector is unreachable | Configuration value | The SDK internal batch is discarded after timeout, and there is no error in the console                    |
-| `enabled: false`                                           | —                   | Completely no-op, does not initialize the SDK                                                              |
+| Scenario                                                       | Current behavior                                                                                                        |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| No endpoint, default CLI preload                               | Delay or skip SDK initialization. Plugin extensions can work without telemetry output.                                  |
+| `endpoint: none` and `preloadSdk: true`                        | SDK may initialize but exporters remain none.                                                                           |
+| Address set but Collector unreachable                          | Requests and delivery are separate; export may fail or drop. Inspect backend and exporter diagnostics.                  |
+| Package `vext.otel.enabled: false` or `OTEL_SDK_DISABLED=true` | SDK and plugin integration are disabled; no status route is registered, and business routes must not assume `app.otel`. |
+| Only plugin `options.enabled: false`                           | Skip plugin; any SDK initialized elsewhere is not retroactively undone.                                                 |
 
-> ✅ **Safe Default** - When the endpoint is not configured, data will not be sent to any address and will not be written to local files.
-> To enable escalation, you can:
->
-> - Configure in `package.json` `vext.otel.*` (recommended, it will take effect during the preloading phase)
-> - or configured in `opentelemetryPlugin({...})` (setup phase appends/overwrites the exporter)
-
----
+By default, nothing is sent to a Collector or local file. Setting `none`
+is not a reliable runtime off switch if another entry already initialized
+an exporter. Coordinate config and restart.
 
 ## Local testing (no Docker required)
 
 Don’t want to install Jaeger/Collector? You can export data to **local files** and view the original data format directly.
 
-### Solution 1: Export to local file (recommended)
+### Option 1: Export to local files (recommended)
 
-Configure the reporting address in the project `package.json` (read by the SDK initialization script to control the actual export):
+Set the export address in the project's `package.json`. The SDK
+initialization entry reads it to choose the actual export target:
 
 ```json
 {
   "vext": {
     "otel": {
+      "serviceName": "my-app",
+      "preloadSdk": true,
       "endpoint": "./otel-data"
     }
   }
 }
 ```
 
-> `package.json vext.otel.endpoint` is the **recommended preloading configuration source** in VextJS mode, which can make the startup phase and running phase consistent from the beginning.
-> If `endpoint / protocol / headers` is passed in again in `opentelemetryPlugin({...})`, the exported configuration will continue to be appended or overwritten in the setup phase. Relative paths are still resolved based on `process.cwd()`.
+`package.json vext.otel.endpoint` is the recommended preload source in
+VextJS mode so startup and runtime agree from the beginning. Merge this
+fragment into an existing `package.json`; keep scripts and dependencies.
+A plugin can only fill exporters that have not already been configured.
+Relative paths resolve from `process.cwd()`, so start in the app root.
 
-Create a plug-in (just keep `serviceName` consistent with `package.json`):
+Keep the plugin's service name aligned:
 
 ```typescript
 // src/plugins/otel.ts
@@ -150,99 +204,49 @@ import { opentelemetryPlugin } from "@devcodex/opentelemetry/vextjs";
 export default opentelemetryPlugin({ serviceName: "my-app" });
 ```
 
+After changing `package.json`, stop and restart the service so the early
+SDK reads the new config:
+
 ```bash
-vext dev
-# Check the file after making several requests (the file name will have the current process pid)
-cat ./otel-data/traces.*.jsonl
-cat ./otel-data/metrics.*.jsonl
-cat ./otel-data/logs.*.jsonl
+npm run dev
+# In another terminal, request the real demo route above.
+curl -i http://127.0.0.1:3000/otel-demo
+curl -i http://127.0.0.1:3000/_otel/status
 ```
 
-The plug-in automatically creates a directory; in order to avoid cluster/multiple worker processes writing the same file concurrently, the current implementation will write files according to `process.pid`:
+The plugin creates the directory. To avoid multiple workers writing the same
+file concurrently, the implementation uses per-process files:
 
 - `traces.<pid>.jsonl`
 - `metrics.<pid>.jsonl`
 - `logs.<pid>.jsonl`
 
-Each row is a JSON record that can be viewed via glob merging.
+Wait for batching and the metric cycle (15 seconds by default). Enabling
+the plugin without business requests does not guarantee records in all three
+files. In PowerShell, use `Get-Content ./otel-data/traces.*.jsonl`, then
+inspect metrics and logs; on Unix use `cat`. Confirm the `demo.work` span,
+HTTP metrics, and `otel demo completed` log. These files are for debugging;
+the application owns rotation and retention.
 
-**`traces.<pid>.jsonl` example (one span per line):**
+**Actual file structure:**
 
-```json
-{
-  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
-  "parentId": null,
-  "name": "GET /users/:id",
-  "id": "00f067aa0ba902b7",
-  "kind": 1,
-  "timestamp": 1743431641234000,
-  "duration": 45230,
-  "attributes": {
-    "http.method": "GET",
-    "http.route": "/users/:id",
-    "http.status_code": 200,
-    "http.request_id": "my-app-a1b2c3d4",
-    "vext.service": "my-app",
-    "http.url": "http://localhost:3000/users/42",
-    "net.peer.ip": "127.0.0.1"
-  },
-  "status": { "code": 0 },
-  "events": [],
-  "resource": {
-    "service.name": "my-app",
-    "service.version": "1.0.0",
-    "deployment.environment": "development"
-  }
-}
-```
-
-**`metrics.<pid>.jsonl` example (batch of metrics per line):**
-
-```json
-{
-  "timestamp": "2026-04-02T10:30:00.000Z",
-  "metrics": [
-    {
-      "descriptor": { "name": "http.server.duration", "unit": "ms" },
-      "dataPointType": "HISTOGRAM",
-      "dataPoints": [
-        {
-          "attributes": {
-            "http.method": "GET",
-            "http.route": "/users/:id",
-            "http.status_code": 200
-          },
-          "count": 5,
-          "sum": 225,
-          "min": 12,
-          "max": 89
-        }
-      ]
-    },
-    {
-      "descriptor": { "name": "http.server.request.total" },
-      "dataPointType": "SUM",
-      "dataPoints": [
-        {
-          "attributes": {
-            "http.method": "GET",
-            "http.route": "/users/:id",
-            "http.status_code": 200
-          },
-          "value": 5
-        }
-      ]
-    }
-  ]
-}
-```
+- Traces: one span per line with `traceId`, `spanId`, `name`, and
+  `attributes`. Time and duration use SDK high-resolution arrays, not the
+  old example's `id` and microsecond `timestamp`.
+- Metrics: each line contains a `timestamp` and SDK `ResourceMetrics`;
+  metrics live under `metrics.scopeMetrics[].metrics`, not a top-level array.
+- Logs: each line serializes an SDK LogRecord. Field and Resource shape
+  follow the installed SDK; debug JSONL is not a fixed OTLP wire protocol.
+- Optional parent span and resource fields may be absent. Build a reader
+  from the installed version's actual output, and inspect all three files
+  rather than relying only on status.
 
 ### Option 2: Local Jaeger (when Docker is available)
 
-```bash
-docker run -d --name jaeger -p 4318:4318 -p 16686:16686 \
-  -e COLLECTOR_OTLP_ENABLED=true jaegertracing/all-in-one:latest
-```
+Use the [official Jaeger docs](https://www.jaegertracing.io/docs/) to start
+a version appropriate service with an OTLP/HTTP receiver and map port 4318
+locally. Jaeger primarily verifies Traces; Metrics and Logs need their own
+receiving backend.
 
 Configure local Jaeger in project `package.json`:
 
@@ -256,7 +260,9 @@ Configure local Jaeger in project `package.json`:
 }
 ```
 
-Just keep the plugin as simple as possible:
+Choose either this Jaeger endpoint or the file endpoint above. Keep
+`serviceName` and `preloadSdk: true` from the file setup. Query
+`demo.work` under that service in the Jaeger UI. The plugin stays minimal:
 
 ```typescript
 // src/plugins/otel.ts
@@ -266,9 +272,8 @@ export default opentelemetryPlugin({ serviceName: "my-app" });
 ```
 
 ```bash
-vext dev
-curl http://localhost:3000/users
-open http://localhost:16686
+npm run dev
+curl http://127.0.0.1:3000/otel-demo
 ```
 
 ---
@@ -286,12 +291,12 @@ If you need to check out the following:
 
 Please check the GitHub repository directly:
 
-- [`vextjs/vextjs-plugins`](https://github.com/devcodex-labs/opentelemetry)
+- [`devcodex-labs/opentelemetry`](https://github.com/devcodex-labs/opentelemetry)
 
 It is recommended to read the following in the warehouse first:
 
-- `@devcodex/opentelemetry/README.md`
-- `@devcodex/opentelemetry/changelogs/`
+- `README.md`
+- `changelogs/`
 
 ## `/_otel/status` Status check interface
 
@@ -305,25 +310,31 @@ curl http://localhost:3000/_otel/status
 {
   "sdk": "initialized",
   "serviceName": "my-app",
-  "exportMode": "otlp-grpc",
-  "exportTarget": "otel-collector.internal:4317",
-  "protocol": "grpc",
+  "exportMode": "file",
+  "exportTarget": "/absolute/path/otel-data",
+  "protocol": "http",
   "autoInstrumentation": true,
   "samplingRatio": 1
 }
 ```
 
-| Field                 | Description                                                                                              |
-| --------------------- | -------------------------------------------------------------------------------------------------------- |
-| `sdk`                 | `"initialized"` = SDK OK / `"noop"` = SDK not initialized                                                |
-| `serviceName`         | The currently effective service name                                                                     |
-| `exportMode`          | `"otlp-grpc"` = h2c gRPC / `"otlp-http"` = HTTP OTLP / `"file"` = local file / `"none"` = not configured |
-| `exportTarget`        | The currently effective reporting target (`"none"` when not configured)                                  |
-| `protocol`            | Current export protocol (`"http"` / `"grpc"`)                                                            |
-| `autoInstrumentation` | Whether automatic detection is enabled (MongoDB/Redis/MySQL, etc.)                                       |
-| `samplingRatio`       | Current sampling rate                                                                                    |
+| Field                 | Description                                                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `sdk`                 | `"initialized"` means initialization was marked; `"noop"` means SDK not initialized.                         |
+| `serviceName`         | The currently effective service name                                                                         |
+| `exportMode`          | `"otlp-grpc"`, `"otlp-http"`, `"file"`, or `"none"` describe mode; verify actual signal delivery separately. |
+| `exportTarget`        | Displayed target; verify actual output separately.                                                           |
+| `protocol`            | Current export protocol (`"http"` / `"grpc"`)                                                                |
+| `autoInstrumentation` | Whether automatic detection is enabled (MongoDB/Redis/MySQL, etc.)                                           |
+| `samplingRatio`       | Current sampling rate                                                                                        |
 
-**VextJS**: Automatically registered after startup, no manual configuration required.
+When the plugin is enabled, the adapter registers GET `/_otel/status`
+directly before ordinary global middleware. Do not rely on ordinary route
+auth or later middleware to protect it. With this page's native default
+response wrapper, the fields above are under `data`; custom or disabled
+wrapping changes that shape. Status variables do not prove the backend
+received anything. The current package displays `samplingRatio: 1` when
+the value is zero, so this field alone cannot prove zero sampling.
 
 **Production environment** It is recommended to restrict intranet access at the gateway layer.
 
@@ -333,7 +344,9 @@ curl http://localhost:3000/_otel/status
 
 ### Traces (link tracing)
 
-Each HTTP request generates a span containing:
+HTTP auto-instrumentation creates request spans and the plugin adds
+attributes when the SDK is enabled, the library is supported, and sampling
+allows recording. Attributes may include:
 
 | Properties         | Example values                     | Description                                                   |
 | ------------------ | ---------------------------------- | ------------------------------------------------------------- |
@@ -345,7 +358,10 @@ Each HTTP request generates a span containing:
 | `http.url`         | `"http://localhost:3000/users/42"` | Full request URL                                              |
 | `net.peer.ip`      | `"127.0.0.1"`                      | Client IP                                                     |
 
-After installing `@opentelemetry/auto-instrumentations-node`, database operations, HTTP external calls, etc. will automatically generate sub-Spans.
+The package already depends on `auto-instrumentations-node`; do not install
+it again solely for the default integration. Early initialization, module
+load order, specific library versions, and sampling determine whether child
+spans appear. Installation alone does not prove them.
 
 ### Metrics (metric monitoring)
 
@@ -357,20 +373,25 @@ After installing `@opentelemetry/auto-instrumentations-node`, database operation
 | `http.server.request.size`    | Histogram (bytes) | method, route              | Request body size distribution (recorded when Content-Length exists)  |
 | `http.server.response.size`   | Histogram (bytes) | method, status_code        | Response body size distribution (recorded when Content-Length exists) |
 
-> **`ignorePaths` suppresses both Trace and Metrics** - Ignored paths (such as `/health`) will not produce any span or metric data and will not cause noise in the monitoring panel.
+> `ignorePaths` suppresses this plugin's span attribute handling and HTTP
+> metrics on matching paths. It does not remove a span already created by
+> HTTP auto-instrumentation or skip lifecycle callbacks. Configure the
+> underlying instrumentation/exporter for full filtering. Current
+> `request.size` uses raw `req.path` as a label, while other metrics prefer
+> a matched route; assess high-cardinality paths separately.
 
-**Node.js Runtime indicators** (automatically reported through `@opentelemetry/instrumentation-runtime-node`):
-
-| Indicator name                           | Description                       |
-| ---------------------------------------- | --------------------------------- |
-| `process.cpu.usage`                      | Process CPU usage                 |
-| `process.memory.usage`                   | Heap memory usage (heap_used/rss) |
-| `nodejs.eventloop.lag`                   | Event loop delay                  |
-| `nodejs.gc.duration` / `nodejs.gc.count` | GC time and times                 |
+**Node.js runtime metrics** come from the bundled runtime-node
+instrumentation and names may vary by version. The current package includes
+definitions such as `nodejs.eventloop.delay.*`,
+`nodejs.eventloop.utilization`, and `v8js.memory.heap.used`. Do not infer
+CPU, RSS, or GC metric names from an older example; check the current local
+metrics file or Collector.
 
 ### Logs (log correlation)
 
-Each request log is automatically injected with `trace_id` + `span_id`:
+Framework logs can include `trace_id` and `span_id` after the plugin writes
+a sampled, recording active span to requestContext. An inactive context,
+ignored path, or unsampled request does not guarantee these fields:
 
 ```json
 {
@@ -383,12 +404,12 @@ Each request log is automatically injected with `trace_id` + `span_id`:
 
 Logs and links can be correlated in Grafana Loki / ELK via `trace_id`.
 
-**Structured Log (Schema A + Schema B) **
+**Structured logs (Schema A + Schema B)**
 
 When the log needs to be landed (Schema A) and reported to the OTLP Collector (Schema B) at the same time, use the two factory functions provided by `@devcodex/opentelemetry/log`:
 
 - `createStructuredLogFormatter` — Schema A structured JSON formatter (fixed field order)
-- `createOtelLogBridge` — Schema B OTel LogRecord bridge (via `globalThis._otelLogger`)
+- `createOtelLogBridge` — Schema B OTel LogRecord bridge through the current OTel Logs API provider.
 
 **Schema A — Implementation log JSON (complete fields)**
 
@@ -459,8 +480,11 @@ VextJS's OTel configuration is divided into two layers with different purposes:
 
 ### First layer: Default export configuration during preloading phase (`package.json`, recommended)
 
-The SDK initialization script (`instrumentation.ts`, executed before application code through `vext.preload`) is read first and determines the default export configuration when the process starts.
-If `endpoint / protocol / headers` is subsequently passed in `opentelemetryPlugin({...})`, the plugin phase will continue to append or overwrite the exporter.
+The SDK initialization script (`instrumentation.ts`, executed before app
+code through `vext.preload`) reads the default export config. The CLI
+delays SDK startup by default; `preloadSdk: true` starts it before app
+modules. The plugin can only fill exporters not already configured and
+cannot replace an existing target.
 
 Configure read priority (high → low):
 
@@ -483,7 +507,11 @@ Configure read priority (high → low):
 
 ### Second layer: runtime plug-in behavior (`src/plugins/otel.ts`)
 
-The plug-in layer is responsible for runtime tracer / meter / logger behavior, such as `ignorePaths`, indicator buckets, log bridging, and appending/overwriting exporters in the setup phase.
+The plugin owns runtime tracer, meter, and logger behavior such as
+`ignorePaths`, metric buckets, log bridging, and adding exporters not yet
+configured during setup. The option snippets here and in capture replace
+the **same plugin's options** from Quick Start; do not register multiple
+copies.
 
 ```typescript
 export default opentelemetryPlugin({
@@ -518,8 +546,8 @@ export default opentelemetryPlugin({
     body: ["orderNo", "customer.id"],
   },
   metrics: {
-    labels: (_ctx, req) => ({
-      "tenant.id": req.headers["x-tenant-id"] ?? "default",
+    labels: () => ({
+      "app.zone": process.env.APP_ZONE ?? "local",
     }),
   },
 });
@@ -535,7 +563,11 @@ The generated attribute prefix is fixed to:
 Key constraints:
 
 - `query: true` / `params: true` means **explicitly enable full mode**; by default, full mode will not be automatically taken.
-- `headers` / `body` It is still recommended to only collect whitelists and not provide the default full mode to avoid accidentally collecting sensitive fields such as `authorization`, `cookie`, passwords, and mobile phone numbers.
+- The current version also supports explicit full mode for headers and body;
+  neither is collected by default, and this example uses allowlists. Use
+  `fields`, `exclude`, `sensitiveKeys`, `maxValueLength`, `maxDepth`,
+  `maxItems`, and `output` to bound, redact, and snapshot values. Body capture
+  reads parsed data and does not consume the request stream again.
 - `capture` generates **Span attributes** and will not automatically go into `metrics.labels`; metric dimensions should still be provided separately through `metrics.labels` and keep the cardinality low.
 
 ---
@@ -545,7 +577,9 @@ Key constraints:
 ### opentelemetryPlugin() options
 
 ```typescript
-opentelemetryPlugin({
+import { opentelemetryPlugin } from "@devcodex/opentelemetry/vextjs";
+
+export default opentelemetryPlugin({
   // ── Basics ────────────────────────────────────────
   serviceName: "my-app",
   endpoint: "http://collector:4318",
@@ -556,20 +590,22 @@ opentelemetryPlugin({
   tracing: {
     enabled: true,
     ignorePaths: ["/health", "/_otel/status", /^\/internal\//],
-    spanNameResolver: (req) => `${req.method} ${req.route ?? req.path}`,
+    spanNameResolver: (ctx) => `${ctx.method} ${ctx.route ?? ctx.path}`,
     startAttributes: (_ctx, req) => ({
-      "user.id": req.headers["x-user-id"] ?? "",
-      "tenant.id": req.headers["x-tenant-id"] ?? "",
+      "user.id": String(req.headers["x-user-id"] ?? ""),
+      "tenant.id": String(req.headers["x-tenant-id"] ?? ""),
     }),
     endAttributes: (_ctx, req) => ({
       "http.request_id_present": Boolean(req.requestId),
     }),
-  }, // ── Indicators ─────────────────────────────────────────
+  },
+
+  // ── Metrics ─────────────────────────────────────────
   metrics: {
     enabled: true,
     durationBuckets: [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000],
-    labels: (_ctx, req) => ({
-      "tenant.id": req.headers["x-tenant-id"] ?? "default",
+    labels: () => ({
+      "app.zone": process.env.APP_ZONE ?? "local",
     }),
   },
 
@@ -625,118 +661,120 @@ opentelemetryPlugin({
 
 ### Environment variables
 
-> The following environment variables are natively supported by OpenTelemetry SDK, but in VextJS scenarios it is recommended to solidify and export the configuration through `package.json vext.otel`.
+These variables have different readers in the package and SDK. For VextJS,
+prefer `package.json vext.otel` for a stable export configuration.
 
-| variable                      | default value             | description                           |
-| ----------------------------- | ------------------------- | ------------------------------------- |
-| `OTEL_TRACES_SAMPLER`         | `"parentbased_always_on"` | Sampling strategy                     |
-| `OTEL_TRACES_SAMPLER_ARG`     | `"1"`                     | Sampling rate (e.g. `0.1` = 10%)      |
-| `OTEL_METRIC_EXPORT_INTERVAL` | `15000`                   | Metric export interval (milliseconds) |
-| `OTEL_LOG_LEVEL`              | `"info"`                  | SDK log level                         |
+| Variable                                                                                                           | Current reading boundary                                                                                                      |
+| ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `OTEL_SERVICE_NAME` / `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_PROTOCOL` / `OTEL_EXPORTER_OTLP_HEADERS` | Supported by the early config reader; corresponding package fields take priority.                                             |
+| `OTEL_TRACES_SAMPLER_ARG`                                                                                          | Used for a 0–1 ratio when package config omits it; default 1. Delayed plugin startup does not fully reuse that reading chain. |
+| `OTEL_TRACES_SAMPLER`                                                                                              | NodeSDK strategy input; it is not guaranteed to override a sampler explicitly set by the package.                             |
+| `OTEL_METRIC_EXPORT_INTERVAL`                                                                                      | Early default is 15000 ms; `package.metricIntervalMs` wins. A plugin cannot change an already created reader's period.        |
+| `OTEL_SDK_DISABLED`                                                                                                | String `true` disables SDK and plugin.                                                                                        |
+| `VEXT_OTEL_FORCE_SDK`                                                                                              | Truthy value forces early SDK startup; `package.preloadSdk: true` is the explicit counterpart.                                |
+| `OTEL_NODE_ENABLED_INSTRUMENTATIONS` / `OTEL_NODE_DISABLED_INSTRUMENTATIONS`                                       | Select auto-instrumentations and trigger early SDK startup.                                                                   |
+| `OTEL_LOG_LEVEL`                                                                                                   | SDK diagnostics input; output also depends on the diagnostic logger. The plugin does not promise a default console level.     |
 
----
+Additional plugin options: `enabled` defaults on. `insecure` only applies
+when the plugin configures a gRPC exporter. `resourceAttributes` is currently
+a compatibility placeholder, and the package reader does not read a same-name
+field; use supported `OTEL_RESOURCE_ATTRIBUTES` for SDK Resource attributes
+and verify actual output. `statusEndpoint` cannot set a custom path.
+Tracing/metrics default on, `ignorePaths` defaults empty, and
+`logs.bridgeAppLogger` defaults on when the endpoint is not `none`.
 
-## Access backend
+Lifecycle callbacks should finish synchronously. Exceptions warn and
+continue, so they are not authorization or transaction hooks. An exception
+path is observed as 500 and may differ from the HTTP status produced by
+later business error conversion. `metrics.labels` applies only to
+duration/total; capture only adds span attributes.
+
+## Connect to a backend
 
 ### Local development
 
-| Backend                | Startup method                                                                                      | endpoint configuration                                     |
-| ---------------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| **None (file export)** | Docker not required                                                                                 | `package.json vext.otel.endpoint: "./otel-data"`           |
-| **Jaeger**             | `docker run -d -p 4318:4318 -p 16686:16686 -e COLLECTOR_OTLP_ENABLED=true jaegertracing/all-in-one` | `package.json vext.otel.endpoint: "http://localhost:4318"` |
-| **Grafana LGTM**       | `docker run -d -p 3000:3000 -p 4318:4318 grafana/otel-lgtm`                                         | `package.json vext.otel.endpoint: "http://localhost:4318"` |
+| Backend                | Startup method                                                                                                       | `endpoint` configuration                                   |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| **None (file export)** | No Docker required                                                                                                   | `package.json vext.otel.endpoint: "./otel-data"`           |
+| **Jaeger**             | Enable OTLP/HTTP according to the official deployment instructions for your Jaeger version; primarily inspect traces | `package.json vext.otel.endpoint: "http://localhost:4318"` |
+| **Grafana LGTM**       | `docker run -d -p 3001:3000 -p 4318:4318 grafana/otel-lgtm`                                                          | `package.json vext.otel.endpoint: "http://localhost:4318"` |
 
 ### Cloud vendors
 
-| Vendor                 | endpoint                                     | headers                              |
-| ---------------------- | -------------------------------------------- | ------------------------------------ |
-| **New Relic**          | `https://otlp.nr-data.net:4318`              | `{ "api-key": "LICENSE_KEY" }`       |
-| **Grafana Cloud**      | `https://otlp-gateway-....grafana.net/otlp`  | `{ "Authorization": "Basic TOKEN" }` |
-| **Datadog**            | `http://dd-agent-host:4318`                  | —                                    |
-| **Alibaba Cloud ARMS** | Reference Alibaba Cloud OTLP access document | Reference document                   |
+These are example address shapes. Confirm the actual region, tenant endpoint, receiver protocol, and authentication fields in the vendor console and official integration documentation. This table does not imply that these remote services have been verified here.
 
-> Cloud vendor token is recommended to be injected through environment variables (K8s Secret) instead of hard-coded into the code.
+| Vendor                 | `endpoint`                                         | `headers`                            |
+| ---------------------- | -------------------------------------------------- | ------------------------------------ |
+| **New Relic**          | `https://otlp.nr-data.net:4318`                    | `{ "api-key": "LICENSE_KEY" }`       |
+| **Grafana Cloud**      | `https://otlp-gateway-....grafana.net/otlp`        | `{ "Authorization": "Basic TOKEN" }` |
+| **Datadog**            | `http://dd-agent-host:4318`                        | —                                    |
+| **Alibaba Cloud ARMS** | See Alibaba Cloud's OTLP integration documentation | See that documentation               |
+
+> Supply cloud vendor tokens through environment variables, such as Kubernetes Secrets, rather than embedding them in application code.
 
 ---
 
 ## Auto-Instrumentation
 
-Under default access, `@devcodex/opentelemetry` already comes with `@opentelemetry/auto-instrumentations-node`, and the SDK will automatically patch common libraries, and you can obtain link tracking for database queries, HTTP external calls, message queues, etc. without modifying any business code.
+`@devcodex/opentelemetry` includes `@opentelemetry/auto-instrumentations-node` for common libraries. Whether database queries, outgoing HTTP calls, and message queues produce spans depends on SDK initialization order, library compatibility, enabled instrumentations, and sampling.
 
 ### Installation
 
-By default, `vext start` / `vext dev` is used to take effect automatically after startup.
+For automatic instrumentation, set `vext.otel.preloadSdk: true` in `package.json` and start with `vext dev` or `vext start`. Confirm that the SDK initializes before the business libraries you want to instrument are loaded. Starting it only in the plugin phase cannot reliably patch libraries that are already loaded.
 
-If your **application code** needs to directly `import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node"` for in-depth customization, then declare it as a direct dependency of the application itself.
+If **application code** directly imports `getNodeAutoInstrumentations` from `@opentelemetry/auto-instrumentations-node` for deeper customization, declare that package as an application direct dependency.
 
 ### Supported libraries
 
-| Categories        | Library                          | Automatically track content                        |
-| ----------------- | -------------------------------- | -------------------------------------------------- |
-| **Database**      | MongoDB (`mongodb` / `mongoose`) | Query operation, collection name, time consumption |
-|                   | PostgreSQL (`pg`)                | SQL statement, table name, time consumption        |
-|                   | MySQL (`mysql` / `mysql2`)       | SQL statement, table name, time consumption        |
-|                   | Redis (`ioredis` / `redis`)      | Command, key, time consumption                     |
-| **HTTP**          | Node.js `http` / `https`         | External HTTP calls, URLs, status codes            |
-|                   | `undici` / `fetch`               | Same as above, Node.js 20+ has built-in fetch      |
-| **Message Queue** | `amqplib` (RabbitMQ)             | Queue name, message sending/consuming              |
-|                   | `kafkajs`                        | Topic, message sending/consuming                   |
-| **Cache**         | `memcached`                      | Operation command, key                             |
-| **RPC**           | `@grpc/grpc-js`                  | Method name, status code                           |
-| **Other**         | `dns`                            | DNS resolution                                     |
-|                   | `net`                            | TCP connection                                     |
+| Category      | Library                          | Potentially captured operations                         |
+| ------------- | -------------------------------- | ------------------------------------------------------- |
+| **Database**  | MongoDB (`mongodb` / `mongoose`) | Queries, collections, duration                          |
+|               | PostgreSQL (`pg`)                | SQL, tables, duration                                   |
+|               | MySQL (`mysql` / `mysql2`)       | SQL, tables, duration                                   |
+|               | Redis (`ioredis` / `redis`)      | Commands, keys, duration                                |
+| **HTTP**      | Node.js `http` / `https`         | Outgoing calls, URLs, status                            |
+|               | `undici` / `fetch`               | Outgoing calls, including built-in fetch on Node.js 20+ |
+| **Messaging** | `amqplib` (RabbitMQ)             | Queue names and message operations                      |
+|               | `kafkajs`                        | Topics and message operations                           |
+| **Cache**     | `memcached`                      | Operations and keys                                     |
+| **RPC**       | `@grpc/grpc-js`                  | Methods and status                                      |
+| **Other**     | `dns`, `net`                     | DNS lookups and TCP connections                         |
 
-> See [@opentelemetry/auto-instrumentations-node](https://www.npmjs.com/package/@opentelemetry/auto-instrumentations-node) for a complete list.
+See [@opentelemetry/auto-instrumentations-node](https://www.npmjs.com/package/@opentelemetry/auto-instrumentations-node) for the full list.
 
-### Effect example
+### Example result
 
-After installation, a `GET /users/:id` request may produce the following Span tree in Jaeger:
+A `GET /users/:id` request **might** produce this span tree in Jaeger:
 
-```
-GET /users/:id (http, 45ms)
-├── mongodb.find users (db, 12ms)
-├── redis.GET user:cache:42 (cache, 2ms)
+```text
+GET /users/:id                      (http, 45ms)
+├── mongodb.find users              (db, 12ms)
+├── redis.GET user:cache:42         (cache, 2ms)
 └── HTTP GET https://api.xxx/verify (http, 28ms)
 ```
 
-**No code changes required** - The SDK automatically patches `mongodb`, `ioredis`, `http` and other modules when the process is started (`--import`).
+This illustrates a possible business call chain. The route must actually call these dependencies and their instrumentations must be active. The `/otel-demo` route does not create database or Redis operations.
 
-### Disable specific detection
+### Disable selected instrumentations
 
-If a certain automatic detection causes problems or is not needed, the instrumentation.ts configuration can be overridden in the plugin:
+Prefer the environment variable supported by `auto-instrumentations-node`; do not create a second `NodeSDK` for this. Set it **before** starting the process, for example in PowerShell:
 
-```typescript
-// src/instrumentation.ts (custom, replaces the built-in version)
-import { NodeSDK } from "@opentelemetry/sdk-node";
-import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
-
-const sdk = new NodeSDK({
-  instruments: getNodeAutoInstrumentations({
-    // Disable fs detection (noisy logs)
-    "@opentelemetry/instrumentation-fs": { enabled: false },
-    // Disable dns detection
-    "@opentelemetry/instrumentation-dns": { enabled: false },
-  }),
-});
-sdk.start();
-export {};
+```powershell
+$env:OTEL_NODE_DISABLED_INSTRUMENTATIONS = "fs,dns"
+npm run dev
 ```
 
-Then point to the custom instrumentation in `package.json`:
+Use names without package prefixes. This package already disables `fs` by default, and this setting also triggers early SDK initialization. See the [OpenTelemetry configuration guide](https://opentelemetry.io/docs/zero-code/js/configuration/) and check the supported range of the installed instrumentation versions.
 
-```json
-{ "vext": { "preload": "./dist/instrumentation.js" } }
-```
+### Behavior when auto-instrumentation is unavailable
 
-### Behavior when not installed
+If `@opentelemetry/auto-instrumentations-node` is unavailable:
 
-If `@opentelemetry/auto-instrumentations-node` is not installed:
+- The console prints a warning.
+- Manual `withSpan` operations and SDK metrics can still work. The plugin can only enrich an existing active span; without HTTP instrumentation, request spans and log trace correlation are not guaranteed.
+- Automatically generated request, database, and outgoing HTTP spans are absent. Whether the application continues to run also depends on its own code.
 
-- The console outputs a line of warning prompts
-- HTTP middleware layer tracking (Span attribute annotation, indicator statistics, log correlation) **still normal**
-- Only deep spans such as database/external HTTP are missing (does not affect application operation)
-
-```
+```text
 [vextjs-opentelemetry/instrumentation] @opentelemetry/auto-instrumentations-node is not installed.
   npm install @opentelemetry/auto-instrumentations-node
 ```
@@ -792,9 +830,9 @@ export default defineRoutes((app) => {
 | The callback throws an exception | `span.recordException(err)` + `span.setStatus(ERROR)` + `span.end()` + re-throw |
 | SDK not initialized              | Noop span; no telemetry is exported                                             |
 
-### Underlying API (customized SpanKind / Processor and other advanced scenarios)
+### Underlying API (custom SpanKind, Processor, and other advanced scenarios)
 
-When you need fine control over the span type or custom processing, you can use `tracer` directly:
+This advanced fragment also belongs in `src/routes/index.ts`. First implement `findById(id)` in `src/services/user.ts` and run typegen. Install `@opentelemetry/api` as a direct dependency when importing it. `startSpan` does not make the new span the active context for child calls; prefer `withSpan` when context propagation matters.
 
 ```typescript
 import { SpanStatusCode } from "@opentelemetry/api";
@@ -803,7 +841,7 @@ import { defineRoutes } from "vextjs";
 export default defineRoutes((app) => {
   app.get(
     "/users/:id",
-    { validate: { param: { id: "string" } } },
+    { validate: { param: { id: "string!" } } },
     async (req, res) => {
       const span = req.app.otel!.tracer.startSpan("db.user.findById", {
         attributes: {
@@ -830,16 +868,21 @@ export default defineRoutes((app) => {
 });
 ```
 
-### Custom business indicators
+### Custom business metrics
 
-```javascript
+```typescript
+// src/plugins/business-metrics.ts
 import { definePlugin } from "vextjs";
+import type { OtelAppExtension } from "@devcodex/opentelemetry/vextjs";
 
 export default definePlugin({
   name: "business-metrics",
   dependencies: ["opentelemetry"],
   setup(app) {
-    const meter = app.otel.meter;
+    const otel = app.otel as OtelAppExtension | undefined;
+    if (!otel)
+      throw new Error("OpenTelemetry plugin is disabled or unavailable");
+    const meter = otel.meter;
     app.extend("businessMetrics", {
       orderCreated: meter.createCounter("business.order.created"),
       orderAmount: meter.createHistogram("business.order.amount", {
@@ -850,12 +893,11 @@ export default definePlugin({
 });
 ```
 
-### Sampling (reduces overhead)
+### Sampling (reduce overhead)
 
-**Method 1: `package.json` code-level configuration (recommended)**
+**Option 1: `package.json` configuration (recommended)**
 
-instrumentation reads `vext.otel.sampling.ratio` during SDK initialization,
-Automatically use `ParentBasedSampler(TraceIdRatioBasedSampler(ratio))`:
+The instrumentation reads `vext.otel.sampling.ratio` when the SDK initializes. When a valid ratio is below 1, it uses `ParentBasedSampler(TraceIdRatioBasedSampler(ratio))`; root spans without a sampled parent are sampled at this ratio. Restart after changing it:
 
 ```json
 {
@@ -868,177 +910,144 @@ Automatically use `ParentBasedSampler(TraceIdRatioBasedSampler(ratio))`:
 }
 ```
 
-**Method 2: Environment variables (runtime override)**
+**Option 2: Environment variable when package sampling is absent**
 
 ```bash
-# No need to change the code, can be injected in CI/CD or deployment script
-OTEL_TRACES_SAMPLER=traceidratio OTEL_TRACES_SAMPLER_ARG=0.1 vext start
+# Set in CI/CD or a deployment script without changing application code.
+VEXT_OTEL_FORCE_SDK=1 OTEL_TRACES_SAMPLER_ARG=0.1 npm start
 ```
 
-### Cluster multi-process
+### Cluster processes
 
 ```bash
-VEXT_CLUSTER=1 vext start # vext automatically injects OTel into each Worker
+VEXT_CLUSTER=1 npm start  # POSIX shell; Windows can enable cluster in config
 ```
 
 ### Custom instrumentation
 
-Completely replaces built-in SDK initialization:
+Project `src/preload/` entries and direct dependency packages' `vext.preload` entries run together. An application's own `package.json vext.preload` is not a project script entry point and does not replace a dependency package's entry point. Do not create an uncoordinated second `NodeSDK` alongside the default integration.
 
-```typescript
-// src/instrumentation.ts
-import { NodeSDK } from "@opentelemetry/sdk-node";
-import { TraceIdRatioBasedSampler } from "@opentelemetry/sdk-trace-node";
-
-const sdk = new NodeSDK({
-  sampler: new TraceIdRatioBasedSampler(0.1),
-  // ... custom configuration
-});
-sdk.start();
-export {};
-```
-
-```json
-{ "vext": { "preload": "./dist/instrumentation.js" } }
-```
+If you need to own the SDK yourself, read the [preload guide](/guide/preload). Explicitly disable or exclude the built-in startup entry, and define initialization order, exporters, and shutdown ownership before implementing the upstream custom SDK instructions. This page's default example uses one plugin-managed SDK.
 
 ---
 
 ## Log field planning
 
-VextJS + @devcodex/opentelemetry supports two levels of log output, each with its own emphasis:
+VextJS and `@devcodex/opentelemetry` support two complementary log outputs:
 
-- **A. Implementation log (stdout/file JSON)**: Business fields are clear and readable, which facilitates manual troubleshooting and log aggregation (ELK/Loki)
-- **B. OTel Logs (LogRecord → Collector)**: lightweight, associated with complete links through `trace_id`
+- **A. Application logs (stdout / file JSON):** readable business fields for investigation and aggregation in ELK or Loki.
+- **B. OTel Logs (LogRecord → Collector):** lightweight records linked to traces by `trace_id`.
 
-### A. Implementation log field (stdout/file JSON)
+### A. Application log fields (stdout / file JSON)
 
-Inject Resource-level and Span-level contexts via `config.logger.mixin`:
+Add stable business fields with `config.logger.mixin`. A logger mixin is not the same as an SDK Resource configuration. You can replace the earlier logger configuration with this example; it needs neither top-level `await` nor the non-public `Span.name` field:
 
 ```typescript
 // src/config/default.ts
 import os from "node:os";
 
-let getActiveSpan: (() => unknown) | undefined;
-try {
-  const api = await import("@opentelemetry/api");
-  getActiveSpan = api.trace.getActiveSpan.bind(api.trace);
-} catch {}
-
 export default {
   logger: {
     level: "info",
     mixin() {
-      const fields: Record<string, unknown> = {
-        // Resource level fields (available in every log)
+      return {
         service_name: "my-app",
         env: process.env.NODE_ENV ?? "development",
         host: os.hostname(),
       };
-
-      // Span-level fields (injected when there is a value in the request context)
-      if (getActiveSpan) {
-        const span = getActiveSpan() as
-          | { isRecording?: () => boolean; name?: string }
-          | undefined;
-        if (span?.isRecording?.()) {
-          fields.span = span.name; // "GET", "mongodb.find", "redis.GET" etc.
-        }
-      }
-
-      return fields;
     },
   },
 };
 ```
 
-Output example:
+An active recording span in the request context supplies `trace_id` and `span_id`. Log a business span name explicitly when needed.
+
+Example output fragment:
 
 ```json
 {
   "level": 30,
-  "time": 1743431641234,
+  "time": "2026-09-25T00:00:00.000Z",
   "service_name": "my-app",
   "env": "production",
   "host": "web-pod-a1b2c3",
   "requestId": "my-app-19f8d0dd",
   "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
   "span_id": "00f067aa0ba902b7",
-  "span": "GET",
-  "msg": "→ GET /users/42 200 45ms"
+  "msg": "otel demo completed"
 }
 ```
 
-> `requestId`, and `traceId` / `spanId` written in `requestContext` will be automatically injected as `requestId`, `trace_id`, `span_id` by the framework’s built-in provider; there is no need to repeat configuration in the user mixin.
+> The framework's built-in provider automatically injects `requestId`, and `traceId` / `spanId` written to `requestContext`, as `requestId`, `trace_id`, and `span_id`. Do not duplicate them in the user mixin.
 
-#### Field comparison table
+#### Field reference
 
-| Field          | Source                                  | Configuration Method                          |
-| -------------- | --------------------------------------- | --------------------------------------------- |
-| `timestamp`    | Vext logger automatically               | No configuration required                     |
-| `level`        | Vext logger automatically               | No configuration required                     |
-| `msg`          | `logger.info("...")`                    | No configuration required                     |
-| `requestId`    | Framework ALS → mixin automatic         | No configuration required                     |
-| `trace_id`     | otel middleware → ALS → mixin automatic | No configuration required                     |
-| `span_id`      | otel middleware → ALS → mixin automatic | no configuration required                     |
-| `service_name` | `config.logger.mixin`                   | User mixin injection                          |
-| `env`          | `config.logger.mixin`                   | User mixin injection                          |
-| `host`         | `config.logger.mixin`                   | User mixin injection                          |
-| `span`         | `trace.getActiveSpan().name`            | User mixin injection                          |
-| `endpoint`     | `req.route` in access log               | Automatically included in request log msg     |
-| `latency_ms`   | access log                              | Automatically included in request log msg     |
-| `user_id`      | Business code                           | `logger.info({ user_id: "..." }, msg)`        |
-| `feature.flag` | Business code                           | `logger.info({ "feature.flag": "..." }, msg)` |
-| `exception.*`  | `logger.error(err)`                     | Vext logger serializer automatically expands  |
+| Field          | Source                                  | Configuration                                                              |
+| -------------- | --------------------------------------- | -------------------------------------------------------------------------- |
+| `time`         | Vext logger; ISO time string by default | Public logger config has no timestamp switch                               |
+| `level`        | Vext logger                             | Automatic                                                                  |
+| `msg`          | `logger.info("...")`                    | Automatic                                                                  |
+| `requestId`    | Framework ALS and built-in mixin        | Automatic                                                                  |
+| `trace_id`     | OTel middleware → ALS → built-in mixin  | Automatic when context exists                                              |
+| `span_id`      | OTel middleware → ALS → built-in mixin  | Automatic when context exists                                              |
+| `service_name` | `config.logger.mixin`                   | User mixin                                                                 |
+| `env`          | `config.logger.mixin`                   | User mixin                                                                 |
+| `host`         | `config.logger.mixin`                   | User mixin                                                                 |
+| `span`         | Explicit business field                 | This example's mixin does not inject it                                    |
+| `endpoint`     | `req.route` in access log               | Included in request log message                                            |
+| `latency_ms`   | Access log                              | Included in request log message                                            |
+| `user_id`      | Business code                           | `logger.info({ user_id: "..." }, msg)`                                     |
+| `feature.flag` | Business code                           | `logger.info({ "feature.flag": "..." }, msg)`                              |
+| `err`          | `logger.error(err)`                     | Framework serialization; not automatically an OTel `exception.*` attribute |
 
 ### B. OTel Logs (LogRecord → Collector)
 
-Vext's default logger does not rely on third-party loggers, so logger-specific auto instrumentation will not automatically capture `app.logger`. If you need to output OTel Logs, you can bridge it through `app.setLogger()` of `@devcodex/opentelemetry`, or wrap the current logger with a custom plug-in:
+The default Vext logger does not depend on a third-party logger, so logger-specific auto-instrumentation does not automatically capture `app.logger`. To export OTel Logs, use the `app.setLogger()` bridge provided by `@devcodex/opentelemetry` or wrap the current logger in a custom plugin:
 
-- **`trace_id` / `span_id`**: Write LogRecord from `requestContext` or active span
-- **`severity_text`**: mapped from Vext logger level
-- **`body`**: Log message content
-- **`service.name`**: from Resource (configured in instrumentation.ts)
-- **`attributes`**: Structured log fields are mapped to LogRecord attributes
+- **`trace_id` / `span_id`:** derived from `requestContext` or an active span for the LogRecord.
+- **`severity_text`:** mapped from the Vext logger level.
+- **`body`:** the log message.
+- **`service.name`:** from the SDK Resource configured in `instrumentation.ts`.
+- **`attributes`:** structured log arguments mapped to LogRecord attributes.
 
-Fields injected by user mixin (such as `service_name`, `host`, `span`) will automatically appear in LogRecord.attributes\*\*.
+The current bridge reads the arguments passed to the logger and then calls the original logger. Fields added later by the original logger's mixin do **not** automatically enter the LogRecord. Pass fields needed in both outputs explicitly as log arguments, or set OTel `logs.globalAttributes`. The bridge is enabled by default when `endpoint` is not `none`; it wraps `info`, `warn`, `error`, `debug`, and `fatal`. Child loggers and `trace` are not bridged automatically, and nested object fields are not fully passed through.
 
-::: tip OTel Logs Best Practices
-Avoid putting all landing log fields in LogRecord attributes. OTel Logs associates Trace with `trace_id` to see the complete context of `endpoint`, `latency_ms`, `user.id`, etc. Keeping LogRecord lightweight helps control Collector traffic.
+::: tip OTel Logs practice
+Avoid copying every application log field into LogRecord attributes. Use `trace_id` to connect the log to a trace and inspect the richer context there. Keeping LogRecords small helps control Collector traffic.
 :::
 
-### C. Deep fields (automatically appear in child Span)
+### C. Deeper fields in child spans
 
-The following fields are automatically collected by `@opentelemetry/auto-instrumentations-node` and do not require manual configuration:
+This is an illustration using older semantic names. Actual fields depend on the installed instrumentation, target library, configuration, and sampling. Newer versions may use `url.full` or `db.query.text`; do not treat this table as a guarantee for every request.
 
+```text
+GET /users/:id                      (http, 45ms)  ← user.id, tenant.id here
+├── mongodb.find users              (db, 12ms)    ← db.statement, if captured
+├── redis.GET user:cache:42         (cache, 2ms)  ← cache.system, if captured
+└── HTTP GET https://api.xxx/verify (http, 28ms)  ← outgoing call
 ```
-GET /users/:id (http, 45ms) ← user.id, tenant.id here
-├── mongodb.find users (db, 12ms) ← db.statement automatic
-├── redis.GET user:cache:42 (cache, 2ms) ← cache.system automatic
-└── HTTP GET https://api.xxx/verify (http, 28ms) ← Automatic
-```
 
-| Field          | Source                                    | Occurrence                        |
-| -------------- | ----------------------------------------- | --------------------------------- |
-| `db.statement` | DB instrumentation automatic              | Database sub-Span attributes      |
-| `db.system`    | DB instrumentation automatic              | Database sub-Span attributes      |
-| `cache.system` | Redis/Memcached instrumentation automatic | cache sub-Span attributes         |
-| `http.url`     | HTTP instrumentation automatic            | External call sub-Span attributes |
+| Field          | Source                          | Location                            |
+| -------------- | ------------------------------- | ----------------------------------- |
+| `db.statement` | Database instrumentation        | Database child span attributes      |
+| `db.system`    | Database instrumentation        | Database child span attributes      |
+| `cache.system` | Redis/Memcached instrumentation | Cache child span attributes         |
+| `http.url`     | HTTP instrumentation            | Outgoing call child span attributes |
 
-> Correlate these deep fields by viewing the complete call chain in Jaeger / Grafana Tempo via `trace_id`.
+Follow `trace_id` in Jaeger or Grafana Tempo to inspect the complete call chain.
 
 ---
 
-## Production Best Practices
+## Production best practices
 
-1. **Configure reporting address** - will not be reported if not configured (safe default value), but it also means no observability data
-2. **`shutdown.timeout: 60`** — Make sure the SDK has enough time to flush data
-3. **Restriction `/_otel/status`** — The current VextJS adapter will automatically register this route. In the production environment, please restrict access to the intranet at the gateway layer.
-4. **Do not record sensitive information in Span** — passwords, tokens, ID numbers, etc.
-5. **Sampling** — Use `OTEL_TRACES_SAMPLER=traceidratio` for high-concurrency services
-6. **Deploy Collector** — Application → Collector → Backend, decoupling + buffering
+1. **Configure an export endpoint.** Without one, no data is exported; this is the safe default.
+2. **Budget for shutdown.** The plugin calls SDK shutdown in `onClose`. Set `shutdown.timeout` in seconds based on actual batching and network delay, then verify it. A larger timeout cannot guarantee Collector receipt.
+3. **Restrict `/_otel/status`.** The VextJS adapter registers this route automatically. In production, restrict it to internal access at the gateway.
+4. **Exclude sensitive data from spans.** Avoid passwords, tokens, and identity numbers.
+5. **Set sampling deliberately.** Use one package sampling configuration or verified environment configuration, restart, and inspect the actual output volume.
+6. **Use a Collector where appropriate.** Application → Collector → backend provides decoupling and buffering.
 
-```
+```text
 Applications (N) ──OTLP──► Collector ──► Jaeger / Prometheus / Grafana
 ```
 
@@ -1048,47 +1057,52 @@ Applications (N) ──OTLP──► Collector ──► Jaeger / Prometheus / G
 
 ### Q: `/_otel/status` returns `"sdk": "noop"`
 
-① Use `vext start/dev` to start ② `@devcodex/opentelemetry` in dependencies ③ The SDK package has been installed ④ `package.json vext.otel` configuration has taken effect.
+Without an endpoint, noop may be expected. To export data, check the direct dependency, plugin enablement, package `endpoint` and `preloadSdk`, and `OTEL_SDK_DISABLED`. Disabling the plugin entirely makes this endpoint return 404.
 
-### Q: The endpoint shows localhost but I assigned another address.
+### Q: The endpoint shows localhost, but I configured another address
 
-① Check `package.json` `vext.otel.endpoint` ② Confirm that `endpoint/protocol/headers` in the plug-in is consistent with `package.json` ③ Confirm to start with `vext start/dev`
+Check `package.json vext.otel.endpoint`, keep the plugin's `endpoint`, `protocol`, and `headers` aligned with package config, and confirm that you start with `vext start` or `vext dev`.
 
-### Q: The log has no trace_id
+### Q: Logs have no `trace_id`
 
-First confirm that `/_otel/status` returns `"sdk": "initialized"`. In the VextJS scenario, `trace_id` relies on SDK initialization in the preload stage + normal plug-in access, both of which are indispensable.
+Check the SDK, early auto-instrumentation, plugin registration, and sampling. `requestContext` must be enabled, and the log must occur inside a request context with a recording span. An `initialized` status alone does not prove that this request has an active span.
 
-### Q: The backend cannot receive data
+### Q: The backend receives no data
 
-① `/_otel/status` Confirm that `sdk: "initialized"` + `endpoint` is correct ② Confirm in the service log `[otel] ... export SUCCESS (grpc-status:0)` ③ Wait for 30 seconds (batch reporting delay) ④ Use Jaeger/LGTM local debugging to confirm the data format
+Check `exportMode` and `exportTarget` first. Local file export can distinguish “no data produced” from “network export failed.” Inspect actual backend records, authentication, protocol, and connectivity; allow for the configured batching and metrics intervals. The package does not guarantee a `SUCCESS` log for each batch, and gRPC failure or recovery logs do not prove delivery of every signal.
 
 ### Q: `[otel] ... export FAILED: grpcSend timeout`
 
-The h2c gRPC connection from the server to the collector is blocked. Check: ① The collector address and port are reachable ② The collector service is running normally ③ Network firewall/security group rules ④ If in Docker/K8s, use Service DNS instead of localhost
+The server cannot complete an h2c gRPC connection to the Collector. Check the address and port, Collector health, network rules, and service DNS inside Docker or Kubernetes; `localhost` there refers to the current container or pod.
 
-### Q: I start directly with `node dist/server.js`, why does the SDK not take effect?
+### Q: I start with `node dist/server.js`; why is the SDK inactive?
 
-Because VextJS's "zero configuration access" relies on the CLI to automatically scan `vext.preload` in the dependency package and inject `--import` before starting.
+The zero-configuration VextJS integration depends on the CLI discovering dependency packages' `vext.preload` entries and injecting `--import` before startup.
 
-Optional practices:
-
-1. **Recommended**: Continue to use `vext dev` / `vext start`
-2. **Customized Node startup command**: Manually add `--import @devcodex/opentelemetry/instrumentation`
+1. **Recommended:** use `vext dev` or `vext start` through project npm scripts.
+2. **Custom Node command:** only if you have actually built a complete application entry point, add `--import @devcodex/opentelemetry/instrumentation` yourself. A standard Vext build does not create `dist/server.js` automatically.
 
 ```bash
 node --import @devcodex/opentelemetry/instrumentation dist/server.js
 ```
 
-### Q: How to disable the test environment
+### Q: How do I disable the integration in tests?
 
 ```json
 {
   "vext": {
     "otel": {
-      "endpoint": "none"
+      "enabled": false
     }
   }
 }
 ```
 
-Or the plug-in is not loaded in the test environment.
+Alternatively set `OTEL_SDK_DISABLED=true` before startup. Also disable routes that depend on `app.otel`. Setting only `endpoint: "none"` stops export; it does not disable the entire integration.
+
+## Related documentation
+
+- [Preload](/guide/preload): project and dependency entries, development and production lifecycle.
+- [Plugins](/guide/plugins): setup, dependency order, and shutdown.
+- [Logger](/guide/logger) and [access log](/api/access-log): output fields, context, and response completion timing.
+- [Deployment](/guide/deployment): startup, processes, and shutdown budget.
