@@ -5,10 +5,13 @@ import { ClusterMaster } from "../../../dist/lib/cluster/master.js";
 import { workerMain } from "../../../dist/lib/cluster/worker.js";
 import { createApp, DEFAULT_CONFIG } from "../../../dist/lib/app.js";
 import { resolveAdapter } from "../../../dist/lib/adapter-resolver.js";
+import { setupShutdown } from "../../../dist/lib/shutdown.js";
 
 const adapterName = process.env.AFFINITY_ADAPTER ?? "native";
 const factory = process.env.AFFINITY_FACTORY === "1";
 const entry = fileURLToPath(import.meta.url);
+const workerShutdownSeconds = 1;
+const masterShutdownMs = 2000;
 
 if (cluster.isWorker) {
   await workerMain(process.cwd(), async (_root, context) => {
@@ -27,7 +30,7 @@ if (cluster.isWorker) {
           ]()
         : adapterName,
       cluster: { ...DEFAULT_CONFIG.cluster, sticky: "ip", workers: 2 },
-      shutdown: { ...DEFAULT_CONFIG.shutdown, timeout: 500 },
+      shutdown: { ...DEFAULT_CONFIG.shutdown, timeout: workerShutdownSeconds },
     };
     const { app, internals } = createApp(config);
     if (
@@ -52,6 +55,19 @@ if (cluster.isWorker) {
       },
     ]);
     const serverHandle = await app.adapter.listen(context.port, context.host);
+    const forceClose = serverHandle.forceClose.bind(serverHandle);
+    serverHandle.forceClose = () => {
+      process.send?.({
+        type: "test-force-close",
+        workerId: process.env.VEXT_WORKER_ID,
+      });
+      forceClose();
+    };
+    app.onClose(setupShutdown({ internals, serverHandle, logger: app.logger }));
+    process.on("message", (message) => {
+      if (message.type === "test-local-stop")
+        void internals.shutdown(serverHandle);
+    });
     return { app, internals, serverHandle };
   });
 } else {
@@ -65,7 +81,11 @@ if (cluster.isWorker) {
     autoRestart: process.env.AFFINITY_AUTO_RESTART !== "0",
     restartBaseDelay: 20,
     restartMaxDelay: 50,
-    reload: { workerDelay: 0, readyTimeout: 3000, shutdownTimeout: 700 },
+    reload: {
+      workerDelay: 0,
+      readyTimeout: 3000,
+      shutdownTimeout: masterShutdownMs,
+    },
   });
   master.on(
     "all-workers-dead",
@@ -75,9 +95,15 @@ if (cluster.isWorker) {
     cluster.workers[workerId]?.on("message", (message) => {
       if (message.type === "test-in-flight")
         process.send?.({ type: "in-flight" });
+      else if (message.type === "test-force-close") process.send?.(message);
     });
   });
-  for (const event of ["worker-ready", "worker-exit", "reload-complete"]) {
+  for (const event of [
+    "worker-ready",
+    "worker-stopping",
+    "worker-exit",
+    "reload-complete",
+  ]) {
     master.on(event, (data) => process.send?.({ type: event, data }));
   }
   process.on("message", async (message) => {
@@ -87,6 +113,8 @@ if (cluster.isWorker) {
         process.send?.({ type: "reloaded" });
       } else if (message.type === "crash") {
         cluster.workers[message.id]?.process.kill("SIGKILL");
+      } else if (message.type === "local-stop") {
+        cluster.workers[message.id]?.send({ type: "test-local-stop" });
       } else if (message.type === "disconnect-and-stop") {
         const worker = cluster.workers[message.id];
         worker.once("disconnect", () => {

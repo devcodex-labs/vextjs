@@ -196,6 +196,8 @@ export default {
 
 槽位和可用集合稳定时，同一 IP 的新连接选择同一槽位。崩溃时仅不可用槽位的流量回退，恢复后可能回到原槽位。滚动替换保留槽位编号，但替换进程后内存状态不会保留；旧连接仍由旧 Worker 完成或在关闭预算耗尽时断开。改变 sticky 或 workers 配置需要完整重启 Master，rolling reload 会拒绝与 Master 策略不一致的候选。
 
+Worker 自行收到 SIGTERM/SIGINT 或因致命错误进入应用关闭流程时，会通知 Master 撤销新连接路由资格；新连接可选择其余可用槽位，在途连接继续使用原关闭预算。自行退出后仍按 autoRestart 与重启预算恢复原槽位，Master 主动替换或整体停止不会因此重复启动 Worker。
+
 交接设有有界额度和超时：当前全局最多 1,024 条待交接连接、每个 Worker 最多 64 条，交接期限为 5 秒；这些内部防护值不是 HTTP 请求执行时限。目标槽位额度耗尽时关闭新连接，不把它改投到其他繁忙程度较低的 Worker；超时且无法确认交接的进程会被终止并进入现有 auto-restart 规则。框架不会重放请求，客户端重试需考虑幂等性。指标通过 runtime snapshot 的 `summary.connections` 记录，按 Worker 指标周期及生命周期事件更新，包含 pending、committed、rejected、timedOut、sendFailed 与 backpressure；committed 表示提交指令发送完成，不表示 HTTP 请求成功。
 
 IP 亲和性适合依赖进程内状态的多连接应用，但不提供 Session 高可用，也不自动启用 Socket.IO、TLS 或 HTTP/2。状态一致性及故障恢复仍建议使用共享存储。自定义 Adapter 必须显式支持 socket handoff，参见[适配器](/zh/guide/adapters)。
@@ -472,6 +474,7 @@ Master 和 Worker 之间通过内部 IPC 协议通信。下表用于理解运行
 | ----------------- | ------------------------------------------------------------------------------- |
 | `ready`           | Worker 初始化完成，开始接受请求                                                 |
 | `heartbeat`       | 心跳响应                                                                        |
+| `stopping`        | Worker 开始自行关闭；停止分发新连接，退出后仍按 autoRestart 恢复                |
 | `metrics`         | 每 30 秒上报内存等快照；无请求指标提供者时计数为占位 0，并带 metricsUnavailable |
 | `request-restart` | Worker 请求自身重启（如检测到内存泄漏）                                         |
 

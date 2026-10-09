@@ -5,7 +5,7 @@
  * 此文件定义双向消息的类型联合，确保 IPC 消息的类型安全。
  *
  * 消息方向：
- *   - WorkerToMasterMessage: Worker → Master（ready / heartbeat / metrics / request-restart）
+ *   - WorkerToMasterMessage: Worker → Master（ready / heartbeat / stopping / metrics / request-restart）
  *   - MasterToWorkerMessage: Master → Worker（set-title / shutdown / health-check / broadcast）
  *
  * 设计原则：
@@ -83,6 +83,12 @@ export interface WorkerHeartbeatMessage {
   memory: number;
 }
 
+/** Worker has begun local shutdown; keep automatic recovery after its exit. */
+export interface WorkerStoppingMessage {
+  type: "stopping";
+  workerId: string;
+}
+
 /**
  * Worker 指标上报消息
  *
@@ -113,6 +119,7 @@ export type WorkerToMasterMessage =
   | SocketPreparedMessage
   | WorkerReadyMessage
   | WorkerHeartbeatMessage
+  | WorkerStoppingMessage
   | WorkerMetricsMessage
   | WorkerRequestRestartMessage;
 
@@ -236,7 +243,14 @@ export interface WorkerMeta {
  *   starting → ready → draining → dead
  *                ↑                  │
  *                └── auto-restart ──┘
+ *   Local shutdown uses ready → stopping → dead and retains auto-restart.
+ *   draining denotes intentional Master replacement/shutdown without recovery.
  *
  * @see 12c-lifecycle.md §1（状态机）
  */
-export type WorkerState = "starting" | "ready" | "draining" | "dead";
+export type WorkerState =
+  | "starting"
+  | "ready"
+  | "stopping"
+  | "draining"
+  | "dead";

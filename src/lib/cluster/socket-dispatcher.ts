@@ -133,6 +133,15 @@ export class SocketDispatcher {
     }
   }
 
+  workerStopping(workerId: number): void {
+    for (const [id, transfer] of this.transfers) {
+      if (transfer.target.worker.id === workerId) {
+        this.counters.rejected++;
+        this.cancel(id);
+      }
+    }
+  }
+
   beginShutdown(): void {
     if (this.stopped) return;
     this.stopped = true;

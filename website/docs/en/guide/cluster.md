@@ -196,6 +196,8 @@ Routing uses the TCP peer address, without inspecting `X-Forwarded-For`, `Forwar
 
 With stable slots and availability, new connections from one IP select the same slot. When a slot fails, only its traffic falls back; restoration can return it to its preferred slot. Rolling replacement preserves slot IDs, but does not preserve process memory. Old connections remain with the old Worker until completion or the shutdown budget expires. Changing sticky or workers requires a full Master restart; rolling reload rejects candidates whose policy differs from Master.
 
+When a Worker enters application shutdown through SIGTERM/SIGINT or a fatal error, it notifies the Master to withdraw its routing eligibility. New connections can select remaining available slots, while in-flight connections retain the existing shutdown budget. Local exits still follow autoRestart and the restart budget to recover the same slot; Master-initiated replacements or shutdown do not create duplicate Workers.
+
 Handoffs have bounded credits and deadlines: currently at most 1,024 pending globally and 64 per Worker, with a 5-second handoff deadline. These internal safeguards are separate from HTTP request execution timeouts. A saturated target slot rejects new connections rather than spilling them into another Worker. An unconfirmed, timed-out Worker is terminated and handled by the existing auto-restart policy. The framework does not replay requests; clients must consider idempotency when retrying. Runtime snapshot `summary.connections` records pending, committed, rejected, timedOut, sendFailed, and backpressure at Worker metrics intervals and lifecycle events. Committed means that the commit instruction was sent, rather than that an HTTP request succeeded.
 
 IP affinity can serve applications with process-local state across multiple connections, but does not provide highly available sessions or automatically add Socket.IO, TLS, or HTTP/2. Shared storage remains preferable for consistency and recovery. Custom adapters must explicitly support socket handoff; see [Adapters](/guide/adapters).
@@ -464,6 +466,7 @@ The message types below are the exact string literals of the IPC payload `type` 
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `ready`           | Worker initialization is completed and starts accepting requests                                                                       |
 | `heartbeat`       | Heartbeat response                                                                                                                     |
+| `stopping`        | Worker begins local shutdown; withdraw new connections and retain autoRestart recovery after exit                                      |
 | `metrics`         | Memory and other snapshots every 30 seconds; without a request metrics provider, counts are placeholder zero with `metricsUnavailable` |
 | `request-restart` | Worker requests itself to restart (if a memory leak is detected)                                                                       |
 

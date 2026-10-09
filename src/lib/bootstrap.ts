@@ -1364,19 +1364,21 @@ async function startClusterMaster(rootDir: string): Promise<void> {
       summary: { connections: master.getConnectionSnapshot() },
     });
   });
-  master.on("worker-exit", (event) => {
-    void patchRuntimeSnapshotSafe(rootDir, {
-      runtimeIdentity,
-      summary: {
-        state: master.getReadyWorkerCount() > 0 ? "ready" : "degraded",
-        workers: master.getReadyWorkerCount(),
-        totalWorkers: master.getTargetWorkerCount(),
-        connections: master.getConnectionSnapshot(),
-      },
-      workers: snapshotWorkers(),
-      event: { type: "worker-exit", ...event },
+  for (const type of ["worker-exit", "worker-stopping"] as const) {
+    master.on(type, (event) => {
+      void patchRuntimeSnapshotSafe(rootDir, {
+        runtimeIdentity,
+        summary: {
+          state: master.getReadyWorkerCount() > 0 ? "ready" : "degraded",
+          workers: master.getReadyWorkerCount(),
+          totalWorkers: master.getTargetWorkerCount(),
+          connections: master.getConnectionSnapshot(),
+        },
+        workers: snapshotWorkers(),
+        event: { type, ...event },
+      });
     });
-  });
+  }
   master.on("reload-complete", (event) => {
     void patchRuntimeSnapshotSafe(rootDir, {
       runtimeIdentity,

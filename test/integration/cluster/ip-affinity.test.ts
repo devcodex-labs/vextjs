@@ -80,6 +80,8 @@ async function start(
   );
   processes.push(child);
   let logs = "";
+  const messages: any[] = [];
+  child.on("message", (message) => messages.push(message));
   child.stdout?.on("data", (chunk) => {
     logs += chunk;
   });
@@ -87,7 +89,13 @@ async function start(
     logs += chunk;
   });
   try {
-    return { child, pidFile, ...(await waitMessage(child, "listening")) };
+    return {
+      child,
+      pidFile,
+      messages,
+      getLogs: () => logs,
+      ...(await waitMessage(child, "listening")),
+    };
   } catch (error) {
     throw new Error(`${error}\n${logs}`);
   }
@@ -313,8 +321,73 @@ describe("real IP sticky Cluster", () => {
     },
   );
 
-  it("closes partial-header connections within the shutdown budget", async () => {
-    const { child, endpoint } = await start("fastify");
+  for (const adapter of ["native", "fastify"]) {
+    for (const autoRestart of [false, true]) {
+      it(`${adapter}: local shutdown excludes the slot and autoRestart=${autoRestart} keeps its recovery policy`, async () => {
+        const { child, endpoint, workers } = await start(adapter, false, {
+          AFFINITY_SLOW_CLOSE: "1",
+          AFFINITY_AUTO_RESTART: autoRestart ? "1" : "0",
+        });
+        const before = await request(endpoint.port);
+        const slot = selectAffinitySlot("127.0.0.1", [0, 1]);
+        const victim = workers.find((worker: any) => worker.slotId === slot);
+        const inFlight = waitMessage(child, "in-flight");
+        const response = request(endpoint.port, "127.0.0.1", "/?delay=120");
+        await inFlight;
+        const stopping = waitMessage(child, "worker-stopping");
+        const exited = waitMessage(child, "worker-exit");
+        const recovered = autoRestart
+          ? waitMessage(child, "worker-ready")
+          : undefined;
+        child.send({ type: "local-stop", id: victim.id });
+        expect((await stopping).data.workerId).toBe(victim.id);
+        expect((await request(endpoint.port)).pid).not.toBe(before.pid);
+        expect((await response).pid).toBe(before.pid);
+        expect((await exited).data).toMatchObject({
+          workerId: victim.id,
+          code: 0,
+          signal: null,
+        });
+        if (recovered) await recovered;
+        const snapshot = waitMessage(child, "snapshot");
+        child.send({ type: "snapshot" });
+        const result = await snapshot;
+        expect(result.workers).toHaveLength(autoRestart ? 2 : 1);
+        expect(
+          result.workers.every((worker: any) => worker.state === "ready"),
+        ).toBe(true);
+        if (autoRestart) {
+          const replacement = result.workers.find(
+            (worker: any) => worker.slotId === slot,
+          );
+          expect(replacement.id).not.toBe(victim.id);
+          expect((await request(endpoint.port)).generation).toBe(
+            replacement.generation,
+          );
+        }
+      });
+    }
+    it.skipIf(process.platform === "win32")(
+      `${adapter}: SIGTERM uses the same local shutdown notification`,
+      async () => {
+        const { child, endpoint, workers } = await start(adapter, false, {
+          AFFINITY_SLOW_CLOSE: "1",
+          AFFINITY_AUTO_RESTART: "0",
+        });
+        const before = await request(endpoint.port);
+        const stopping = waitMessage(child, "worker-stopping");
+        process.kill(before.pid, "SIGTERM");
+        expect((await stopping).data.workerId).toBe(
+          workers.find((worker: any) => worker.generation === before.generation)
+            .id,
+        );
+        expect((await request(endpoint.port)).pid).not.toBe(before.pid);
+      },
+    );
+  }
+
+  it("force closes partial headers in the Worker before Master fallback", async () => {
+    const { child, endpoint, messages, getLogs } = await start("fastify");
     const socket = net.connect(endpoint.port, "127.0.0.1");
     await once(socket, "connect");
     socket.write("GET / HTTP/1.1\r\nHost: localhost\r\n");
@@ -329,7 +402,46 @@ describe("real IP sticky Cluster", () => {
     child.send({ type: "shutdown" });
     await closed;
     expect((await exit)[0]).toBe(0);
+    expect(
+      messages.some((message: any) => message.type === "test-force-close"),
+    ).toBe(true);
+    expect(
+      messages.filter((message: any) => message.type === "worker-exit"),
+    ).toHaveLength(2);
+    expect(
+      messages
+        .filter((message: any) => message.type === "worker-exit")
+        .every(
+          (message: any) =>
+            message.data.code === 0 && message.data.signal === null,
+        ),
+    ).toBe(true);
+    expect(getLogs()).not.toContain("SIGKILL");
   });
+
+  it.skipIf(process.platform === "win32")(
+    "Master force kills a stopped Worker when it cannot enforce its own budget",
+    async () => {
+      const { child, endpoint, messages, getLogs } = await start();
+      const initial = await request(endpoint.port);
+      process.kill(initial.pid, "SIGSTOP");
+      const exit = once(child, "exit");
+      try {
+        child.send({ type: "shutdown" });
+        expect((await exit)[0]).toBe(0);
+        expect(
+          messages.some((message: any) => message.type === "test-force-close"),
+        ).toBe(false);
+        expect(getLogs()).toContain("shutdown timeout (2000ms), SIGKILL");
+      } finally {
+        try {
+          process.kill(initial.pid, "SIGCONT");
+        } catch {
+          /* already exited */
+        }
+      }
+    },
+  );
 
   for (const adapter of ["native", "fastify"]) {
     it(`${adapter}: graceful Master shutdown waits for an in-flight response`, async () => {

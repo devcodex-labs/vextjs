@@ -477,6 +477,7 @@ jobs:
           test/unit/frontend-repairs.test.ts
           test/unit/cluster/affinity-router.test.ts
           test/unit/cluster/socket-receiver.test.ts
+          test/unit/cluster/socket-dispatcher.test.ts
           test/unit/cluster/socket-http-server.test.ts
           test/integration/cluster/ip-affinity.test.ts
           --reporter=verbose

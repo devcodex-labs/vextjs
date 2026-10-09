@@ -16,6 +16,7 @@ import type {
   WorkerMetricsMessage,
   WorkerReadyMessage,
   WorkerRequestRestartMessage,
+  WorkerStoppingMessage,
   MasterToWorkerMessage,
 } from "./ipc-types.js";
 import { checkClusterCompatibility } from "./cluster-checks.js";
@@ -229,6 +230,19 @@ export async function workerMain(
       );
     }
 
+    // Signal, fatal-error and IPC shutdown all use this same internals object.
+    // Observe its entry once, before application close hooks or server.close().
+    const shutdown = ctx.internals.shutdown.bind(ctx.internals);
+    ctx.internals.shutdown = (...args) => {
+      if (!ctx.isShuttingDown) {
+        ctx.isShuttingDown = true;
+        ctx.socketReceiver?.close();
+        cleanupTimers(ctx);
+        sendToMaster({ type: "stopping", workerId: config.workerId });
+      }
+      return shutdown(...args);
+    };
+
     // ── 2. 注册 IPC 消息处理器 ──────────────────────────
     registerIPCHandlers(ctx, config);
 
@@ -345,13 +359,8 @@ function registerIPCHandlers(ctx: WorkerContext, config: WorkerConfig): void {
  */
 function shutdownWorker(ctx: WorkerContext, config: WorkerConfig): void {
   if (ctx.isShuttingDown) return;
-  ctx.isShuttingDown = true;
-  ctx.socketReceiver?.close();
 
   console.log(`[worker:${config.workerId}] shutting down...`);
-
-  // 先清理定时器
-  cleanupTimers(ctx);
 
   if (ctx.internals && ctx.serverHandle) {
     ctx.internals.shutdown(ctx.serverHandle).catch((err) => {
@@ -363,6 +372,8 @@ function shutdownWorker(ctx: WorkerContext, config: WorkerConfig): void {
     });
   } else {
     // internals 不可用（bootstrap 可能未完成），直接退出
+    ctx.isShuttingDown = true;
+    cleanupTimers(ctx);
     process.exit(0);
   }
 }
@@ -509,7 +520,8 @@ function sendToMaster(
     | WorkerReadyMessage
     | WorkerHeartbeatMessage
     | WorkerMetricsMessage
-    | WorkerRequestRestartMessage,
+    | WorkerRequestRestartMessage
+    | WorkerStoppingMessage,
 ): void {
   try {
     process.send?.(msg, () => {});

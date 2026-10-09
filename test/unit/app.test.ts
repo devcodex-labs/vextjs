@@ -352,6 +352,65 @@ describe("createApp", () => {
     );
   });
 
+  it("continues cleanup and preserves failure when forceClose throws after the deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      const { app, internals } = createApp({
+        ...DEFAULT_CONFIG,
+        shutdown: { timeout: 0.02 },
+        _testMode: true,
+      });
+      const error = vi.fn();
+      app.setLogger(() => ({ error }));
+      const order: string[] = [];
+      app.onClose(() => {
+        order.push("onClose");
+      });
+      const cacheClose = vi.fn(() => {
+        order.push("cache");
+      });
+      (app.cache._getResponseCache() as { close?: () => void }).close =
+        cacheClose;
+      app.hooks.on("app:close", ({ phase }) => {
+        order.push(phase);
+      });
+      const failure = new Error("force-close-failed");
+      const handle = {
+        host: "127.0.0.1",
+        port: 80,
+        close: vi.fn(() => new Promise<void>(() => {})),
+        forceClose: vi.fn(() => {
+          order.push("forceClose");
+          throw failure;
+        }),
+      };
+      const stopping = internals.shutdown(handle, { skipExit: true });
+      const rejection = expect(stopping).rejects.toBe(failure);
+      expect(internals.shutdown(handle, { skipExit: true })).toBe(stopping);
+      await vi.advanceTimersByTimeAsync(20);
+      await rejection;
+      expect(order).toEqual([
+        "before",
+        "forceClose",
+        "onClose",
+        "cache",
+        "after",
+      ]);
+      expect(cacheClose).toHaveBeenCalledOnce();
+      expect(handle.forceClose).toHaveBeenCalledOnce();
+      expect(error).toHaveBeenCalledWith(
+        { error: "force-close-failed" },
+        "[vextjs] server force close failed during shutdown",
+      );
+      await expect(
+        internals.shutdown(handle, { skipExit: true }),
+      ).resolves.toBeUndefined();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("applies one absolute shutdown deadline and still invokes remaining cleanup", async () => {
     const { app, internals } = createApp({
       ...DEFAULT_CONFIG,

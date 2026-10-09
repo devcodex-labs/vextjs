@@ -123,6 +123,8 @@ export type ClusterMasterInput = Partial<
 export interface ClusterMasterEvents {
   /** Worker 就绪 */
   "worker-ready": { workerId: number; pid: number };
+  /** Worker began local shutdown and no longer accepts new connections. */
+  "worker-stopping": { workerId: number };
   /** Worker 退出 */
   "worker-exit": {
     workerId: number;
@@ -731,11 +733,14 @@ export class ClusterMaster extends EventEmitter {
       const owner = this.slots.owner(slotId);
       if (
         this.isShuttingDown ||
+        this.workers.get(worker.id)?.state !== "ready" ||
+        worker.isDead() ||
+        !worker.isConnected() ||
         (owner !== undefined && owner !== options.replaceWorkerId)
       ) {
         this.terminateUnreadyWorker(worker);
         throw new Error(
-          `worker ${worker.id} affinity slot is already owned or shutting down`,
+          `worker ${worker.id} cannot activate affinity slot: not ready, already owned or shutting down`,
         );
       }
       // One synchronous commit; candidates never add an extra routable slot.
@@ -793,6 +798,13 @@ export class ClusterMaster extends EventEmitter {
           msg === null ||
           (msg as Record<string, unknown>).type !== "ready"
         ) {
+          return;
+        }
+        if (this.workers.get(worker.id)?.state === "stopping") {
+          settled = true;
+          this.terminateUnreadyWorker(worker);
+          cleanup();
+          reject(new Error(`worker ${worker.id} stopped before ready`));
           return;
         }
         const endpoint = this.dispatcher?.address();
@@ -916,6 +928,19 @@ export class ClusterMaster extends EventEmitter {
     switch (message.type) {
       case "socket-prepared": {
         this.dispatcher?.prepared(worker, message);
+        break;
+      }
+      case "stopping": {
+        const meta = this.workers.get(worker.id);
+        if (
+          !meta ||
+          meta.generation !== message.workerId ||
+          (meta.state !== "ready" && meta.state !== "starting")
+        )
+          break;
+        meta.state = "stopping";
+        this.dispatcher?.workerStopping(worker.id);
+        this.emit("worker-stopping", { workerId: worker.id });
         break;
       }
       case "heartbeat": {
