@@ -15,6 +15,10 @@ const releaseWorkflow = readFileSync(
   path.join(root, ".github", "workflows", "release.yml"),
   "utf8",
 );
+const schemaCompatWorkflow = readFileSync(
+  path.join(root, ".github", "workflows", "schema-dsl-compat.yml"),
+  "utf8",
+);
 const bashLocalCi = readFileSync(
   path.join(root, "scripts", "ci-local.sh"),
   "utf8",
@@ -178,10 +182,25 @@ requireTokens("windows-node22", jobBlock("windows-node22"), [
   "runs-on: windows-latest",
   "node-version: 22",
   "test/unit/path-boundary.test.ts",
+  "test/unit/artifact-draft.test.ts",
   "test/unit/cli/build-command.test.ts",
   "test/unit/frontend-deploy-validation.test.ts",
   "npm run verify:exports",
 ]);
+
+requireTokens(
+  "schema-dsl integration services",
+  extractJobBlock(schemaCompatWorkflow, "compat-test"),
+  [
+    "image: mongo:7",
+    "mongosh --eval",
+    "image: redis:7-alpine",
+    "redis-cli ping",
+    "run: npx vitest run test/integration --reporter=verbose",
+    "VEXT_TEST_MONGODB_URI: mongodb://127.0.0.1:27017/vextjs_schema_dsl_compat",
+    "VEXT_TEST_REDIS_URL: redis://127.0.0.1:6379",
+  ],
+);
 
 requireTokens("CI aggregate", jobBlock("ci-ok"), [
   "name: CI ✅",

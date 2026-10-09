@@ -52,6 +52,26 @@ jobs:
       matrix:
         node-version: [20, 22]
 
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand(\"ping\")'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout vext
         uses: actions/checkout@v7
@@ -126,6 +146,9 @@ jobs:
       # 集成测试（包含 OpenAPI pipeline 端到端测试）
       - name: Integration tests
         run: npx vitest run test/integration --reporter=verbose
+        env:
+          VEXT_TEST_MONGODB_URI: mongodb://127.0.0.1:27017/vextjs_schema_dsl_compat
+          VEXT_TEST_REDIS_URL: redis://127.0.0.1:6379
 
   # ────────────────────────────────────────────────────────────
   # 2. 结果通知

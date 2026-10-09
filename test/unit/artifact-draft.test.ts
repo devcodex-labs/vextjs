@@ -22,6 +22,38 @@ function draft() {
 }
 
 describe("artifact drafts", () => {
+  it("reads the same external candidate through logical and physical output paths", () => {
+    const project = path.join(root, "project");
+    const physicalOutput = path.join(root, "physical-output");
+    const logicalOutput = path.join(root, "logical-output");
+    fs.mkdirSync(project);
+    fs.mkdirSync(physicalOutput);
+    fs.symlinkSync(
+      physicalOutput,
+      logicalOutput,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    const logicalFile = path.join(logicalOutput, "entry.js");
+    const physicalFile = path.join(physicalOutput, "entry.js");
+    fs.writeFileSync(physicalFile, "old disk bytes");
+    const current = new ArtifactDraft(project, [
+      { outDir: logicalOutput, producer: "test" },
+    ]);
+
+    expect(() => current.read(logicalFile)).toThrow("missing");
+    current.add({ path: logicalFile, contents: "current candidate" });
+    expect(current.has(logicalFile)).toBe(true);
+    expect(current.has(physicalFile)).toBe(true);
+    expect(current.owns(logicalFile)).toBe(true);
+    expect(current.read(logicalFile).toString()).toBe("current candidate");
+    expect(current.read(physicalFile).toString()).toBe("current candidate");
+    expect(() =>
+      current.add({ path: physicalFile, contents: "different" }),
+    ).toThrow("different bytes");
+    expect(current.updates()[0]!.files).toHaveLength(1);
+    expect(fs.readFileSync(physicalFile, "utf8")).toBe("old disk bytes");
+  });
+
   it("rejects overlapping output roles before any generation", () => {
     expect(
       () =>

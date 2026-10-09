@@ -2,6 +2,7 @@ import path from "node:path";
 import {
   assertExplicitOutputDirectory,
   isPathInside,
+  physicalPath,
 } from "../path-boundary.js";
 import {
   ArtifactError,
@@ -69,21 +70,15 @@ export class ArtifactDraft {
   }
 
   owns(file: string): boolean {
-    const absolute = path.resolve(file);
-    return this.targets.some((target) => {
-      const relative = path.relative(target.path, absolute);
-      return (
-        relative !== "" &&
-        relative !== ".." &&
-        !relative.startsWith(`..${path.sep}`) &&
-        !path.isAbsolute(relative)
-      );
-    });
+    const absolute = physicalPath(file);
+    return this.targets.some((target) =>
+      isPathInside(physicalPath(target.path), absolute),
+    );
   }
 
   has(file: string): boolean {
     this.assertActive();
-    return this.candidates.has(artifactFileKey(path.resolve(file)));
+    return this.candidates.has(artifactFileKey(physicalPath(file)));
   }
 
   add(file: ArtifactCandidate, options: { replace?: boolean } = {}): void {
@@ -98,7 +93,7 @@ export class ArtifactDraft {
         "VEXT_OUTPUT_UNVERIFIED",
         `Artifact is outside the declared draft: ${file.path}`,
       );
-    const key = artifactFileKey(absolute);
+    const key = artifactFileKey(physicalPath(absolute));
     const bytes = Buffer.from(file.contents);
     const previous = this.candidates.get(key);
     if (
@@ -120,7 +115,7 @@ export class ArtifactDraft {
 
   read(file: string): Buffer {
     this.assertActive();
-    const candidate = this.candidates.get(artifactFileKey(path.resolve(file)));
+    const candidate = this.candidates.get(artifactFileKey(physicalPath(file)));
     if (!candidate)
       throw new ArtifactError(
         "VEXT_OUTPUT_UNVERIFIED",

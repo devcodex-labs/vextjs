@@ -468,6 +468,7 @@ jobs:
         run: >-
           npx vitest run
           test/unit/path-boundary.test.ts
+          test/unit/artifact-draft.test.ts
           test/unit/cli/build-command.test.ts
           test/unit/frontend-deploy-validation.test.ts
           test/unit/frontend-runtime.test.ts
