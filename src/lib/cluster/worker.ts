@@ -1,3 +1,13 @@
+import cluster from "node:cluster";
+import { SocketReceiver } from "./socket-receiver.js";
+import {
+  parseSocketWorkerContext,
+  SOCKET_WORKER_CONTEXT_ENV,
+  parseClusterWorkerPolicy,
+  CLUSTER_WORKER_POLICY_ENV,
+  type SocketWorkerContext,
+  type ClusterWorkerPolicy,
+} from "./connection-policy.js";
 import type { VextApp } from "../../types/app.js";
 import type { AppInternals } from "../app.js";
 import type { VextServerHandle } from "../../types/adapter.js";
@@ -107,6 +117,7 @@ interface WorkerContext {
   app: VextApp | null;
   internals: AppInternals | null;
   serverHandle: VextServerHandle | null;
+  socketReceiver?: SocketReceiver;
   /** 是否已触发关闭 */
   isShuttingDown: boolean;
 }
@@ -146,7 +157,11 @@ interface WorkerContext {
  */
 export async function workerMain(
   rootDir: string,
-  bootstrapFn: (rootDir: string) => Promise<{
+  bootstrapFn: (
+    rootDir: string,
+    socketContext?: SocketWorkerContext,
+    expectedPolicy?: ClusterWorkerPolicy,
+  ) => Promise<{
     app: VextApp;
     serverHandle: VextServerHandle;
     internals: AppInternals;
@@ -180,10 +195,39 @@ export async function workerMain(
 
   try {
     // ── 1. 执行标准 bootstrap ────────────────────────────
-    const result = await bootstrapFn(rootDir);
+    const serializedContext = cluster.isWorker
+      ? process.env[SOCKET_WORKER_CONTEXT_ENV]
+      : undefined;
+    const socketContext = serializedContext
+      ? parseSocketWorkerContext(serializedContext)
+      : undefined;
+    const serializedPolicy = cluster.isWorker
+      ? process.env[CLUSTER_WORKER_POLICY_ENV]
+      : undefined;
+    const expectedPolicy = serializedPolicy
+      ? parseClusterWorkerPolicy(serializedPolicy)
+      : undefined;
+    const result = expectedPolicy
+      ? await bootstrapFn(rootDir, socketContext, expectedPolicy)
+      : await bootstrapFn(rootDir);
     ctx.app = result.app;
     ctx.internals = result.internals;
     ctx.serverHandle = result.serverHandle;
+    if (socketContext) {
+      if (!result.serverHandle.receiveSocket || !result.serverHandle.forceClose)
+        throw new Error(
+          "[cluster] adapter did not return socket handoff controls",
+        );
+      ctx.socketReceiver = new SocketReceiver(
+        socketContext.generation,
+        result.serverHandle,
+        (message) => {
+          process.send?.(message, (error: Error | null) => {
+            if (error) shutdownWorker(ctx, config);
+          });
+        },
+      );
+    }
 
     // ── 2. 注册 IPC 消息处理器 ──────────────────────────
     registerIPCHandlers(ctx, config);
@@ -245,11 +289,12 @@ export async function workerMain(
  *   - broadcast:    转发给 app 事件系统（后续扩展用）
  */
 function registerIPCHandlers(ctx: WorkerContext, config: WorkerConfig): void {
-  process.on("message", (msg: unknown) => {
+  process.on("message", (msg: unknown, handle?: unknown) => {
     if (typeof msg !== "object" || msg === null) return;
 
     const message = msg as MasterToWorkerMessage;
 
+    ctx.socketReceiver?.message(message, handle);
     switch (message.type) {
       case "set-title": {
         process.title = message.title;
@@ -301,6 +346,7 @@ function registerIPCHandlers(ctx: WorkerContext, config: WorkerConfig): void {
 function shutdownWorker(ctx: WorkerContext, config: WorkerConfig): void {
   if (ctx.isShuttingDown) return;
   ctx.isShuttingDown = true;
+  ctx.socketReceiver?.close();
 
   console.log(`[worker:${config.workerId}] shutting down...`);
 
@@ -466,7 +512,7 @@ function sendToMaster(
     | WorkerRequestRestartMessage,
 ): void {
   try {
-    process.send?.(msg);
+    process.send?.(msg, () => {});
   } catch {
     // IPC channel 已关闭或其他通信错误
     // 不抛出 — 避免影响 Worker 正常运行

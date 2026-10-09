@@ -9,7 +9,10 @@ import {
   resolveAdapter,
 } from "../../src/lib/adapter-resolver.js";
 import { _validateConfig } from "../../src/lib/config-loader.js";
-import type { VextAdapter } from "../../src/types/adapter.js";
+import type {
+  VextAdapter,
+  VextAdapterRuntimeContext,
+} from "../../src/types/adapter.js";
 import type { VextApp, VextConfig } from "../../src/types/app.js";
 
 function createCustomAdapter(): VextAdapter {
@@ -44,6 +47,24 @@ function createStaleCustomAdapter() {
 }
 
 describe("adapter resolver configuration contract", () => {
+  it("passes per-instance runtime context to custom factories", async () => {
+    const context: VextAdapterRuntimeContext = {
+      socketHandoff: { host: "127.0.0.1", port: 3001 },
+    };
+    const adapter = createCustomAdapter();
+    const app = {} as VextApp;
+    const factory = (
+      receivedApp: VextApp,
+      receivedContext?: VextAdapterRuntimeContext,
+    ) => {
+      expect(receivedApp).toBe(app);
+      expect(receivedContext).toBe(context);
+      return adapter;
+    };
+    expect(
+      await resolveAdapter({ adapter: factory } as VextConfig, app, context),
+    ).toBe(adapter);
+  });
   it("accepts and returns a documented adapter object instance", async () => {
     const adapter = createCustomAdapter();
     expect(() => _validateConfig({ adapter })).not.toThrow();

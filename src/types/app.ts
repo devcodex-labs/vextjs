@@ -1,4 +1,4 @@
-import type { VextAdapter } from "./adapter.js";
+import type { VextAdapter, VextAdapterFactory } from "./adapter.js";
 import type { VextMiddleware, VextHandler } from "./middleware.js";
 import type { VextHooks } from "./hooks.js";
 import type { VextFetch, VextFetchConfig } from "../lib/fetch.js";
@@ -1005,7 +1005,7 @@ export interface VextClusterConfig {
   /** 进程标题前缀 @default 'vext' */
   titlePrefix: string;
 
-  /** 默认 none；ip 是兼容保留值，使用 RR 并诊断，未实现 IP 粘性。@default 'none' */
+  /** 默认 none；ip 按 TCP 源 IP 将独立连接分配给稳定 Worker 槽位。@default 'none' */
   sticky: "none" | "ip";
 }
 
@@ -1142,7 +1142,7 @@ export interface VextConfig {
    * 函数：adapter 工厂函数（如 fastifyAdapter({ bodyLimit: 5MB })）
    * 对象：第三方 adapter 实例（必须实现 VextAdapter 接口）
    */
-  adapter: string | ((app: VextApp) => VextAdapter) | VextAdapter;
+  adapter: string | VextAdapterFactory | VextAdapter;
 
   /** 是否信任代理（影响 req.ip / req.protocol 从 X-Forwarded-* 读取） */
   trustProxy: boolean;

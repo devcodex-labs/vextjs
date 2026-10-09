@@ -98,6 +98,8 @@ export type {
 // ── Adapter 类型 ────────────────────────────────────────────
 export type {
   VextAdapter,
+  VextAdapterRuntimeContext,
+  VextAdapterFactory,
   VextAdapterListenOptions,
   VextServerHandle,
 } from "./adapter.js";

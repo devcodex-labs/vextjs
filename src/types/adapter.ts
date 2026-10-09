@@ -6,6 +6,16 @@ export interface VextAdapterListenOptions {
   server?: VextServerConfig;
 }
 
+/** Per-instance context supplied by the actual Cluster Worker startup path. */
+export interface VextAdapterRuntimeContext {
+  socketHandoff?: { host: string; port: number };
+}
+
+export type VextAdapterFactory = (
+  app: import("./app.js").VextApp,
+  context?: VextAdapterRuntimeContext,
+) => VextAdapter;
+
 /**
  * VextAdapter — 框架底层适配器接口
  *
@@ -34,6 +44,8 @@ export interface VextAdapterListenOptions {
  *   - 优雅关闭编排（bootstrap/shutdown 职责）
  */
 export interface VextAdapter {
+  /** Explicit opt-in: listen returns receiveSocket/forceClose in handoff mode. */
+  readonly supportsSocketHandoff?: boolean;
   /** adapter 名称标识（用于日志和错误信息） */
   readonly name: string;
 
@@ -131,6 +143,10 @@ export interface VextAdapter {
  * shutdown 流程通过 close() 停止接受新连接并等待飞行中请求完成。
  */
 export interface VextServerHandle {
+  /** Accept a committed, paused IPC socket (Cluster sticky:ip only). */
+  receiveSocket?(socket: import("node:net").Socket): void;
+  /** Synchronously release owned sockets when the shared shutdown budget expires. */
+  forceClose?(): void;
   /**
    * 停止接受新连接，等待飞行中请求完成后关闭
    *

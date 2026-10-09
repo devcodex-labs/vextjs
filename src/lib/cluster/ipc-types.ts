@@ -19,6 +19,31 @@
 
 // ── Worker → Master 消息 ────────────────────────────────────
 
+export interface SocketPreparedMessage {
+  type: "socket-prepared";
+  transferId: string;
+  generation: string;
+  accepted: boolean;
+}
+
+export interface SocketOfferMessage {
+  type: "socket-offer";
+  transferId: string;
+  generation: string;
+}
+
+export interface SocketCommitMessage {
+  type: "socket-commit";
+  transferId: string;
+  generation: string;
+}
+
+export interface SocketCancelMessage {
+  type: "socket-cancel";
+  transferId: string;
+  generation: string;
+}
+
 /**
  * Worker 就绪通知
  *
@@ -85,6 +110,7 @@ export interface WorkerRequestRestartMessage {
  * Worker → Master 消息联合类型
  */
 export type WorkerToMasterMessage =
+  | SocketPreparedMessage
   | WorkerReadyMessage
   | WorkerHeartbeatMessage
   | WorkerMetricsMessage
@@ -150,6 +176,9 @@ export interface MasterBroadcastMessage {
  * Master → Worker 消息联合类型
  */
 export type MasterToWorkerMessage =
+  | SocketOfferMessage
+  | SocketCommitMessage
+  | SocketCancelMessage
   | MasterSetTitleMessage
   | MasterShutdownMessage
   | MasterHealthCheckMessage
@@ -185,6 +214,9 @@ export interface WorkerMetrics {
  * 存储在 ClusterMaster.workers Map 中。
  */
 export interface WorkerMeta {
+  /** Stable affinity slot; process generations can change within this slot. */
+  slotId?: number;
+  generation?: string;
   /** cluster.Worker.id */
   id: number;
   /** Worker 启动时间戳（Date.now()） */

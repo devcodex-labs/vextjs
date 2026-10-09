@@ -593,6 +593,7 @@ export function createApp(config: VextConfig): {
               "[vextjs] server close failed during shutdown",
             );
           }
+          if (serverResult.status === "timed-out") serverHandle.forceClose?.();
         }
 
         // ── 步骤 2：按 LIFO 顺序执行 onClose 钩子 ──

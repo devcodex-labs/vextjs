@@ -76,6 +76,8 @@ export type {
 
   // Adapter 类型
   VextAdapter,
+  VextAdapterRuntimeContext,
+  VextAdapterFactory,
   VextServerHandle,
 
   // App / Config / Services 类型

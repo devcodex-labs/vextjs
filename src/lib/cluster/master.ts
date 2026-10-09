@@ -1,3 +1,10 @@
+import { SocketDispatcher } from "./socket-dispatcher.js";
+import { WorkerSlots } from "./worker-slots.js";
+import {
+  SOCKET_WORKER_CONTEXT_ENV,
+  SOCKET_HANDOFF_POLICY,
+  CLUSTER_WORKER_POLICY_ENV,
+} from "./connection-policy.js";
 import cluster, { type Worker as ClusterWorker } from "node:cluster";
 import { EventEmitter } from "node:events";
 import { resolveWorkerCount } from "./worker-count.js";
@@ -6,6 +13,7 @@ import type {
   WorkerMeta,
   WorkerToMasterMessage,
   WorkerMetrics,
+  MasterToWorkerMessage,
 } from "./ipc-types.js";
 
 function isEnvFlagEnabled(value: string | undefined): boolean {
@@ -57,6 +65,8 @@ function shouldLogStartupLifecycle(): boolean {
 export interface ClusterMasterConfig {
   /** 内部宿主在所有 worker 停止后完成诊断落盘；异常不阻断关闭。 */
   onStopped?: (exitCode: number) => Promise<void>;
+  /** Actual public listener, owned by Master when sticky is ip. */
+  listen?: { host: string; port: number };
   /** Worker 数量配置 */
   workers: "auto" | "auto-1" | number;
   /** Worker 崩溃后是否自动重启 */
@@ -90,7 +100,7 @@ export interface ClusterMasterConfig {
   pidFile: string;
   /** 进程标题前缀 */
   titlePrefix: string;
-  /** 粘性会话模式 */
+  /** TCP 源 IP 连接亲和性模式 */
   sticky: "none" | "ip";
 }
 
@@ -165,6 +175,8 @@ export class ClusterMaster extends EventEmitter {
   /** Worker 元数据表（key = cluster.Worker.id） */
   private workers = new Map<number, WorkerMeta>();
   private nextWorkerId = 1;
+  private readonly slots = new WorkerSlots();
+  private dispatcher?: SocketDispatcher;
 
   /** 窗口内的重启时间戳（用于频率保护） */
   private restartTimestamps: number[] = [];
@@ -287,23 +299,50 @@ export class ClusterMaster extends EventEmitter {
       throw new Error(`[cluster] ${pidResult.error}`);
     }
 
-    // ── 配置 cluster 调度策略 ─────────────────────────────
-    //
-    // Linux + 非 sticky: SCHED_NONE
-    //   → 内核 SO_REUSEPORT，由内核分配连接，性能最优
-    //
-    // 其他情况: SCHED_RR (Round-Robin)
-    //   → Node.js 内置负载均衡
-    //
-    if (process.platform === "linux" && this.config.sticky === "none") {
-      cluster.schedulingPolicy = cluster.SCHED_NONE;
+    // Ordinary Cluster uses Node's shared-listener policy. IP mode owns TCP ingress.
+    if (this.config.sticky === "none") {
+      cluster.schedulingPolicy =
+        process.platform === "linux" ? cluster.SCHED_NONE : cluster.SCHED_RR;
     } else {
-      cluster.schedulingPolicy = cluster.SCHED_RR;
-    }
-    if (this.config.sticky === "ip") {
-      console.warn(
-        '[cluster] sticky="ip" is deprecated and does not provide IP affinity; using round-robin. Configure affinity in an external load balancer.',
-      );
+      try {
+        if (!this.config.listen)
+          throw new Error(
+            '[cluster] sticky="ip" requires a public listen endpoint',
+          );
+        this.dispatcher = new SocketDispatcher(
+          () =>
+            [...this.slots.entries()].flatMap(([slot, id]) => {
+              const meta = this.workers.get(id),
+                worker = cluster.workers?.[id];
+              return meta?.state === "ready" &&
+                worker?.isConnected() &&
+                !worker.isDead() &&
+                !worker.process.killed
+                ? [{ slot, generation: meta.generation!, worker }]
+                : [];
+            }),
+          (worker) => {
+            // Preserve unexpected-exit/auto-restart semantics; never mark as a normal drain.
+            if (!worker.isDead() && !worker.process.killed) {
+              try {
+                worker.process.kill("SIGKILL");
+              } catch {
+                if (!worker.isDead()) worker.kill("SIGKILL");
+              }
+            }
+          },
+          (error) => this.emit("listener-error", error),
+        );
+        await this.dispatcher.listen(
+          this.config.listen.port,
+          this.config.listen.host,
+        );
+      } catch (error) {
+        this.startupFailed = true;
+        this.isStarting = false;
+        this.cleanup();
+        throw error;
+      }
     }
 
     if (shouldLogStartupLifecycle()) {
@@ -329,7 +368,7 @@ export class ClusterMaster extends EventEmitter {
     //
     for (let i = 0; i < this.workerCount; i++) {
       try {
-        await this.forkWorker();
+        await this.forkWorker({ slotId: i });
       } catch (err) {
         if (i === 0) {
           // 首个 Worker 失败 → Fail Fast
@@ -358,6 +397,7 @@ export class ClusterMaster extends EventEmitter {
 
     const readyCount = this.getReadyWorkerCount();
     this.isStarting = false;
+    if (readyCount > 0) this.dispatcher?.open();
     this.checkAllDead();
     if (shouldLogStartupLifecycle()) {
       console.log(
@@ -382,6 +422,7 @@ export class ClusterMaster extends EventEmitter {
   async gracefulShutdown(trigger: string, exitCode = 0): Promise<void> {
     if (this.isShuttingDown) return;
     this.isShuttingDown = true;
+    this.dispatcher?.beginShutdown();
     for (const timer of this.pendingRestarts) clearTimeout(timer);
     this.pendingRestarts.clear();
 
@@ -400,7 +441,7 @@ export class ClusterMaster extends EventEmitter {
       if (worker && !worker.isDead()) {
         const meta = this.workers.get(id);
         if (meta) meta.state = "draining";
-        worker.send({
+        this.sendControl(worker, {
           type: "shutdown",
           timeout: this.config.reload.shutdownTimeout,
         });
@@ -452,7 +493,15 @@ export class ClusterMaster extends EventEmitter {
 
     this.isReloading = true;
 
-    const oldWorkerIds = [...this.workers.keys()];
+    // Snapshot only current ready owners, excluding recovery/replacement candidates.
+    const oldWorkerIds = [...this.workers.values()]
+      .filter(
+        (meta) =>
+          meta.state === "ready" &&
+          (meta.slotId === undefined ||
+            this.slots.owner(meta.slotId) === meta.id),
+      )
+      .map((meta) => meta.id);
     console.log(
       `[cluster] rolling restart triggered by ${trigger}, replacing ${oldWorkerIds.length} workers`,
     );
@@ -472,9 +521,21 @@ export class ClusterMaster extends EventEmitter {
         break;
       }
 
+      const oldMeta = this.workers.get(oldId);
+      // Another slot may already have crashed/recovered while the prior slot drained.
+      if (
+        !oldMeta ||
+        oldMeta.state !== "ready" ||
+        (oldMeta.slotId !== undefined &&
+          this.slots.owner(oldMeta.slotId) !== oldId)
+      )
+        continue;
       try {
         // Fork 新 Worker
-        const _newWorker = await this.forkWorker();
+        const _newWorker = await this.forkWorker({
+          slotId: oldMeta.slotId,
+          replaceWorkerId: oldId,
+        });
 
         // 新 Worker ready → 通知旧 Worker shutdown
         const oldWorker = cluster.workers?.[oldId];
@@ -482,7 +543,7 @@ export class ClusterMaster extends EventEmitter {
           const oldMeta = this.workers.get(oldId);
           if (oldMeta) oldMeta.state = "draining";
 
-          oldWorker.send({
+          this.sendControl(oldWorker, {
             type: "shutdown",
             timeout: this.config.reload.shutdownTimeout,
           });
@@ -528,7 +589,7 @@ export class ClusterMaster extends EventEmitter {
     for (const [id] of this.workers) {
       const worker = cluster.workers?.[id];
       if (worker && !worker.isDead()) {
-        worker.send({ type: "broadcast", payload });
+        this.sendControl(worker, { type: "broadcast", payload });
       }
     }
   }
@@ -572,9 +633,17 @@ export class ClusterMaster extends EventEmitter {
     return !this.isShuttingDown;
   }
 
-  /**
-   * getTargetWorkerCount — 获取配置计算出的目标 Worker 数量
-   */
+  /** Bounded handoff counters, sampled by the existing runtime metrics path. */
+  getConnectionSnapshot() {
+    return this.dispatcher?.snapshot() ?? { mode: "none", pending: 0 };
+  }
+
+  /** Master's bound public endpoint in IP mode. */
+  getListenAddress() {
+    return this.dispatcher?.address() ?? this.config.listen;
+  }
+
+  /** Actual target Worker count for this Master lifecycle. */
   getTargetWorkerCount(): number {
     return this.workerCount;
   }
@@ -603,19 +672,39 @@ export class ClusterMaster extends EventEmitter {
    * @throws Worker 在 readyTimeout 内未就绪或在就绪前退出
    */
   private async forkWorker(
-    options: { retryOnEarlyExit?: boolean } = {},
+    options: {
+      retryOnEarlyExit?: boolean;
+      slotId?: number;
+      replaceWorkerId?: number;
+    } = {},
   ): Promise<ClusterWorker> {
     this.activeForks++;
     try {
       const nextId = this.nextWorkerId++;
+      const slotId = options.slotId ?? nextId - 1;
+      const generation = String(nextId);
+      const endpoint = this.dispatcher?.address();
 
       const worker = cluster.fork({
         VEXT_WORKER_ID: String(nextId),
         VEXT_MODE: "start",
+        [CLUSTER_WORKER_POLICY_ENV]: JSON.stringify({
+          sticky: this.config.sticky,
+          workers: this.config.workers,
+        }),
+        [SOCKET_WORKER_CONTEXT_ENV]: endpoint
+          ? JSON.stringify({
+              version: SOCKET_HANDOFF_POLICY.version,
+              generation,
+              ...endpoint,
+            })
+          : "",
       });
 
       const meta: WorkerMeta = {
         id: worker.id,
+        slotId,
+        generation,
         startTime: Date.now(),
         restartCount: 0,
         lastHeartbeat: Date.now(),
@@ -627,14 +716,10 @@ export class ClusterMaster extends EventEmitter {
       }
 
       // 设置 Worker 进程标题
-      try {
-        worker.send({
-          type: "set-title",
-          title: `${this.config.titlePrefix}:worker:${nextId}`,
-        });
-      } catch {
-        // Worker 可能在 send 之前就退出了
-      }
+      this.sendControl(worker, {
+        type: "set-title",
+        title: `${this.config.titlePrefix}:worker:${nextId}`,
+      });
 
       // 注册 IPC 消息监听
       worker.on("message", (msg: unknown) =>
@@ -643,6 +728,22 @@ export class ClusterMaster extends EventEmitter {
 
       // 等待 Worker 就绪
       await this.waitForWorkerReady(worker);
+      const owner = this.slots.owner(slotId);
+      if (
+        this.isShuttingDown ||
+        (owner !== undefined && owner !== options.replaceWorkerId)
+      ) {
+        this.terminateUnreadyWorker(worker);
+        throw new Error(
+          `worker ${worker.id} affinity slot is already owned or shutting down`,
+        );
+      }
+      // One synchronous commit; candidates never add an extra routable slot.
+      this.slots.activate(slotId, worker.id);
+      if (owner !== undefined) {
+        const old = this.workers.get(owner);
+        if (old) old.state = "draining";
+      }
       this.ownedStartupWorkerIds.delete(worker.id);
       this.capacityLossEmitted = false;
 
@@ -692,6 +793,23 @@ export class ClusterMaster extends EventEmitter {
           msg === null ||
           (msg as Record<string, unknown>).type !== "ready"
         ) {
+          return;
+        }
+        const endpoint = this.dispatcher?.address();
+        const reported = (msg as { server?: { host: string; port: number } })
+          .server;
+        if (
+          endpoint &&
+          (reported?.host !== endpoint.host || reported.port !== endpoint.port)
+        ) {
+          settled = true;
+          this.terminateUnreadyWorker(worker);
+          cleanup();
+          reject(
+            new Error(
+              `worker ${worker.id} did not initialize the Master socket endpoint`,
+            ),
+          );
           return;
         }
         settled = true;
@@ -796,6 +914,10 @@ export class ClusterMaster extends EventEmitter {
     const message = msg as WorkerToMasterMessage;
 
     switch (message.type) {
+      case "socket-prepared": {
+        this.dispatcher?.prepared(worker, message);
+        break;
+      }
       case "heartbeat": {
         const meta = this.workers.get(worker.id);
         if (meta) {
@@ -806,6 +928,7 @@ export class ClusterMaster extends EventEmitter {
 
       case "metrics": {
         this.workerMetrics.set(worker.id, message.data);
+        this.emit("worker-metrics", { workerId: worker.id });
         break;
       }
 
@@ -828,6 +951,21 @@ export class ClusterMaster extends EventEmitter {
     }
   }
 
+  private sendControl(
+    worker: ClusterWorker,
+    message: MasterToWorkerMessage,
+  ): void {
+    if (worker.isDead() || !worker.isConnected() || worker.process.killed)
+      return;
+    try {
+      // A callback also consumes asynchronous channel errors. Existing readiness,
+      // heartbeat and shutdown deadlines still own recovery and process cleanup.
+      worker.send(message, () => {});
+    } catch {
+      // The process can exit between the connection check and send.
+    }
+  }
+
   /**
    * replaceWorker — 替换单个 Worker（用于 request-restart 场景）
    *
@@ -839,14 +977,19 @@ export class ClusterMaster extends EventEmitter {
    */
   private async replaceWorker(oldWorker: ClusterWorker): Promise<void> {
     if (this.isShuttingDown || this.isReloading) return;
+    const oldMeta = this.workers.get(oldWorker.id);
+    if (!oldMeta || oldMeta.state !== "ready") return;
 
     try {
-      await this.forkWorker();
+      await this.forkWorker({
+        slotId: oldMeta.slotId,
+        replaceWorkerId: oldWorker.id,
+      });
 
       if (!oldWorker.isDead()) {
         const meta = this.workers.get(oldWorker.id);
         if (meta) meta.state = "draining";
-        oldWorker.send({
+        this.sendControl(oldWorker, {
           type: "shutdown",
           timeout: this.config.reload.shutdownTimeout,
         });
@@ -882,6 +1025,8 @@ export class ClusterMaster extends EventEmitter {
     const wasOwnedStartupCandidate = this.ownedStartupWorkerIds.delete(
       worker.id,
     );
+    if (meta?.slotId !== undefined) this.slots.remove(meta.slotId, worker.id);
+    this.dispatcher?.workerExited(worker.id);
     this.workers.delete(worker.id);
     this.workerMetrics.delete(worker.id);
 
@@ -945,8 +1090,15 @@ export class ClusterMaster extends EventEmitter {
     const timer = setTimeout(async () => {
       this.pendingRestarts.delete(timer);
       if (this.isShuttingDown) return;
+      if (
+        meta?.slotId !== undefined &&
+        this.slots.owner(meta.slotId) !== undefined
+      ) {
+        this.checkAllDead();
+        return;
+      }
       try {
-        await this.forkWorker({ retryOnEarlyExit: true });
+        await this.forkWorker({ retryOnEarlyExit: true, slotId: meta?.slotId });
       } catch (err) {
         console.error(
           `[cluster] failed to spawn replacement: ${(err as Error).message}`,
@@ -1189,6 +1341,7 @@ export class ClusterMaster extends EventEmitter {
    * 关闭定时器 + 移除信号处理器 + 删除 PID 文件。
    */
   private cleanup(): void {
+    this.dispatcher?.beginShutdown();
     this.stopHealthCheck();
     this.removeSignalHandlers();
     this.removeWorkerExitListenerIfTerminated();

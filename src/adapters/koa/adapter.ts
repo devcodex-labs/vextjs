@@ -1,7 +1,11 @@
 import Koa from "koa";
 import Router from "@koa/router";
 import type { Context as KoaContext } from "koa";
-import { createServer } from "node:http";
+import {
+  createAdapterHTTPServer,
+  socketHandoffControls,
+} from "../../lib/socket-http-server.js";
+import type { VextAdapterRuntimeContext } from "../../types/adapter.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import crypto from "node:crypto";
 import { createVextRequest } from "./request.js";
@@ -242,6 +246,7 @@ function getKoaParams(ctx: KoaContext): Record<string, string> {
 export function createKoaAdapter(
   options: KoaAdapterOptions,
   vextApp: VextApp,
+  context?: VextAdapterRuntimeContext,
 ): VextAdapter {
   // ── 创建 Koa 实例 ─────────────────────────────────────────
   //
@@ -497,6 +502,7 @@ export function createKoaAdapter(
 
   return {
     name: "koa",
+    supportsSocketHandoff: Boolean(context?.socketHandoff),
 
     // ── registerMiddleware ───────────────────────────────────
     //
@@ -591,7 +597,8 @@ export function createKoaAdapter(
       registerKoaMiddleware();
 
       const handler = koaApp.callback();
-      const server = createServer(
+      const server = createAdapterHTTPServer(
+        context,
         createNodeServerOptions(options?.server),
         handler,
       );
@@ -612,6 +619,7 @@ export function createKoaAdapter(
               : host;
 
           resolve({
+            ...socketHandoffControls(server),
             port: actualPort,
             host: actualHost,
 

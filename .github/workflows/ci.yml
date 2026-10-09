@@ -473,6 +473,10 @@ jobs:
           test/unit/frontend-deploy-validation.test.ts
           test/unit/frontend-runtime.test.ts
           test/unit/frontend-repairs.test.ts
+          test/unit/cluster/affinity-router.test.ts
+          test/unit/cluster/socket-receiver.test.ts
+          test/unit/cluster/socket-http-server.test.ts
+          test/integration/cluster/ip-affinity.test.ts
           --reporter=verbose
 
       - name: Verify Windows package exports
