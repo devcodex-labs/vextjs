@@ -2,6 +2,18 @@
 
 VextJS 内置了 [MonSQLize](https://github.com/devcodex-labs/monSQLize) 数据库插件，提供开箱即用的 MongoDB 数据库支持。只需在配置文件中添加 `database` 字段，框架会自动完成连接管理、Model 加载和资源清理。
 
+## 按任务阅读
+
+| 目标                           | 从哪里开始                                                                                          |
+| ------------------------------ | --------------------------------------------------------------------------------------------------- |
+| 第一次连库、写入并验证唯一约束 | [快速开始](#快速开始)：配置、Model、启动插件、Service 与路由                                        |
+| 多环境、连接池或缓存配置       | [配置详解](#配置详解)，同时核对实际安装的 MonSQLize 版本                                            |
+| 确定模型名、集合名及目录作用域 | [Model 定义](#model-定义)；原始集合操作与 Model 行为分别核对                                        |
+| 测试、修改模型或释放资源       | [测试中使用](#测试中使用)、[Model 热重载](#model-热重载开发模式)、[优雅关闭](#优雅关闭)             |
+| 迁移已有数据库代码             | [旧代码兼容边界](#旧代码与当前-api-的兼容边界)、[版本与迁移](./introduction#versions-and-migration) |
+
+Collection 是真实集合操作入口，Model 是已注册的模型及其 schema/hooks 行为；scope 指 pool/database 的选择，不会改写模型键。ownership 指框架只清理当前应用拥有的模型注册和连接。先完成一套 CRUD 验证，再按需要阅读高级上游 API。
+
 ## 快速开始
 
 先完成[快速开始](/zh/guide/quick-start)中的 TypeScript 项目准备，并使用以下 npm scripts：`dev: vext dev`、`build: vext build`、`start: vext start`。Vext 已包含 MonSQLize 运行时依赖；这条入门路径无需额外安装第二份。

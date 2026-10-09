@@ -2,6 +2,18 @@
 
 VextJS includes a [MonSQLize](https://github.com/devcodex-labs/monSQLize) database integration for MongoDB. Configuring `database` enables connection management, Model loading and resource cleanup. The application must still supply a reachable database and a valid configuration.
 
+## Read by task
+
+| Goal                                                          | Start here                                                                                                                                   |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Connect, write data, and verify uniqueness for the first time | [Quick Start](#quick-start): configuration, Model, startup plugin, Service, and routes                                                       |
+| Configure profiles, connection pools, or cache                | [Configuration details](#configuration-details), checking the installed MonSQLize version                                                    |
+| Identify model names, collection names, and directory scopes  | [Model definition](#model-definition); distinguish raw collection operations from Model behavior                                             |
+| Test, modify models, or release resources                     | [Used in testing](#used-in-testing), [Model hot reload](#model-hot-reload-development-mode), [Graceful shutdown](#graceful-shutdown)         |
+| Migrate existing database code                                | [Compatibility boundary](#compatibility-of-older-code-with-the-current-api), [Versions and Migration](./introduction#versions-and-migration) |
+
+A Collection exposes real collection operations; a Model is a registered model with schema/hooks behavior. Scope selects pool/database and does not rewrite model keys. Ownership means the framework cleans up only model registrations and connections owned by the current application. Complete one CRUD verification before reading advanced upstream APIs as needed.
+
 ## Quick Start
 
 First prepare the TypeScript project from [Quick Start](/guide/quick-start) with npm scripts `dev: vext dev`, `build: vext build` and `start: vext start`. Vext includes the MonSQLize runtime dependency; this path needs no second installation.

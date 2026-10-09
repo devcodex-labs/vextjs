@@ -4,6 +4,18 @@
 
 默认值分为框架常量、模块解析回退和模板显式配置，三者不同。“已解析但未接入”不表示功能已经可用。
 
+## 按任务查阅
+
+| 目标                              | 相关入口                                                                                                                 |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| 配置第一次生效、排查 mode/profile | [配置加载机制](#配置加载机制)；操作步骤见[配置指南](/zh/guide/configuration)                                             |
+| 请求与响应参数                    | [限流](#vextratelimitconfig)、[响应](#vextresponseconfig)、[请求体](#vextbodyparserconfig)、[上传](#vextmultipartconfig) |
+| 安全与状态                        | [Session](#vextsessionconfig)、[CSRF](#vextcsrfconfig)、[安全头](#vextsecurityheadersconfig)、[缓存](#vextcacheconfig)   |
+| 前端、文档与进程                  | [Frontend](#vextfrontendconfig)、[OpenAPI](#vextopenapiconfig)、[Cluster](#vextclusterconfig)                            |
+| TypeScript 配置分层与修改后验收   | [VextUserConfig](#vextuserconfig)、[VextConfigOverride](#vextconfigoverride)、[配置变更后验证](#配置变更后验证)          |
+
+每个字段同时核对默认值、单位、启用前提和路由覆盖能力。build identity 是产物的 profile/buildId 等身份记录；manifest 是生成清单。它们说明实际加载的产物，不是额外需要配置的业务字段。
+
 ## 配置加载机制
 
 VextJS 使用**多层配置合并**策略，按优先级从低到高：
@@ -24,21 +36,21 @@ vext start/dev --port --host ...
 
 普通对象递归合并，数组通常整体替换，middlewares 按 name 专门合并。校验通过后普通对象与数组经 deepFreeze 冻结；Date、Map、Set、Buffer 和 class 实例等保留运行时状态，不把它们视为可热更新的配置通道。
 
-profile 与运行模式不同：--config → VEXT_CONFIG → 非标准 NODE_ENV（兼容并警告）→ 命令默认 profile；start/build 的运行模式为 production，dev 为 development。即使用 start --config development，生产模式也不读取 local.ts；标准 NODE_ENV 不替代 --config 选择 profile。
+profile 与运行模式不同。显式选择顺序为 `--config` → `VEXT_CONFIG` → 非标准 `NODE_ENV`（兼容并警告）。无显式选择时，start/deploy assets 优先使用所选成功构建产物记录的 profile，无记录才回退 production；build 默认 production，dev 默认 development。start/build 的运行模式为 production，dev 为 development。即使用 start --config development，生产模式也不读取 local.ts；标准 NODE_ENV 不替代 --config 选择 profile。命令示例见[配置指南](/zh/guide/configuration#配置加载机制)。
 
 TypeScript 中的各层不会共用一个宽松类型。基础 `default.ts` 使用 `VextUserConfig`；一旦包含 `database`，该嵌套值就必须是完整的 `MonSQLizeDatabaseConfig`。profile/local patch 使用 `VextConfigOverride`，嵌套字段可按运行时深度合并语义分层提供。
 
 ### 配置文件清单
 
-| 文件                        | 用途                     | 是否必须 |
-| --------------------------- | ------------------------ | :------: |
-| `src/config/default.ts`     | 所有 profile 的基础配置  |    ✅    |
-| `src/config/development.ts` | 开发默认 profile 覆盖    |   可选   |
-| `src/config/production.ts`  | 生产默认 profile 覆盖    |   可选   |
-| `src/config/test.ts`        | 测试默认 profile 覆盖    |   可选   |
-| `src/config/sg-sit.ts`      | 自定义 profile 覆盖      |   可选   |
-| `src/config/local.ts`       | 仅开发/测试模式本地覆盖  |   可选   |
-| `src/config/bootstrap.ts`   | 启动期 provider 注册入口 |   可选   |
+| 文件                        | 用途                                                        | 是否必须 |
+| --------------------------- | ----------------------------------------------------------- | :------: |
+| `src/config/default.ts`     | 所有 profile 的基础配置                                     |    ✅    |
+| `src/config/development.ts` | 开发默认 profile 覆盖                                       |   可选   |
+| `src/config/production.ts`  | production profile 覆盖；build 默认，start 无构建记录时回退 |   可选   |
+| `src/config/test.ts`        | 测试默认 profile 覆盖                                       |   可选   |
+| `src/config/sg-sit.ts`      | 自定义 profile 覆盖                                         |   可选   |
+| `src/config/local.ts`       | 仅开发/测试模式本地覆盖                                     |   可选   |
+| `src/config/bootstrap.ts`   | 启动期 provider 注册入口                                    |   可选   |
 
 ### `src/config/bootstrap.ts`
 

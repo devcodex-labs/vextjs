@@ -20,7 +20,7 @@ TypeScript 应用的 `vext build` 会先刷新生成声明与路由 manifest，�
 
 ### VEXT-OPS-002 [MUST] 区分运行模式、配置 profile 与构建时替换
 
-`vext start` 使用 production 运行模式。选择配置 profile 的优先级是 `--config` 高于 `VEXT_CONFIG`，无显式选择时按命令默认；旧的非标准 `NODE_ENV` profile 仅保留带警告的兼容行为。
+`vext start` 使用 production 运行模式。显式选择配置 profile 的优先级为 `--config` → `VEXT_CONFIG` → 非标准 `NODE_ENV`（兼容并警告）。无显式选择时，start/deploy assets 优先沿用所选成功构建产物记录的 profile，无记录才回退 production；build 默认 production，dev 默认 development。不能把运行模式为 production 理解为一定加载 production profile。
 
 `vext build` 的后端生产编译会静态替换用户源码中的 `process.env.NODE_ENV`。运行时切换 profile 不会恢复已经被构建裁剪的环境分支。把需要运行时变化的配置通过真实配置入口提供，不能假定改变环境变量会重写编译产物。
 

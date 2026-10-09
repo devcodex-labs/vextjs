@@ -52,14 +52,14 @@ public/
 
 Add business files as needed; the template does not create every directory below in advance:
 
-| Task                      | Location and accompanying work                                                                                                 |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Add a dashboard page      | `src/frontend/pages/admin/dashboard.tsx` and register `/` in `src/routes/admin/dashboard.ts`; the page does not create a URL   |
-| Add reusable UI           | `src/frontend/components/UserMenu.tsx`, imported by a page or layout                                                           |
-| Add a shared admin layout | `src/frontend/pages/admin/layout.tsx`; see [Layouts and Components](/frontend/layouts-and-components) for inheritance and data |
-| Add page styles           | `src/frontend/styles/dashboard.module.css` or `card.style.ts`, imported and used by UI                                         |
-| Add another locale        | `src/frontend/locales/zh-CN.ts`, with locale configuration and copy coverage checked                                           |
-| Add a 404 page            | `src/frontend/pages/error/404.tsx`, mapped as described in [Error Pages and Document](/frontend/errors-and-document)           |
+| Task                      | Location and accompanying work                                                                                                                                                                             |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Add a dashboard page      | `src/frontend/pages/admin/dashboard.tsx` and register `/` in `src/routes/admin/dashboard.ts`; the page does not create a URL                                                                               |
+| Add reusable UI           | `src/frontend/components/UserMenu.tsx`, imported by a page or layout                                                                                                                                       |
+| Add a shared admin layout | `src/frontend/pages/admin/layout.tsx`; see [Layouts and Components](/frontend/layouts-and-components) for inheritance and data                                                                             |
+| Add page styles           | For default SSR, prefer `src/frontend/styles/card.style.ts` (JSCSS) or plain CSS, imported and used by UI; see [Styles and Assets](./styles-and-assets#css-modules) for production CSS Modules limitations |
+| Add another locale        | `src/frontend/locales/zh-CN.ts`, with locale configuration and copy coverage checked                                                                                                                       |
+| Add a 404 page            | `src/frontend/pages/error/404.tsx`, mapped as described in [Error Pages and Document](/frontend/errors-and-document)                                                                                       |
 
 Put URL-addressed files under `public/**`. `src/frontend/assets/**` is for files in the browser build graph. Directly importing an image in a current SSR page has a build limitation; use the Public URL example below first. Inlining and hashing depend on the actual build configuration.
 

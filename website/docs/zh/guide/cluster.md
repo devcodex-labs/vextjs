@@ -170,7 +170,9 @@ export default {
 | `"auto-1"` | 检测值减 1，至少 1           | 只减少数量，不做 CPU 核心绑定 |
 | 正整数     | 数值限制在 1～64             | 双 Worker 验证可使用 2        |
 
-请使用有效正整数，不依赖越界值兜底。CPU 检测先尝试 `os.availableParallelism()`，失败后才按 Linux cgroup v1 与 `os.cpus()` 降级；不要认为它必然精确对应所有容器 CPU quota。
+请使用有效正整数，不依赖越界值兜底。CPU 检测先尝试 `os.availableParallelism()`，缺失、抛错或返回无效值时，才以 `os.cpus()` 为基础尝试 Linux cgroup v1 配额。有效配额会约束检测值；文件不存在、无法读取 cgroup 限制、内容无效或未设置有限配额时，回退值可能来自主机 CPU 数。不要认为自动值必然精确对应所有容器 CPU quota。
+
+容器中应先用本页的 worker-info 路由核对实际进程数量，再根据 CPU、内存和连接预算配置显式 `workers: 2` 等值。`"auto-1"` 只是将检测值减一，不能修复配额读取失败。
 
 每增加一个 Worker 都会增加应用实例、数据库连接池、缓存和堆内存占用。根据请求负载、内存和外部连接限额确定数量，并以实际压测验证，不能仅按 CPU 倍数保证吞吐。
 
@@ -465,6 +467,16 @@ Master 和 Worker 之间通过内部 IPC 协议通信。下表用于理解运行
 | `broadcast`    | 接收后当前仅打印 debug 日志，不自动触发业务事件或同步配置     |
 
 这些消息由框架维护。请求指标占位不等于服务没有流量；生产监控应基于已接入的实际请求观测。
+
+排查内部进程通信时，消息形态例如：
+
+```typescript
+// 内部协议形态示意，不是业务代码应发送的命令。
+const workerReady = { type: "ready", pid: 1234, workerId: "1" };
+const masterShutdown = { type: "shutdown", timeout: 10_000 };
+```
+
+这里的 PID、workerId 为示意值，timeout 单位为毫秒。应用管理 Worker 请使用本页的 CLI 与生命周期入口，不要从路由中手动发送内部消息。
 
 ## 与 Docker 部署
 

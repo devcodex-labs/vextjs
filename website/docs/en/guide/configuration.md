@@ -110,16 +110,18 @@ When loading TypeScript config sources directly, the framework compiles them wit
 
 ### Configuration file
 
-| File                        | Purpose                                                      | Is it necessary |
-| --------------------------- | ------------------------------------------------------------ | --------------- |
-| `src/config/default.ts`     | Basic configuration for all environments                     | ✅ Required     |
-| `src/config/development.ts` | Development profile override (`vext dev` default)            | Optional        |
-| `src/config/production.ts`  | Production profile override (`vext start` default)           | Optional        |
-| `src/config/test.ts`        | Test profile override                                        | Optional        |
-| `src/config/local.ts`       | Local development coverage (should be added to `.gitignore`) | Optional        |
-| `src/config/bootstrap.ts`   | Startup provider registration entrance                       | Optional        |
+| File                        | Purpose                                                                           | Is it necessary |
+| --------------------------- | --------------------------------------------------------------------------------- | --------------- |
+| `src/config/default.ts`     | Basic configuration for all environments                                          | ✅ Required     |
+| `src/config/development.ts` | Development profile override (`vext dev` default)                                 | Optional        |
+| `src/config/production.ts`  | Production profile override; build default, start fallback without build metadata | Optional        |
+| `src/config/test.ts`        | Test profile override                                                             | Optional        |
+| `src/config/local.ts`       | Local development coverage (should be added to `.gitignore`)                      | Optional        |
+| `src/config/bootstrap.ts`   | Startup provider registration entrance                                            | Optional        |
 
-Select a config profile explicitly with `--config <name>` or `VEXT_CONFIG=<name>`. When omitted, `vext start`, `vext build`, and `vext deploy assets` default to the `production` profile, while `vext dev` defaults to the `development` profile.
+Explicit profile selection follows `--config <name>` → `VEXT_CONFIG=<name>` → the legacy nonstandard `NODE_ENV` value (with a warning). Without an explicit selection, `vext build` defaults to `production` and `vext dev` to `development`. `vext start` and `vext deploy assets` first inherit the profile recorded in the selected successful build output, falling back to `production` only when no profile is recorded.
+
+For example, after `npm run build -- --config sg-sit` in a clean terminal, `npm start` inherits `sg-sit` while still running in production mode. To use another profile, select it explicitly and confirm its configuration file is included in the output. See [CLI](./cli) for commands and build identity checks.
 
 An explicit CLI profile takes priority over `VEXT_CONFIG`. A nonstandard
 `NODE_ENV` name still has a legacy compatibility route with a warning; use

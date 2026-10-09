@@ -514,7 +514,9 @@ app.post(
 );
 ```
 
-内建默认存储是单进程的，因此不同 worker 或应用实例会独立计数。共享配额可配置 `rateLimit.store: { type: "redis", url }`；需要自定义 limiter 实现时才使用 `app.setRateLimiter()`，该调用本身不会启用限流。key 选择、路由覆盖、响应头和 429 处理仍由内建中间件负责，详见[配置](/zh/guide/configuration)。
+内建默认存储是单进程的，因此不同 worker 或应用实例会独立计数。共享后端可配置 `rateLimit.store: { type: "redis", url }`，保留内建算法与路由配额覆盖。需要自定义 limiter 实现时才使用 `app.setRateLimiter()`，该调用本身不会启用限流。
+
+自定义分支只调用 `check(key)`，不会自动传入路由的 `max/window`；配额算法和窗口由自定义实现负责。内建中间件仍负责 key 选择、路由 `false` 跳过、响应头和 429 输出；限流头中的配置值不能证明自定义算法采用了同一额度。完整边界见[自定义 limiter](/zh/guide/rate-limit#自定义-limiter)。
 
 ---
 

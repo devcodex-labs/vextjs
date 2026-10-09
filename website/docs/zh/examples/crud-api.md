@@ -359,7 +359,7 @@ export default class UserService {
 ```
 
 :::tip
-VextJS 的服务层通过约定式目录自动加载。将 class 或对象放在 `src/services/` 目录下，框架会自动实例化并注入到 `app.services` 中。文件名即服务名：`user.ts` → `app.services.user`。
+VextJS 的服务层通过约定式目录自动加载。文件必须默认导出可通过 `new` 实例化的 class 或构造函数；普通对象默认导出会使加载失败。框架实例化后注入到 `app.services` 中。文件名即服务名：`user.ts` → `app.services.user`。测试 helper 的 `mockServices` 可接收对象替身，这是另一份合同，见[测试 API](../api/testing-api#mockservices)。
 
 服务的 constructor 接收 `app: VextApp` 参数，可以访问 `app.logger`、`app.config`、`app.throw` 等框架能力。
 :::

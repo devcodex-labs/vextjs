@@ -1,6 +1,8 @@
 # Layout 与组件
 
-本页接续[项目结构](/zh/frontend/project-structure)中的 `admin/dashboard` 页面：为它添加根布局、后台布局和可复用菜单。先掌握[路由与页面](/zh/frontend/routing-and-pages)的 `res.render` 调用方式。
+先完成[全栈快速开始的“添加页面”](/zh/frontend/getting-started#添加页面)，确认 `/admin/dashboard` 显示 `Total users: 42`；它包含本页需要的页面文件与 HTTP route。项目结构页只解释文件职责，不提供这套完整前置。本页继续添加根布局、后台布局和可复用菜单，`res.render` 基础见[路由与页面](/zh/frontend/routing-and-pages)。
+
+下面创建 `components/AdminShell.tsx` 与 `pages/admin/layout.tsx`；根 `pages/layout.tsx` 若已存在，则用根布局示例替换，保留项目需要的样式 import。根布局会影响所有使用自动布局的页面，admin 布局只影响该目录下的页面。原 `admin/dashboard.tsx` 页面保留，路由中仅替换渲染调用。
 
 ## 目录导航
 

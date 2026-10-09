@@ -2,6 +2,17 @@
 
 This page details the complete API of the VextJS application instance `VextApp`, including built-in modules, extension methods, life cycle hooks and startup functions.
 
+## Find an API by task
+
+| Goal                                                         | Entry points                                                                                                                                           |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Start your first application                                 | [Quick Start](/guide/quick-start); normal applications use the CLI, while [bootstrap](#bootstrap)/[createApp](#createapp) support custom orchestration |
+| Use logging, configuration, Services, or databases in routes | [VextApp interface](#vextapp-interface); see [Complete usage example](#complete-usage-example) for combined usage                                      |
+| Write plugins, replace implementations, or release resources | [Framework extension API](#framework-extension-api), [Life cycle hook](#life-cycle-hook)                                                               |
+| Understand internal startup/testing flows                    | [AppInternals](#appinternals) and the following helpers; business code need not read these first                                                       |
+
+The route factory's app facade exposes real application capabilities through controlled entry points and limits the lifecycle for HTTP registration. It does not copy services/config into a snapshot; request handlers retain access to those capabilities. Ownership describes which application or build process creates and releases resources/files, rather than business access permissions.
+
 ## Overview
 
 `VextApp` is the core object of the entire VextJS application, created through `createApp(config)`. It mounts built-in capabilities such as configuration, services, logging, and error throwing, and supports plug-in extensions through methods such as `extend()` / `use()`.

@@ -217,13 +217,13 @@ JSCSS 默认已经启用。只有在明确的交付约束下才需要改变设�
 
 ## 排错
 
-| 现象                         | 先检查                                                                             | 恢复方式                                                                      |
-| ---------------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| 没有生成 class CSS           | 文件是否在 `src/frontend/**` 下，且匹配 `*.style.ts`、`*.style.js` 或 `*.css.ts`。 | 移动或改名后再次执行 `npm run build`。                                        |
-| `string` 不能赋给 JSCSS rule | 把 `style()` 返回值嵌进了 `recipe().base` 或 `recipe().variants`。                 | 像第一个例子一样，向 recipe 传入原始 rule object。                            |
-| 修改主题没有效果             | 把 `setVar()` 当作 DOM 更新，或只改 root 但元素有自己的变量声明。                  | 在浏览器事件/effect中对实际目标元素 setProperty；全局主题先统一变量定义位置。 |
-| 样式模块在 build 时失败      | 模块顶层读取了浏览器全局变量或请求/server state。                                  | 保持声明式；将浏览器工作移入 effect 或事件处理器。                            |
-| 需要 Sass 语法               | Vext 没有一等 Sass/SCSS compiler。                                                 | 在外部将 Sass 编译为 CSS，或使用 CSS Modules/JSCSS。                          |
+| 现象                         | 先检查                                                                             | 恢复方式                                                                                                         |
+| ---------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| 没有生成 class CSS           | 文件是否在 `src/frontend/**` 下，且匹配 `*.style.ts`、`*.style.js` 或 `*.css.ts`。 | 移动或改名后再次执行 `npm run build`。                                                                           |
+| `string` 不能赋给 JSCSS rule | 把 `style()` 返回值嵌进了 `recipe().base` 或 `recipe().variants`。                 | 像第一个例子一样，向 recipe 传入原始 rule object。                                                               |
+| 修改主题没有效果             | 把 `setVar()` 当作 DOM 更新，或只改 root 但元素有自己的变量声明。                  | 在浏览器事件/effect中对实际目标元素 setProperty；全局主题先统一变量定义位置。                                    |
+| 样式模块在 build 时失败      | 模块顶层读取了浏览器全局变量或请求/server state。                                  | 保持声明式；将浏览器工作移入 effect 或事件处理器。                                                               |
+| 需要 Sass 语法               | Vext 没有一等 Sass/SCSS compiler。                                                 | 在外部将 Sass 编译为普通 CSS，或使用 JSCSS；CSS Modules 先核对[生产 SSR 限制](./styles-and-assets#css-modules)。 |
 
 下一步：对比 [样式与资源](/zh/frontend/styles-and-assets) 了解其它受支持的样式路径；需要调节 JSCSS 抽取时阅读 [前端配置](/zh/frontend/configuration)。
 

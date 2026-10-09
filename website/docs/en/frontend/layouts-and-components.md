@@ -1,6 +1,8 @@
 # Layouts and Components
 
-This continues the `admin/dashboard` page from [Project Structure](/frontend/project-structure) by adding root and admin layouts and a reusable menu. First understand `res.render` in [Routing and Pages](/frontend/routing-and-pages).
+First complete [Add Another Page in the full-stack quick start](/frontend/getting-started#add-another-page) and confirm `/admin/dashboard` displays `Total users: 42`. It supplies the page file and HTTP route required here; Project Structure explains file responsibilities but does not provide this complete prerequisite. Continue here to add root and admin layouts and a reusable menu. See [Routing and Pages](/frontend/routing-and-pages) for `res.render` basics.
+
+Create `components/AdminShell.tsx` and `pages/admin/layout.tsx` below. If root `pages/layout.tsx` already exists, replace it with the root layout example while retaining any required style imports. The root layout affects every page using automatic layouts; the admin layout affects pages in that directory. Keep the original `admin/dashboard.tsx` page and replace only the route's render call.
 
 ## Table of Contents
 

@@ -36,9 +36,9 @@ These ranges come from the current VextJS package declaration; use the installed
 
 ### Performance comparison
 
-This page does not keep a separate numeric snapshot, because an old environment would create a second, conflicting source of truth. Raw Native and Raw Fastify trade the lead as scenarios and handler shapes change. The five-adapter percentages measure Vext against each adapter's own Raw baseline; they are not an overall framework ranking.
+This page does not keep a separate numeric snapshot. The public benchmark uses the same lightweight Vext Normal application and changes only the five supported Adapters. It compares Vext Adapter integration paths; it does not measure each underlying framework's independent Raw performance or Vext overhead percentages against Raw baselines.
 
-Use the [Performance benchmarks](/benchmark) page for the current results, methodology, limitations, and reproduction commands. After choosing an adapter, validate it with your real middleware, authentication, logging, and I/O workload.
+See [Performance benchmarks](/benchmark) for the retained results, methodology, limitations, and reproduction commands. The public sample is from 2026-08-15 at a specified Vext 1.0.1 commit; it is not a performance baseline for the current 2.0.0 source. After choosing an adapter, validate it with your real middleware, authentication, logging, and I/O workload.
 
 ## How to use
 
@@ -518,7 +518,7 @@ Can't. Adapter is determined by configuration at startup and cannot be switched 
 
 ### Where does the performance difference mainly come from?
 
-Performance differences come from both the underlying framework's HTTP parsing, routing, and serialization and Vext's integration path for each adapter. Current measurements show different overhead against each Raw baseline, with no implementation leading every scenario. Review the [Performance benchmarks](/benchmark) methodology, then test your actual middleware and I/O workload.
+Performance differences come from each framework's HTTP parsing, routing, and serialization and Vext's Adapter integration path. The public historical sample compares Adapters under the same Vext Normal workload and provides no overhead percentages against individual Raw baselines. Leading one scenario does not imply leading every scenario. Review the version and methodology in [Performance benchmarks](/benchmark), then test your actual middleware and I/O workload.
 
 ### Can the native middleware of the underlying framework be used?
 

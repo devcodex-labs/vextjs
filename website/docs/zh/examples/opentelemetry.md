@@ -891,23 +891,47 @@ trace_id / span_id 由有活跃 recording span 的请求上下文提供；业务
 
 #### 字段对照表
 
-| 字段           | 来源                             | 配置方式                                          |
-| -------------- | -------------------------------- | ------------------------------------------------- |
-| `time`         | Vext logger，默认 ISO 时间字符串 | 公共 logger 配置不提供 timestamp 开关             |
-| `level`        | Vext logger 自动                 | 无需配置                                          |
-| `msg`          | `logger.info("...")`             | 无需配置                                          |
-| `requestId`    | 框架 ALS → mixin 自动            | 无需配置                                          |
-| `trace_id`     | otel 中间件 → ALS → mixin 自动   | 无需配置                                          |
-| `span_id`      | otel 中间件 → ALS → mixin 自动   | 无需配置                                          |
-| `service_name` | `config.logger.mixin`            | 用户 mixin 注入                                   |
-| `env`          | `config.logger.mixin`            | 用户 mixin 注入                                   |
-| `host`         | `config.logger.mixin`            | 用户 mixin 注入                                   |
-| `span`         | 业务显式字段                     | 不依赖非公开 Span.name；上面的 mixin 不注入该字段 |
-| `endpoint`     | access log 中的 `req.route`      | 自动包含在请求日志 msg 中                         |
-| `latency_ms`   | access log                       | 自动包含在请求日志 msg 中                         |
-| `user_id`      | 业务代码                         | `logger.info({ user_id: "..." }, msg)`            |
-| `feature.flag` | 业务代码                         | `logger.info({ "feature.flag": "..." }, msg)`     |
-| `err`          | logger.error(err)                | 框架落地序列化；不自动等于 OTel exception.\*      |
+| 字段           | 来源                             | 配置方式                                                               |
+| -------------- | -------------------------------- | ---------------------------------------------------------------------- |
+| `time`         | Vext logger，默认 ISO 时间字符串 | 公共 logger 配置不提供 timestamp 开关                                  |
+| `level`        | Vext logger 自动                 | 无需配置                                                               |
+| `msg`          | `logger.info("...")`             | 无需配置                                                               |
+| `requestId`    | 框架 ALS → mixin 自动            | 无需配置                                                               |
+| `trace_id`     | otel 中间件 → ALS → mixin 自动   | 无需配置                                                               |
+| `span_id`      | otel 中间件 → ALS → mixin 自动   | 无需配置                                                               |
+| `service_name` | `config.logger.mixin`            | 用户 mixin 注入                                                        |
+| `env`          | `config.logger.mixin`            | 用户 mixin 注入                                                        |
+| `host`         | `config.logger.mixin`            | 用户 mixin 注入                                                        |
+| `span`         | 业务显式字段                     | 不依赖非公开 Span.name；上面的 mixin 不注入该字段                      |
+| `endpoint`     | 业务显式读取 `req.route`         | 默认 access log 的 msg 使用实际 `req.path`，不会自动生成 endpoint 字段 |
+| `latency_ms`   | 业务显式字段或解析 access log    | 默认耗时为 msg 中的 `Nms` 文本，不是独立 latency_ms 字段               |
+| `user_id`      | 业务代码                         | `logger.info({ user_id: "..." }, msg)`                                 |
+| `feature.flag` | 业务代码                         | `logger.info({ "feature.flag": "..." }, msg)`                          |
+| `err`          | logger.error(err)                | 框架落地序列化；不自动等于 OTel exception.\*                           |
+
+默认请求日志消息形如 `GET /users/123 200 8ms | IP`。指标应按路由模板聚合，避免把每个用户 ID 变成独立标签；在应用自己的路由中间件中显式记录即可。以下文件不替代前面的 OTel 初始化：
+
+```typescript
+// src/middlewares/route-metrics.ts
+import { defineMiddleware } from "vextjs";
+
+export default defineMiddleware(async (req, _res, next) => {
+  const startedAt = performance.now();
+  req.onClose(() => {
+    req.app.logger.info(
+      {
+        endpoint: req.route || "unmatched",
+        latency_ms: performance.now() - startedAt,
+        requestId: req.requestId,
+      },
+      "request closed",
+    );
+  });
+  await next();
+});
+```
+
+将 `route-metrics` 加入 `config.middlewares` 白名单，并在目标路由的 `middlewares` 中引用；配置步骤见[中间件](../guide/middleware#注册与使用)。参数路由的 endpoint 应为 `/users/:id`，不是 `/users/123`。这里用 `req.onClose()` 记录响应结束或连接提前断开的耗时；关闭事件不保证客户端已完整接收，也不应自动计为一次成功请求。
 
 ### B. OTel Logs（LogRecord → Collector）
 

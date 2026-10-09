@@ -82,16 +82,18 @@ VextJS 采用 **多层配置合并** 机制，支持按环境覆盖配置，同�
 
 ### 配置文件
 
-| 文件                        | 用途                                   | 是否必须 |
-| --------------------------- | -------------------------------------- | -------- |
-| `src/config/default.ts`     | 所有环境的基础配置                     | ✅ 必须  |
-| `src/config/development.ts` | 开发 profile 覆盖（`vext dev` 默认）   | 可选     |
-| `src/config/production.ts`  | 生产 profile 覆盖（`vext start` 默认） | 可选     |
-| `src/config/test.ts`        | 测试 profile 覆盖                      | 可选     |
-| `src/config/local.ts`       | 本地开发覆盖（应加入 `.gitignore`）    | 可选     |
-| `src/config/bootstrap.ts`   | 启动期 provider 注册入口               | 可选     |
+| 文件                        | 用途                                                        | 是否必须 |
+| --------------------------- | ----------------------------------------------------------- | -------- |
+| `src/config/default.ts`     | 所有环境的基础配置                                          | ✅ 必须  |
+| `src/config/development.ts` | 开发 profile 覆盖（`vext dev` 默认）                        | 可选     |
+| `src/config/production.ts`  | production profile 覆盖；build 默认，start 无构建记录时回退 | 可选     |
+| `src/config/test.ts`        | 测试 profile 覆盖                                           | 可选     |
+| `src/config/local.ts`       | 本地开发覆盖（应加入 `.gitignore`）                         | 可选     |
+| `src/config/bootstrap.ts`   | 启动期 provider 注册入口                                    | 可选     |
 
-配置 profile 通过 `--config <name>` 或 `VEXT_CONFIG=<name>` 显式选择。未指定时，`vext start`、`vext build`、`vext deploy assets` 默认使用 `production` profile，`vext dev` 默认使用 `development` profile。
+配置 profile 的显式选择优先级为 `--config <name>` → `VEXT_CONFIG=<name>` → 非标准 `NODE_ENV` 的兼容选择（会警告）。无显式选择时，`vext build` 默认使用 `production`，`vext dev` 默认使用 `development`；`vext start` 与 `vext deploy assets` 优先沿用所选成功构建产物记录的 profile，没有记录时才回退 `production`。
+
+例如在干净终端执行 `npm run build -- --config sg-sit` 后，直接 `npm start` 会沿用 `sg-sit`，运行模式仍为 production。需要改用其他 profile 时显式选择，并确认对应配置文件已进入产物；完整命令与构建身份检查见 [CLI](./cli)。
 
 显式CLI profile优先于VEXT_CONFIG。非标准NODE_ENV名称仍有带警告的旧兼容入口，推荐改用显式profile；标准NODE_ENV不能取代命令自己的默认模式。profile名称只允许字母、数字、下划线和连字符，default/local/bootstrap是保留名；不要传文件路径。
 

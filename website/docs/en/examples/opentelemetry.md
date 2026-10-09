@@ -982,23 +982,47 @@ Example output fragment:
 
 #### Field reference
 
-| Field          | Source                                  | Configuration                                                              |
-| -------------- | --------------------------------------- | -------------------------------------------------------------------------- |
-| `time`         | Vext logger; ISO time string by default | Public logger config has no timestamp switch                               |
-| `level`        | Vext logger                             | Automatic                                                                  |
-| `msg`          | `logger.info("...")`                    | Automatic                                                                  |
-| `requestId`    | Framework ALS and built-in mixin        | Automatic                                                                  |
-| `trace_id`     | OTel middleware → ALS → built-in mixin  | Automatic when context exists                                              |
-| `span_id`      | OTel middleware → ALS → built-in mixin  | Automatic when context exists                                              |
-| `service_name` | `config.logger.mixin`                   | User mixin                                                                 |
-| `env`          | `config.logger.mixin`                   | User mixin                                                                 |
-| `host`         | `config.logger.mixin`                   | User mixin                                                                 |
-| `span`         | Explicit business field                 | This example's mixin does not inject it                                    |
-| `endpoint`     | `req.route` in access log               | Included in request log message                                            |
-| `latency_ms`   | Access log                              | Included in request log message                                            |
-| `user_id`      | Business code                           | `logger.info({ user_id: "..." }, msg)`                                     |
-| `feature.flag` | Business code                           | `logger.info({ "feature.flag": "..." }, msg)`                              |
-| `err`          | `logger.error(err)`                     | Framework serialization; not automatically an OTel `exception.*` attribute |
+| Field          | Source                                       | Configuration                                                                                   |
+| -------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `time`         | Vext logger; ISO time string by default      | Public logger config has no timestamp switch                                                    |
+| `level`        | Vext logger                                  | Automatic                                                                                       |
+| `msg`          | `logger.info("...")`                         | Automatic                                                                                       |
+| `requestId`    | Framework ALS and built-in mixin             | Automatic                                                                                       |
+| `trace_id`     | OTel middleware → ALS → built-in mixin       | Automatic when context exists                                                                   |
+| `span_id`      | OTel middleware → ALS → built-in mixin       | Automatic when context exists                                                                   |
+| `service_name` | `config.logger.mixin`                        | User mixin                                                                                      |
+| `env`          | `config.logger.mixin`                        | User mixin                                                                                      |
+| `host`         | `config.logger.mixin`                        | User mixin                                                                                      |
+| `span`         | Explicit business field                      | This example's mixin does not inject it                                                         |
+| `endpoint`     | Business code explicitly reads `req.route`   | Default access log msg uses the actual `req.path`; no endpoint field is generated automatically |
+| `latency_ms`   | Explicit business field or parsed access log | Default duration is `Nms` text within msg, rather than a separate latency_ms field              |
+| `user_id`      | Business code                                | `logger.info({ user_id: "..." }, msg)`                                                          |
+| `feature.flag` | Business code                                | `logger.info({ "feature.flag": "..." }, msg)`                                                   |
+| `err`          | `logger.error(err)`                          | Framework serialization; not automatically an OTel `exception.*` attribute                      |
+
+The default request message looks like `GET /users/123 200 8ms | IP`. Aggregate metrics by route template so each user ID does not become a separate label. Record explicit fields in your own route middleware. This file does not replace the OTel initialization above:
+
+```typescript
+// src/middlewares/route-metrics.ts
+import { defineMiddleware } from "vextjs";
+
+export default defineMiddleware(async (req, _res, next) => {
+  const startedAt = performance.now();
+  req.onClose(() => {
+    req.app.logger.info(
+      {
+        endpoint: req.route || "unmatched",
+        latency_ms: performance.now() - startedAt,
+        requestId: req.requestId,
+      },
+      "request closed",
+    );
+  });
+  await next();
+});
+```
+
+Add `route-metrics` to the `config.middlewares` whitelist and reference it in the target route's `middlewares`; see [Middleware registration and use](../guide/middleware#registration-and-use). A parameter route's endpoint should be `/users/:id`, rather than `/users/123`. This example uses `req.onClose()` to measure response completion or premature connection closure. A close event does not guarantee the client received the complete response and should not automatically count as a successful request.
 
 ### B. OTel Logs (LogRecord → Collector)
 

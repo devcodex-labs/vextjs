@@ -20,7 +20,7 @@ Project tests should cover real behavior such as invalid inputs, denied access, 
 
 ### VEXT-OPS-002 [MUST] Distinguish runtime mode, configuration profile, and build-time replacement
 
-`vext start` uses production runtime mode. For configuration profiles, `--config` takes precedence over `VEXT_CONFIG`, followed by the command default. The legacy, nonstandard `NODE_ENV` profile behavior remains only as a compatibility path with a warning.
+`vext start` uses production runtime mode. Explicit profile selection follows `--config` → `VEXT_CONFIG` → legacy nonstandard `NODE_ENV` (with a warning). Without an explicit selection, start/deploy assets inherit the profile recorded in the selected successful build output, falling back to production only when no profile is recorded. Build defaults to production and dev to development. Inheriting a profile does not change the runtime mode. See [Configuration](../guide/configuration#configuration-loading-mechanism) for commands.
 
 The backend production compilation of `vext build` statically replaces `process.env.NODE_ENV` in user source. Switching runtime profiles does not restore environment branches removed from build output. Supply settings that must change at runtime through real configuration entry points; changing an environment variable cannot rewrite compiled output.
 

@@ -392,7 +392,7 @@ export default class UserService {
 ```
 
 :::tip
-VextJS's service layer is automatically loaded through a conventional directory. Place the class or object in the `src/services/` directory, and the framework will be automatically instantiated and injected into `app.services`. The file name is the service name: `user.ts` → `app.services.user`.
+VextJS loads services from the conventional `src/services/` directory. Each file must default-export a class or constructor that can be instantiated with `new`; a plain object default export fails loading. The instantiated service is injected into `app.services`. The file name is the service name: `user.ts` → `app.services.user`. The testing helper's `mockServices` accepts object substitutes under a separate contract; see [Testing API](../api/testing-api#mockservices).
 
 The constructor of the service receives the `app: VextApp` parameter and can access `app.logger`, `app.config`, `app.throw` and other framework capabilities.
 :::

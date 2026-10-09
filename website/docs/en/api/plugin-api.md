@@ -510,11 +510,9 @@ app.post(
 );
 ```
 
-The default built-in store is process-local, so workers and application
-instances count independently. For one quota shared across processes or hosts,
-install a Redis or other shared backend through `app.setRateLimiter()`; the
-built-in middleware keeps key selection, route overrides, headers, and 429
-handling in one place.
+The default built-in store is process-local, so workers and application instances count independently. Configure a shared backend with `rateLimit.store: { type: "redis", url }` to retain the built-in algorithm and route quota overrides. Use `app.setRateLimiter()` when you need a custom limiter implementation; this call does not enable rate limiting by itself.
+
+The custom branch calls only `check(key)` and does not automatically pass the route's `max/window`. The custom implementation owns its quota algorithm and window. Built-in middleware still selects keys, skips routes with `false`, sets response headers, and emits 429 responses. Configuration values in rate limit headers do not prove the custom algorithm applies those quotas. See [Custom limiter](../guide/rate-limit#custom-limiter) for the complete boundary.
 
 ---
 

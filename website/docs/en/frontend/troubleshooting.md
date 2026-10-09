@@ -107,7 +107,9 @@ Check how each asset is referenced:
 | File                           | Reference                                                                               |
 | ------------------------------ | --------------------------------------------------------------------------------------- |
 | `public/logo.png`              | `/logo.png` under the default publicPath; use the actual mounted base URL if customized |
-| `src/frontend/assets/logo.png` | `import logoUrl from "@assets/logo.png"`                                                |
+| `src/frontend/assets/logo.png` | Avoid direct imports in default SSR pages; use a Public URL or the media Image contract |
+
+The browser build has image loaders, but the current SSR build has no matching loaders. Importing PNG/SVG images directly from a page or its components therefore fails the build. Type declarations or disabling runtime SSR do not supply this build step. Imported assets are suitable only for browser entries with the required loader that stay outside the SSR page registry. See [Imported Assets](./styles-and-assets#imported-assets), [Public Assets](./styles-and-assets#public-assets), and [Media Image](./static-assets-and-cdn).
 
 If production CDN URLs are wrong, check `frontend.deploy.assetBaseUrl`, `publicPath`, and `deploy-manifest.json`.
 

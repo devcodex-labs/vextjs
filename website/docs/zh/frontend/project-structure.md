@@ -52,14 +52,14 @@ public/
 
 业务文件按需要增加，模板没有预先生成下面所有目录：
 
-| 任务                      | 放置位置与配套工作                                                                                                |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| 新增 dashboard 页面       | `src/frontend/pages/admin/dashboard.tsx`，并在 `src/routes/admin/dashboard.ts` 注册 `/`；页面文件不会自动创建 URL |
-| 新增可复用 UI             | `src/frontend/components/UserMenu.tsx`，由页面或 layout 导入                                                      |
-| 给 admin 页面增加公共布局 | `src/frontend/pages/admin/layout.tsx`；继承和数据规则见[Layout 与组件](/zh/frontend/layouts-and-components)       |
-| 添加页面样式              | `src/frontend/styles/dashboard.module.css` 或 `card.style.ts`，由 UI 导入并使用                                   |
-| 添加第二种语言            | `src/frontend/locales/zh-CN.ts`，同时核对语言配置与文案覆盖                                                       |
-| 添加 404 页面             | `src/frontend/pages/error/404.tsx`，根据[错误页与 Document](/zh/frontend/errors-and-document)配置状态映射         |
+| 任务                      | 放置位置与配套工作                                                                                                                                                |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 新增 dashboard 页面       | `src/frontend/pages/admin/dashboard.tsx`，并在 `src/routes/admin/dashboard.ts` 注册 `/`；页面文件不会自动创建 URL                                                 |
+| 新增可复用 UI             | `src/frontend/components/UserMenu.tsx`，由页面或 layout 导入                                                                                                      |
+| 给 admin 页面增加公共布局 | `src/frontend/pages/admin/layout.tsx`；继承和数据规则见[Layout 与组件](/zh/frontend/layouts-and-components)                                                       |
+| 添加页面样式              | 默认 SSR 优先使用 `src/frontend/styles/card.style.ts`（JSCSS）或普通 CSS，由 UI 导入并使用；CSS Modules 的生产限制见[样式与资源](./styles-and-assets#css-modules) |
+| 添加第二种语言            | `src/frontend/locales/zh-CN.ts`，同时核对语言配置与文案覆盖                                                                                                       |
+| 添加 404 页面             | `src/frontend/pages/error/404.tsx`，根据[错误页与 Document](/zh/frontend/errors-and-document)配置状态映射                                                         |
 
 需要通过固定 URL 访问的文件放 `public/**`。`src/frontend/assets/**` 用于浏览器构建图中的资源；当前 SSR 页面直接 import 图片存在构建限制，先使用本页的 Public URL 示例。资源是否内联或带 hash 取决于实际构建配置。
 

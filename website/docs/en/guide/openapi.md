@@ -2,10 +2,16 @@
 
 VextJS has built-in automatic generation of OpenAPI documentation. Based on route `validate` and `docs` configuration, the framework generates an OpenAPI 3.0 JSON document and serves the default `/docs` page with the Vext Docs Renderer. Third-party documentation tools should consume `/openapi.json` directly.
 
-The built-in renderer uses the same Vext mark geometry, teal/cyan light/dark
-theme tokens, green/amber mark accents, and favicon as the documentation website.
-These assets are bundled by Vext and remain consistent at custom docs paths;
-applications do not need to install a separate OpenAPI UI package.
+## Read by task
+
+| Goal                                                             | Start here                                                                                                                                                                                       |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Generate and request documentation for the first time            | [Quick Start](#quick-start): two files, request commands, and expected results                                                                                                                   |
+| Look up fields, route descriptions, and response contracts       | [Document configuration](#document-configuration), [validate linkage](#automatic-linkage-between-validate-and-document); see [Route Definition API](/api/route-definition#docs) for exact fields |
+| Control production visibility or change paths                    | [Control by environment](#control-by-environment), [Custom document path](#custom-document-path); hiding documentation does not replace business authorization                                   |
+| Extend documentation surfaces, hooks, or external specifications | [Reading the docs UI](#reading-the-docs-ui-and-multi-source-surfaces), [Import external OpenAPI](#import-external-openapi)                                                                       |
+
+Start with Quick Start, then consult configuration snippets as needed. A documentation manifest is a generated inventory of entries/sources for indexing. Static projection reads declarations to generate descriptions; it does not execute business code or replace runtime verification.
 
 ## Quick Start
 
@@ -1740,6 +1746,13 @@ export default defineRoutes((app) => {
   );
 });
 ```
+
+## Built-in UI assets
+
+The built-in renderer uses the same Vext mark geometry, teal/cyan light/dark
+theme tokens, green/amber mark accents, and favicon as the documentation website.
+These assets are bundled by Vext and remain consistent at custom docs paths;
+applications do not need to install a separate OpenAPI UI package.
 
 ## Next step
 

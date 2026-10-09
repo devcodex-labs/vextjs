@@ -4,6 +4,18 @@ This page describes public configuration groups, defaults, override rules, and e
 
 Framework constants, module-level fallback values, and explicit template configuration are different kinds of defaults. A field that parses but is not connected to runtime does not imply usable functionality.
 
+## Find configuration by task
+
+| Goal                                                            | Entry points                                                                                                                                  |
+| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Make configuration effective or diagnose mode/profile selection | [Configuration loading mechanism](#configuration-loading-mechanism); see [Configuration guide](/guide/configuration) for steps                |
+| Configure requests and responses                                | [Rate limits](#vextratelimitconfig), [Responses](#vextresponseconfig), [Body parser](#vextbodyparserconfig), [Uploads](#vextmultipartconfig)  |
+| Configure security and state                                    | [Session](#vextsessionconfig), [CSRF](#vextcsrfconfig), [Security headers](#vextsecurityheadersconfig), [Cache](#vextcacheconfig)             |
+| Configure frontend, documentation, and processes                | [Frontend](#vextfrontendconfig), [OpenAPI](#vextopenapiconfig), [Cluster](#vextclusterconfig)                                                 |
+| Type configuration layers and verify changes                    | [VextUserConfig](#vextuserconfig), [VextConfigOverride](#vextconfigoverride), [Verify a configuration change](#verify-a-configuration-change) |
+
+For each field, check its default, unit, prerequisites, and route override support. Build identity records output information such as profile/buildId; a manifest is a generated inventory. These describe the output actually loaded, rather than additional business settings to configure.
+
 ## Configuration loading mechanism
 
 VextJS uses a **multi-layer configuration merging** strategy, in order of priority from low to high:
@@ -24,21 +36,21 @@ vext start/dev --port --host ...
 
 Plain objects are recursively merged. Arrays are generally replaced as a whole; middleware entries merge specially by name. After validation, plain objects and arrays are deeply frozen. Date, Map, Set, Buffer, and class instances retain runtime state and are not a hot-update channel for configuration.
 
-The configuration profile is distinct from the runtime mode. Profile selection is `--config → VEXT_CONFIG → nonstandard NODE_ENV (compatibility with warning) → command default`. `start` and `build` use production runtime mode; `dev` uses development mode. Even `start --config development` does not load `local.ts`, and a standard `NODE_ENV` does not replace `--config` for profile selection.
+The configuration profile is distinct from the runtime mode. Explicit selection follows `--config` → `VEXT_CONFIG` → nonstandard `NODE_ENV` (compatibility with a warning). Without an explicit selection, start/deploy assets first use the profile recorded in the selected successful build output, falling back to production only when no profile is recorded; build defaults to production and dev to development. `start` and `build` use production runtime mode; `dev` uses development mode. Even `start --config development` does not load `local.ts`, and a standard `NODE_ENV` does not replace `--config` for profile selection. See [Configuration](../guide/configuration#configuration-loading-mechanism) for commands.
 
 For TypeScript, the layers do not share one loose type. Use `VextUserConfig` for the base `default.ts`; if it contains `database`, that nested value must be a complete `MonSQLizeDatabaseConfig`. Use `VextConfigOverride` for profile/local patches, where nested fields may be supplied incrementally according to the runtime deep merge.
 
 ### Configuration file list
 
-| File                        | Purpose                                      | Is it necessary |
-| --------------------------- | -------------------------------------------- | :-------------: |
-| `src/config/default.ts`     | Basic configuration for all profiles         |       ✅        |
-| `src/config/development.ts` | Default development profile overrides        |    Optional     |
-| `src/config/production.ts`  | Default production profile overrides         |    Optional     |
-| `src/config/test.ts`        | Default test profile overrides               |    Optional     |
-| `src/config/sg-sit.ts`      | Custom profile overrides                     |    Optional     |
-| `src/config/local.ts`       | Local override in development/test mode only |    Optional     |
-| `src/config/bootstrap.ts`   | Startup provider registration entrance       |    Optional     |
+| File                        | Purpose                                                                            | Is it necessary |
+| --------------------------- | ---------------------------------------------------------------------------------- | :-------------: |
+| `src/config/default.ts`     | Basic configuration for all profiles                                               |       ✅        |
+| `src/config/development.ts` | Default development profile overrides                                              |    Optional     |
+| `src/config/production.ts`  | Production profile overrides; build default, start fallback without build metadata |    Optional     |
+| `src/config/test.ts`        | Default test profile overrides                                                     |    Optional     |
+| `src/config/sg-sit.ts`      | Custom profile overrides                                                           |    Optional     |
+| `src/config/local.ts`       | Local override in development/test mode only                                       |    Optional     |
+| `src/config/bootstrap.ts`   | Startup provider registration entrance                                             |    Optional     |
 
 ### `src/config/bootstrap.ts`
 

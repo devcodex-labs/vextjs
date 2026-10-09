@@ -54,7 +54,7 @@ React 页面、layout 和公共组件在模块 refresh-safe 时使用 Fast Refre
 
 仅 CSS 更新不应重启后端。Vext 会根据来源更新 stylesheet link 或重建 CSS 资源。
 
-组件局部样式优先用 CSS Modules 或 JSCSS；全局 CSS 用于基础样式和 token。
+默认 SSR 项目的组件局部样式优先用 JSCSS 或普通 CSS；全局 CSS 用于基础样式和 token。CSS Modules 虽受支持，当前默认生产构建的服务端与浏览器 class 名可能不一致，不能只凭 dev 正常或 build 成功选择它；限制与实际样式验证见[CSS Modules](./styles-and-assets#css-modules)。
 
 只有本次变更文件全部属于 `.css`、`.pcss` 或 `.postcss` 才直接走 style 事件。JSCSS 的 TypeScript 源变更会重建并更新 CSS，但还可能进入 Fast Refresh 或整页刷新，不能保证仅替换样式。
 

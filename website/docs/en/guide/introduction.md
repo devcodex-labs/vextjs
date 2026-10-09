@@ -188,6 +188,36 @@ For migration examples, review [Routing](/guide/routing), [Plugins](/guide/plugi
 - Requires Node.js **`^20.19.0 || >=22.12.0`**
 - **TypeScript** 5.x (recommended, pure JavaScript is also supported)
 
+## Versions and Migration {#versions-and-migration}
+
+Check this site's current source descriptions separately from packages published on npm. After installation, run these commands in your application directory:
+
+```bash
+npm ls vextjs monsqlize schema-dsl
+npm exec -- vext --help
+```
+
+Keep package versions, the lockfile, and actual installation results together. A package.json range that includes 2.0.0 does not establish that every fix on current main has been released.
+
+| Scope                                          | Verified basis                                                                                                                                                                                                                       | How to use it                                                                                                                                                                                                                       |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Published Vext 2.0.0                           | [2.0.0 release notes](https://github.com/devcodex-labs/vextjs/blob/main/changelogs/v2.0.0.md) and [major version migration checklist](https://github.com/devcodex-labs/vextjs/blob/main/MIGRATION.md)                                | Install with `npm install vextjs@2.0.0`, check the major changes below, then run your application's own verification.                                                                                                               |
+| Source checked for this documentation revision | [Source snapshot 02a28884](https://github.com/devcodex-labs/vextjs/tree/02a28884f6773600ac67dc9212065706c83ed532); [Unreleased in CHANGELOG](https://github.com/devcodex-labs/vextjs/blob/main/CHANGELOG.md) records pending changes | Build location/identity, profile inheritance, output transactions, and recovery descriptions were verified against this snapshot. Check the released version's source and actual behavior before using them in a published package. |
+| Database, validation, and third-party plugins  | Each package's installed version and release notes                                                                                                                                                                                   | Record upstream versions separately from Vext; do not assume every API in current MonSQLize exists in an older installation.                                                                                                        |
+
+To verify a candidate from current source, run `npm ci`, `npm run build`, and `npm pack` in the framework repository, then install the generated `.tgz` in an independent application. Record the source commit and package file. Its version may still be 2.0.0, so the version alone cannot identify an official npm release. Use installed packages rather than workspace/source links for acceptance. Normal use of a published version requires no framework checkout.
+
+### Migrating from 1.x to 2.0.0
+
+| Previous usage or assumption                  | Current usage                                                           | Migration verification                                                                                                                                         |
+| --------------------------------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app.monsqlize` or a reduced database wrapper | Use the raw MonSQLize instance `app.db`                                 | Verify connections, Model/Collection, transactions, and shutdown; do not close a framework-managed db again.                                                   |
+| Scope automatically expands short Model names | `use()`/`pool()` selects scope; `model()` uses the exact registered key | For example, billing/invoice uses `BillingInvoice`; short names work only with explicitly declared model aliases. See [Database](./database#model-definition). |
+| Global rate limiting enabled by default       | Explicitly set `rateLimit.enabled: true`                                | Verify quotas, 429 responses, headers, and multi-process stores; `setRateLimiter()` does not enable global middleware.                                         |
+| Path validation failures asserted as 422      | Path errors use HTTP 400; body/query/header/cookie errors remain 422    | Check tests, OpenAPI, and client error handling together.                                                                                                      |
+
+After migration, run type generation, application typecheck, build, real start, and HTTP/page verification in order. Also verify database, SEO/sitemap, or pages without hydration when your application uses them. Match parameters and examples to the installed version; upgrading involves more than changing a dependency version.
+
 ## Next step
 
 Create a project with [Quick Start](/guide/quick-start). In a working application, merge this page's `src/routes/index.ts` hello route into the existing route file and configuration, run `npm run dev`, and request `GET http://127.0.0.1:3000/hello`. Expect HTTP 200 with `data.message: "Hello VextJS!"`. Merge with any existing index callback instead of replacing it. If you get 404, check the file prefix and actual port.

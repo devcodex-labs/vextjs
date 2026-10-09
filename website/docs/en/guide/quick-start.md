@@ -1,7 +1,7 @@
 # Quick start
 
 :::tip Release and source scope
-Published stable package: `v2.0.0`. This documentation is being revised against the current repository source, which may describe behavior not yet in that package. General install commands do not pin a version. After installing, run `npm ls vextjs` and check the matching release notes before relying on a version-specific feature.
+Published stable package: `v2.0.0`. This documentation is being revised against the current repository source, which may describe behavior not yet in that package. General install commands do not pin a version. After installing, run `npm ls vextjs` and check the matching release notes before relying on a version-specific feature. See [Versions and Migration](./introduction#versions-and-migration) for published packages, source snapshots, candidate installation, and upgrading from 1.x.
 :::
 
 Prerequisites: Node.js `^20.19.0 || >=22.12.0`, npm, and a writable project directory. Check with `node --version` and `npm --version`. The create commands below are alternatives; do not run them in sequence against the same target directory.
@@ -30,8 +30,10 @@ After verifying the default full-stack project in development, stop the dev serv
 
 ```bash
 npm run build
-npm start
+npm start -- --port 3000
 ```
+
+This CLI override keeps production on the `localhost:3000` address used above. The scaffold's `production.ts` defaults to port `3001`; with plain `npm start`, use the port printed at startup.
 
 ### Other creation options
 

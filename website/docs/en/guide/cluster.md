@@ -170,7 +170,9 @@ export default {
 | `"auto-1"`       | Detected count minus one, minimum one | Reduces process count; does not bind a CPU core |
 | Positive integer | Limited to 1–64                       | Use 2 for the two-Worker verification           |
 
-Use a valid positive integer rather than relying on out-of-range fallback. CPU detection first tries `os.availableParallelism()`, then falls back to Linux cgroup v1 and `os.cpus()` on failure. It does not necessarily match every container CPU quota exactly.
+Use a valid positive integer rather than relying on out-of-range fallback. CPU detection first tries `os.availableParallelism()`. Only when it is unavailable, throws, or returns an invalid value does the fallback start from `os.cpus()` and try Linux cgroup v1 quotas. A valid quota constrains the detected count. When files are missing, detection cannot read cgroup limits, contents are invalid, or no finite quota is set, the fallback may reflect the host CPU count. Automatic detection does not necessarily match every container CPU quota exactly.
+
+In containers, first use this page's worker-info route to check the actual process count, then set an explicit value such as `workers: 2` according to CPU, memory, and connection budgets. `"auto-1"` merely subtracts one from the detected count; it cannot repair failed quota detection.
 
 Each Worker adds an application instance, database pool, cache, and heap. Choose a count based on request load, memory, and external connection limits, then verify under load; CPU multiples alone do not guarantee throughput.
 
@@ -457,6 +459,16 @@ The message types below are the exact string literals of the IPC payload `type` 
 | `broadcast`    | Currently only logs at debug level on receipt; it does not automatically trigger business events or config sync |
 
 These messages are maintained by the framework. Placeholder request counts do not mean there was no traffic; production monitoring needs an actual request metrics provider.
+
+When diagnosing internal process communication, message shapes include:
+
+```typescript
+// Internal protocol illustration, not commands for application code to send.
+const workerReady = { type: "ready", pid: 1234, workerId: "1" };
+const masterShutdown = { type: "shutdown", timeout: 10_000 };
+```
+
+The PID and workerId are illustrative values; timeout is in milliseconds. Manage Workers through the CLI and lifecycle APIs on this page rather than sending internal messages manually from routes.
 
 ## Deploying with Docker
 
