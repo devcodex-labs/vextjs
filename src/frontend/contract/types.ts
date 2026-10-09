@@ -547,6 +547,7 @@ export interface ResolvedVextFrontendConfig {
 export interface VextFrontendAdapter {
   name: string;
   framework: VextFrontendFramework;
+  /** @deprecated Reserved and ignored. Use frontend.build.client/server instead. */
   resolveBuildOptions?(
     config: ResolvedVextFrontendConfig,
   ): Record<string, unknown> | Promise<Record<string, unknown>>;

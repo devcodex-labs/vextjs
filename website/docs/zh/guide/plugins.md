@@ -511,7 +511,7 @@ definePlugin({ name: 'session', dependencies: ['query-cache', 'database'], setup
 
 ### 超时保护
 
-当前开发、生产和测试标准入口使用Plugin Loader的 `30_000` 毫秒超时。虽然加载器内部选项和错误提示提到setupTimeout，标准入口尚未把 `config.plugin.setupTimeout` 传入；写这个配置不能改变实际期限。
+开发、生产和测试的自动 Plugin Loader 都使用 `config.plugin.setupTimeout`，默认 `30_000` 毫秒。该值须为 1～2,147,483,647 的整数，修改需重启。`createTestApp({ setupPlugins })` 的手工注册回调不经过自动 loader，期限由调用方负责。
 
 初始化超时时，框架会中止 `context.signal`、回滚受管理的setup mutation，并关闭该setup参数的受控写入入口。插件仍负责自己在取消前创建的外部资源，应把signal传给支持取消的操作，并在自己的失败/取消路径关闭未完成初始化的client。此机制不能中断阻塞事件循环的同步代码，也不能强制终止任意异步I/O；不自动套用于独立初始化的内置数据库插件。
 

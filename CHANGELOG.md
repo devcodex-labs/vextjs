@@ -14,18 +14,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add real Chromium consumer checks for CSS Modules, asset imports, CSR mounting, navigation errors, locale switching, freshness isolation, and no-hydration pages; require them in CI.
+- Expose typed `plugin.setupTimeout` and request `locale` contracts.
 - Add the bundled `vext mcp` stdio server with the fixed 7 Tools / 11 Resources / 4 Prompts protocol surface, bounded project inspection, built-in Vext knowledge search, and a real MCP stdio verification script.
 - Add shared MCP assistant contracts for `dev.mcp`, policy patches, workspace topology, and Tool input validation so docs, server handlers, and later ChangeSet recipes use the same machine-checkable source.
 - Add MCP create-only ChangeSet drafts for all 17 Recipes, project/workspace-derived candidate directory validation, file-level diagnostics, and `requiredHostSteps` host validation plans.
 
 ### Changed
 
+- Diagnose the deprecated, unused frontend adapter resolver and round-robin `sticky: "ip"`; use explicit client/server build settings and external load-balancer affinity. Removal is reserved for the next breaking release.
 - Update `esbuild` to `0.28.2`, `flex-rate-limit` to `2.2.5`, and `response-cache-kit` to `1.2.2`.
 - Retain `schema-dsl@3.0.4` and `monsqlize@3.3.0`, the latest stable versions verified on 2026-09-09.
 - Add `import-meta-resolve@4.2.0` for consumer-relative ESM package resolution.
-- Add `jsonc-parser@3.3.1` for compile-input fingerprints and shared JSONC tooling. Update `sharp` to `0.35.4`, `hono` to `4.13.7`, and Vitest/coverage to the maintained `4.1.11` fixes.
+- Add `jsonc-parser@3.3.1` for compile-input fingerprints and shared JSONC tooling. Update `sharp` to `0.35.5`, `hono` to `4.13.7`, and Vitest/coverage to the maintained `4.1.11` fixes.
 
 ### Fixed
+
+- Share CSS Module class/composes mappings and imported asset URLs between browser and SSR builds, including inlining and CDN prefixes. Mount client shells with `createRoot`, preserve empty completed SSR for hydration, export browser page errors, and honor the global layout default.
+- Resolve frontend locales consistently across request inheritance, ordered detection, render payloads, navigation, HTML language, Vary, and freshness keys; bypass public caching for private or mismatched locale results. Diagnose the remaining `inject: "used"` component-trimming limitation.
+- Apply plugin setup deadlines to development, production, and testing, and clean failed test startup. Exit standard Cluster hosts with code 1, diagnostic state, and PID cleanup after terminal capacity loss while retaining healthy Workers and pending recovery.
+- Serve generated sitemap/robots with the shared XML/text MIME mapping and reject disguised SVG media before raster decoding.
 
 - Share sealed service and plugin sources across project indexing, dependency diagnostics, and pure typegen candidate generation. Exclude NodeNext declaration files from the service index and prevent later disk edits from contaminating an existing analysis.
 - Derive Doctor route entries and source fingerprints from one sealed source view. Analyze current sources by default instead of trusting disk manifests; preserve historical snapshot identities, report stale or unverified sources, and leave missing metadata unknown. Bound source discovery and release streams on cancellation or limits.
@@ -56,6 +64,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Detect backend TypeScript from executable source files, allowing JavaScript projects with tsconfig files to start normally and excluding declaration files from compilation.
 - Share custom build locations across build, start, inspection, cleanup, cluster, frontend defaults, and compiled preloads; record successful build identity and reject incomplete rebuilds. Allow valid compiled deployments to start without source files.
 - Keep request locale and configured propagated headers active when request IDs are disabled, consistently across production, dev, hot reload, and testing.
+
+### Security
+
+- Update sharp to 0.35.5 (patched librsvg), MCP client to 2.3.1, Fastify to 5.12.5, and vulnerable compatible transitive dependencies. Bound glob input before recursive parsing. The upstream braces advisory still has no patched version; input budgets mitigate framework calls but do not clear the three related high audit entries.
 
 ## [2.0.0] - 2026-09-08
 

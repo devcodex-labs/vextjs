@@ -13,7 +13,7 @@ npm start -- --port 3000
 
 直接打开 `/article/interactive/intro` 与 `/article/intro`，分别验证下面的 full/none 条件。两者原始 HTML 都应含文章正文和 SEO title；前者点击后计数增加，后者保持 `Clicks: 0`，两者的普通 GET 表单和链接仍能工作。用浏览器开发工具检查 Console、Network、Elements 与 Performance；不能只看最终页面是否显示。验证结束后停止服务。
 
-以下 full 检查以 SSR 正常完成为前提；关闭 SSR、`clientOnly: true` 或错误后的客户端 fallback 需另看 [CSR 空 shell 的当前限制](./csr-and-spa-fallback#空-shell-的当前限制)，不能因为 React 恢复显示就判为无错误通过。
+以下 full 检查以 SSR 正常完成为前提；关闭 SSR、`clientOnly: true` 或客户端 fallback 使用 `createRoot`，见 [CSR 挂载行为](./csr-and-spa-fallback#空-shell-的挂载行为)。两种模式都应无 hydration 报错，且页面交互正常。
 
 ## 默认 `full` route
 
@@ -56,13 +56,13 @@ data-vext-hydration="none"
 
 ## 常见失败
 
-| 失败                                 | 可能原因                                                                |
-| ------------------------------------ | ----------------------------------------------------------------------- |
-| 默认 route 的 JS 404                 | asset public path 或 static mount 不一致。                              |
-| 默认 route 没有 `done` marker        | client entry 未运行或过早失败。                                         |
-| 在 `none` 页面期待 `done` 或 preload | 测试把默认 policy 信号套用到了错误模式。                                |
-| Hydration mismatch                   | SSR/client 输出不一致，或空 shell 仍走 hydrateRoot；见 CSR 页当前限制。 |
-| 默认 route 缺少 route preload        | render manifest 过旧，start 前需要 rebuild。                            |
+| 失败                                 | 可能原因                                                                                                |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| 默认 route 的 JS 404                 | asset public path 或 static mount 不一致。                                                              |
+| 默认 route 没有 `done` marker        | client entry 未运行或过早失败。                                                                         |
+| 在 `none` 页面期待 `done` 或 preload | 测试把默认 policy 信号套用到了错误模式。                                                                |
+| Hydration mismatch                   | 检查实际 mountMode、SSR/client 输入及构建一致性；CSR 使用 createRoot，完成 SSR 的页面使用 hydrateRoot。 |
+| 默认 route 缺少 route preload        | render manifest 过旧，start 前需要 rebuild。                                                            |
 
 ## 维护本仓库文档时
 

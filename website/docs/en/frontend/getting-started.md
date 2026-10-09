@@ -122,7 +122,7 @@ export default function DashboardPage(props: { totalUsers: number }) {
 
 ## Add Styles
 
-Here Vext JSCSS `style()` defines a static card style. Plain CSS also works. See the default production SSR naming limitation of CSS Modules in [Styles and Assets](./styles-and-assets#css-modules).
+Here Vext JSCSS `style()` defines a static card style. Plain CSS and CSS Modules also work; see [Styles and Assets](./styles-and-assets#css-modules).
 
 ```ts
 // src/frontend/styles/card.style.ts

@@ -855,7 +855,7 @@ upstream vext_backend {
 }
 ```
 
-Vext Cluster reload 不更新 Master 自身配置，也不会替你发布镜像、切换数据结构或保证全部长连接无损。当前 `sticky: "ip"` 未实现 IP 到 Worker 的粘性映射；全部 Worker 死亡也不能依赖 Master 自动退出触发 PM2 重启。用外部健康检查、容量告警和明确恢复流程覆盖这些边界。
+Vext Cluster reload 不更新 Master 自身配置，也不会替你发布镜像、切换数据结构或保证全部长连接无损。`sticky: "ip"` 是弃用的 RR 兼容值，使用时有诊断；IP affinity 交由外部负载均衡。全部 Worker 消失且没有恢复工作时，标准 Master 清理 PID 并以 1 退出，供 PM2/容器监督恢复；外部监督需要退避。继续使用业务健康检查和有效 Worker 容量告警。
 
 ## 监控告警
 

@@ -256,7 +256,7 @@ definePlugin({
 
 ### 超时保护
 
-用户插件的每个 `setup()` 默认限制为 30 秒，超时处理范围见上文。当前标准 dev/start/testing 入口未将 `config.plugin.setupTimeout` 传入 loader，因此设置该字段不会改变实际期限。耗时资源初始化应使用自身支持的超时与取消机制。
+自动 loader 加载的每个用户插件 `setup()` 默认限制为 30 秒，dev/start/testing 三个入口均支持 `config.plugin.setupTimeout`（毫秒，1～2,147,483,647 的整数）。超时继续中止 setup signal、撤销 facade 并回滚未提交的变更；耗时资源初始化应把 signal 传给支持取消的下游操作。手工 `setupPlugins` 回调不受该自动 loader 期限控制。
 
 ### 内置插件
 

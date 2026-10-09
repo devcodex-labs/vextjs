@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import fg from "fast-glob";
+import fg from "../safe-glob.js";
 import type { ArtifactCandidate } from "../project/artifact-transaction.js";
 import type { FrontendLayoutInput } from "../project/layout.js";
 import { assertPathInside, assertRealPathInside } from "../path-boundary.js";

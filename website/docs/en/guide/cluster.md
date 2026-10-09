@@ -180,7 +180,7 @@ Each Worker adds an application instance, database pool, cache, and heap. Choose
 
 Workers do not share ordinary variables, Service instances, or in-memory Stores. Use shared storage for data that must be globally consistent. For example, an in-memory rate limit counts separately in each Worker and is not a global quota; see [Rate Limiting](/guide/rate-limit). Sessions and caches likewise depend on their configured Stores.
 
-Although `sticky: "ip"` is configurable, the current Master only uses it to select a Node scheduling-policy branch. It does not map client IPs to Workers. Do not rely on it for session consistency or state retention after WebSocket/SSE reconnection.
+`sticky: "ip"` is deprecated and emits a startup diagnostic. It still uses round-robin and does not assign Workers by client IP. Use external load-balancer affinity for sessions or reconnection state. The ip option is planned for removal in the next breaking release.
 
 ## CLI commands
 
@@ -307,7 +307,7 @@ Maximum delay: 30s (restartMaxDelay)
 [cluster] ❌ restart rate exceeded (5 in 60000ms), pausing auto-restart
 ```
 
-The end of the time window does not schedule a task to restore missing capacity. Find the cause and deliberately recover the instance or capacity. A live Master does not imply all Workers are healthy. If all Workers disappear, the current implementation only emits an internal `all-workers-dead` event; do not assume it exits the Master so an outer supervisor can restart it. Check ready Worker count and business requests.
+The end of the restart window does not itself schedule capacity restoration. When no Workers or pending replacement tasks remain, the standard bootstrap/CLI host records fatal capacity loss, removes its owned PID file, and exits with code 1 so an outer supervisor can restart it. With healthy Workers remaining, the Master stays up; check ready capacity and business requests. Direct users of the low-level ClusterMaster still receive `all-workers-dead` and choose their own shutdown policy.
 
 ### Heartbeat detection
 

@@ -359,7 +359,7 @@ async function discoverLocalModels(
   const modelIds = new Set<string>();
 
   // 使用 fast-glob 扫描（vext 已有此依赖）
-  const { default: fg } = await import("fast-glob");
+  const { default: fg } = await import("../../safe-glob.js");
   const files = await fg("**/*.{ts,js,mjs,cjs}", {
     cwd: modelsDir,
     ignore: [

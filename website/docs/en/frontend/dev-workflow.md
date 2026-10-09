@@ -54,7 +54,7 @@ Fast Refresh can fall back to a full browser reload when:
 
 CSS-only updates should not restart the backend. Vext updates stylesheet links or rebuilds CSS assets depending on the source file type.
 
-For component-local styles in default SSR projects, prefer JSCSS or plain CSS; use global CSS for base styles and tokens. CSS Modules are supported, but the default production build can produce different server and browser class names. A working dev session or successful build alone is insufficient; see [CSS Modules](./styles-and-assets#css-modules) for the limitation and visual verification.
+Plain CSS, CSS Modules, and JSCSS work in SSR pages; global CSS supplies base styles and tokens. CSS Modules share class and composes mappings between SSR and browser builds. Verify actual styles after a production build; see [CSS Modules](./styles-and-assets#css-modules).
 
 Vext takes the direct style-event path only when every file in the change consists of `.css`, `.pcss`, or `.postcss`. A TypeScript JSCSS change rebuilds and updates CSS but may also trigger Fast Refresh or a full reload. Do not promise a stylesheet-only replacement for it.
 

@@ -170,7 +170,7 @@ export default function DashboardPage(props: DashboardProps) {
 
 `fetcher.submit` 的成功页面结果更新该 fetcher 的 data，不替换整页；非 GET 提交还会 revalidate 当前页，包括结果为 `undefined` 的失败分支。普通局部加载不改变地址；返回 redirect 时仍会发起页面导航，所以重定向后的地址可能变化。对需要留在原页面的局部提交，处理器应返回 `res.render()` 的页面结果，而不是 redirect。
 
-页面错误可通过 `useNavigation().error` 或 `fetcher.error` 读取。页面错误对象提供 `status`、可选 `code` 和 `requestId`；网络错误仍可能是普通 Error，应通过属性守卫读取附加字段。包导出的 `VextPageResultError` 类当前没有被生成的浏览器 shim 重导出，页面不能将它作为运行时值 import 来做 instanceof，否则构建会失败；类型导入会被擦除，不受此限制。
+页面错误可通过 `useNavigation().error` 或 `fetcher.error` 读取。从 `vextjs/frontend` 导入 `VextPageResultError` 可用同一浏览器 runtime 的类做 instanceof 判断，并读取 status、可选 code 和 requestId；网络错误仍可能是普通 Error，需保留普通错误分支。
 
 不要只对返回的 Promise 使用 catch 判断成功：导航错误被记录到快照，fetcher 错误通常返回 `undefined`。401/403、协议或构建不兼容会要求 document navigation；这种情况下不能保证仍在当前组件内显示错误。没有 runtime 时调用程序式接口或 fetcher 方法会抛错；`Link`/`Form` 则保留原生 HTML 行为。
 

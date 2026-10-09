@@ -180,7 +180,7 @@ export default {
 
 Worker 之间不共享普通变量、Service 实例或内存 Store。需要全局一致的数据，应选择具有共享语义的存储；例如内存限流是各 Worker 独立计数，不能视为全局配额，见[限流](/zh/guide/rate-limit)。Session 与缓存的共享方式同样需按对应 Store 设计。
 
-`sticky: "ip"` 虽在类型中可配置，当前 Master 只据此选择 Node 调度策略，没有实现按客户端 IP 映射 Worker。不要用它作为会话一致性或 WebSocket/SSE 重连保持状态的依据。
+`sticky: "ip"` 是弃用的兼容保留值：启动时给出诊断并沿用 Node SCHED_RR，没有实现按客户端 IP 映射 Worker。需要 IP affinity 时在外部负载均衡配置，并用共享 Session/状态存储处理跨 Worker 状态；该值计划在下一破坏性版本移除。
 
 ## CLI 命令
 
@@ -311,7 +311,7 @@ Worker 内存、未完成请求及未持久化状态不会随进程自动恢复�
 [cluster] ❌ restart rate exceeded (5 in 60000ms), pausing auto-restart
 ```
 
-时间窗口过期不会自动启动一个补齐容量的定时任务。排查根因并明确恢复实例/容量；不能仅因 Master 进程还存在就认定所有 Worker 健康。全部 Worker 消失时，当前实现仅发出内部 all-workers-dead 事件，不能依赖它主动退出 Master 来触发外层重启；还需检查有效 Worker 数与业务请求。
+时间窗口过期不会自动启动一个补齐容量的定时任务。仍有健康 Worker 时，Master 保持运行并等待运维恢复容量。全部 Worker 消失且没有待执行重启、启动候选或 reload 工作时，标准宿主记录 fatal-capacity-loss、清理自身 PID 并以 1 退出；CLI 转发失败状态。外部监督应配置重启退避，先排查崩溃根因。正常 stop 仍以 0 退出；底层 ClusterMaster 的事件消费者自行决定退出策略。
 
 ### 心跳检测
 

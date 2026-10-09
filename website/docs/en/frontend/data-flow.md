@@ -168,7 +168,7 @@ Optional parameters differ by entry point:
 
 A successful page result from `fetcher.submit` updates that fetcher's data without replacing the entire page. Non-GET submissions also revalidate the current page, including failures returning `undefined`. Ordinary local loading does not change the address, but a redirect result starts page navigation and can change it. For a local submission that should stay on the page, return a page result with `res.render()` instead of a redirect.
 
-Read page errors through `useNavigation().error` or `fetcher.error`. Page error objects provide `status`, optional `code`, and `requestId`; network errors may still be ordinary Error instances, so use property guards for additional fields. The package exports the `VextPageResultError` class, but the generated browser shim currently does not re-export it. Importing it as a runtime value for instanceof in pages fails the build. Type-only imports are erased and are unaffected.
+Read page errors through `useNavigation().error` or `fetcher.error`. `VextPageResultError` is exported from `vextjs/frontend` in both package and generated browser runtime, using the same class as navigation, so `instanceof` works and exposes `status`, optional `code`, and `requestId`. Network errors may still be ordinary Error instances; guard those separately.
 
 Do not rely only on catching the returned Promise to identify success. Navigation errors are recorded in the snapshot, while fetcher errors usually return `undefined`. A 401/403 or incompatible protocol/build requires document navigation, so the error may not remain visible in the current component. Programmatic APIs and fetcher methods throw without a runtime; `Link`/`Form` retain native HTML behavior.
 

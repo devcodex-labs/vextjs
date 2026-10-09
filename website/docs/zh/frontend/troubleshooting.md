@@ -81,7 +81,7 @@ res.render("admin/dashboard", props, {
 
 不要在 layout 组件里直接 import services。
 
-检查layout是否在当前页面的layout chain中，render选项是否设置 `layout: false` 或选择了其他layout。`layoutData` 的键按实际layout id或目录解析，不是任意组件名。
+检查layout是否在当前页面的layout chain中，以及全局 `frontend.render.layout` 和本次 `options.layout` 的最终值。`layoutData` 的键按实际layout id或目录解析，不是任意组件名。
 
 **复验：** 直接打开页面和通过客户端导航进入页面各验证一次，确认对应layout收到数据且公共layout状态符合预期。详见[Layout与组件](/zh/frontend/layouts-and-components)。
 
@@ -104,12 +104,12 @@ res.render("admin/dashboard", props, {
 
 确认引用来源：
 
-| 文件                           | 引用方式                                                                 |
-| ------------------------------ | ------------------------------------------------------------------------ |
-| `public/logo.png`              | 默认publicPath下为 `/logo.png`；自定义基路径时按实际挂载地址             |
-| `src/frontend/assets/logo.png` | 默认 SSR 页面不要直接 import；先改用 Public URL，或按媒体 Image 合同接入 |
+| 文件                           | 引用方式                                                         |
+| ------------------------------ | ---------------------------------------------------------------- |
+| `public/logo.png`              | 默认publicPath下为 `/logo.png`；自定义基路径时按实际挂载地址     |
+| `src/frontend/assets/logo.png` | 可直接 import；检查产物 URL、inlineLimit、publicPath 与 CDN 前缀 |
 
-浏览器构建有图片 loader，但当前 SSR 构建没有对应 loader；在页面或其组件中直接 import PNG/SVG 等图片会导致构建失败。类型声明或关闭运行时 SSR 不会补齐该构建步骤。只有已配置相应 loader、且不进入 SSR 页面注册图的浏览器入口，才适合 import 型资源。具体用法见[Import 型资源](./styles-and-assets#import-型资源)、[Public 资源](./styles-and-assets#public-资源)与[媒体 Image](./static-assets-and-cdn)。
+支持的图片与字体 import 在 SSR 和浏览器中共用 URL。类型声明只解决 TypeScript 提示，文件缺失、不支持的格式或 URL 部署错误仍需修正。具体用法见[Import 型资源](./styles-and-assets#import-型资源)、[Public 资源](./styles-and-assets#public-资源)与[媒体 Image](./static-assets-and-cdn)。
 
 如果生产 CDN URL 错误，检查 `frontend.deploy.assetBaseUrl`、`publicPath` 和 `deploy-manifest.json`。
 

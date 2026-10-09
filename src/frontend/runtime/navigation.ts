@@ -721,7 +721,7 @@ export class VextBrowserRuntime {
     const normalized = normalizePathQuery(
       new URL(requestedUrl, this.environment.location.origin),
     );
-    const locale = this.environment.document?.documentElement?.lang ?? "";
+    const locale = envelope.result.locale ?? this.currentLocale();
     const identityKey = [
       `route=${envelope.routeId}`,
       `url=${normalized}`,
@@ -743,7 +743,7 @@ export class VextBrowserRuntime {
     return [
       method.toUpperCase(),
       normalizePathQuery(url),
-      this.environment.document?.documentElement?.lang ?? "",
+      this.currentLocale(),
       this.currentPartition(),
       String(VEXT_PAGE_PROTOCOL_VERSION),
       this.options.contractDigest,
@@ -752,6 +752,14 @@ export class VextBrowserRuntime {
 
   private currentPartition(): string {
     return this.currentEnvelope?.cache?.partition ?? "public";
+  }
+
+  private currentLocale(): string {
+    return this.currentEnvelope?.result.kind === "page"
+      ? (this.currentEnvelope.result.locale ??
+          this.environment.document?.documentElement?.lang ??
+          "")
+      : (this.environment.document?.documentElement?.lang ?? "");
   }
 
   private canPrefetch(url: URL): boolean {

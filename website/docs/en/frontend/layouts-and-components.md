@@ -32,14 +32,14 @@ Use layouts for stable page shells: nav, sidebars, account menus, breadcrumbs, a
 
 ## Explicit Layout Selection
 
-The third `res.render` argument, `options.layout`, controls this render. Global `frontend.render.layout` can currently be configured, but the renderer does not consume it yet; use per-render `layout: false` to disable layouts.
+`frontend.render.layout` sets the global layout default. An explicit `options.layout` in the third render argument takes priority: false disables layouts and true restores the automatic chain. This applies to buffered, streaming, and page envelopes.
 
-| Value             | Meaning                                                                    |
-| ----------------- | -------------------------------------------------------------------------- |
-| `true` or omitted | Use the automatic directory layout chain                                   |
-| `false`           | Disable layouts for this render                                            |
-| `string`          | Use one named layout                                                       |
-| `string[]`        | Select layouts applied in registry order, not reordered by the input array |
+| Value      | Meaning                                                                                   |
+| ---------- | ----------------------------------------------------------------------------------------- |
+| `true`     | Use the automatic directory layout chain; omission inherits global frontend.render.layout |
+| `false`    | Disable layouts for this render                                                           |
+| `string`   | Use one named layout                                                                      |
+| `string[]` | Select layouts applied in registry order, not reordered by the input array                |
 
 ```ts
 res.render("admin/dashboard", props, {

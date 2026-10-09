@@ -38,11 +38,13 @@ The current implementation provides these capabilities, subject to the relevant 
 | Static, revalidate, and client-only freshness | Declare the route and produce the corresponding build/runtime artifacts                                     | Arbitrary responses are not cached automatically; in-memory state is not shared across processes.  |
 | Image and font handling                       | Provide local inputs and explicit media/deploy configuration                                                | Remote images and fonts are not downloaded by default.                                             |
 
-Choose an implementation path with these verified limitations in mind:
+Choose an implementation path with these verified behaviors and remaining boundaries in mind:
 
-- The browser entry for the [empty CSR shell](./csr-and-spa-fallback#current-limitation-of-an-empty-shell) still calls `hydrateRoot`. It may report a mismatch before recovering the display. Do not treat that as error-free CSR validation; prefer keeping shell SSR.
-- [CSS Modules](./styles-and-assets#css-modules) can produce different class names in the default production SSR and browser builds. Prefer plain CSS or JSCSS for current SSR pages.
-- The loader for [imported images](./styles-and-assets#imported-assets) is configured only in the browser build. SSR-registered pages should use a Public URL or a manifest-backed Image. Turning off runtime SSR does not eliminate the server bundle build.
+- [Empty CSR shells](./csr-and-spa-fallback#empty-shell-mounting-behavior) use createRoot; completed SSR uses hydrateRoot.
+- [CSS Modules](./styles-and-assets#css-modules) share class names, composes mappings, and actual CSS artifacts across SSR and browser builds.
+- [Image/font imports](./styles-and-assets#imported-assets) reuse public browser URLs in SSR, including inlineLimit and CDN prefixes.
+- Frontend i18n inherit, detect, Vary, and navigation locales are implemented; per-component inject:used trimming remains reserved and diagnosed. See [I18n](./i18n).
+- Generic adapter.resolveBuildOptions is deprecated and ignored; use build.client/build.server. The reserved field is planned for removal in the next breaking release.
 
 ## Route and Browser Responsibilities
 

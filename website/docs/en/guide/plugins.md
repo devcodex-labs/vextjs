@@ -173,7 +173,7 @@ export default definePlugin({
 
 ### `setup()` — initialization function
 
-The core logic of a plugin runs during bootstrap and supports async work. Its second argument is `{ signal: AbortSignal }`; pass `signal` to cancellable I/O. Each setup has a hard timeout (30 seconds in current standard entry points, provided the event loop runs the timer). On failure or timeout, the signal aborts, managed framework mutations are rolled back and the controlled setup facade is revoked. A late continuation cannot use it to call managed methods or write top-level properties. This does not stop changes to captured nested objects or undo external I/O.
+The core plugin initializer supports async work. Its second argument is `{ signal: AbortSignal }`; pass it to cancellable I/O. Each setup has a hard timeout controlled by `config.plugin.setupTimeout` (default 30 seconds, requiring the event loop to run). Failure or timeout aborts the signal, managed mutations are rolled back, and the setup facade is revoked. A late continuation cannot call managed methods or write top-level properties; captured nested objects and external I/O still require plugin-owned cleanup.
 
 ```typescript
 async setup(app, { signal }) {
@@ -509,7 +509,7 @@ If there is a circular dependency (A → B → A), the framework will report a F
 
 ### Timeout protection
 
-Current standard dev, production and test entry points use a 30,000 ms Plugin Loader timeout. Although internal loader options and error messages mention `setupTimeout`, the standard entry points do not pass `config.plugin.setupTimeout`; writing that config cannot change the actual deadline.
+Automatic Plugin Loader calls in dev, production, and testing use `config.plugin.setupTimeout`, default `30_000` milliseconds. It must be an integer from 1 through 2,147,483,647, and changes require restart. The manual `createTestApp({ setupPlugins })` callback does not use this loader; its deadline belongs to the caller.
 
 On timeout, the framework aborts `context.signal`, rolls back managed setup mutations and revokes controlled writes through that setup parameter. The plugin still owns external resources created before cancellation. Pass the signal to cancellable operations and close partially initialized clients in its own failure/cancellation path. This mechanism cannot interrupt synchronous code blocking the event loop or forcibly stop arbitrary async I/O, and does not automatically cover the separately initialized built-in database plugin.
 

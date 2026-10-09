@@ -256,7 +256,7 @@ One order is `database` → `redis` → `auth`. Dependency-free candidates are n
 
 ### Timeout protection
 
-Each user `setup()` defaults to a 30-second limit, with the failure behavior described above. Current standard dev/start/testing entries do not pass `config.plugin.setupTimeout` into the loader, so setting that field does not alter the effective limit. Use timeout and cancellation supported by each slow external resource.
+Each automatically loaded user plugin setup defaults to 30 seconds. Dev/start/testing entries support `config.plugin.setupTimeout` in milliseconds, an integer from 1 through 2,147,483,647. Timeout still aborts the signal, revokes the facade, and rolls back uncommitted mutations; pass the signal to cancellable downstream work. The manual `setupPlugins` callback is outside this loader deadline.
 
 ### Built-in plug-ins
 

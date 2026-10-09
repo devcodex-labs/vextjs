@@ -17,9 +17,9 @@ Use imported assets when a component owns the image, font, or media file. Use `p
 
 ## Imported Assets
 
-Only the browser build currently has an image loader; the SSR build lacks one. Do not import an image into an SSR-registered page or component. Even with runtime SSR disabled, the page still enters the server bundle build. Prefer a Public URL for default pages, or use the manifest-backed `Image` below.
+Image and font imports are supported in both browser and SSR builds. SSR reuses the browser artifact URL, including data URLs within `inlineLimit` and configured `publicPath` or CDN prefixes.
 
-This snippet only illustrates a browser asset import when a supported loader, an entry not referenced by SSR, and an actual `src/frontend/assets/logo.png` file already exist:
+Add a real `src/frontend/assets/logo.png`, then import it directly into a page or component:
 
 ```tsx
 import logoUrl from "@assets/logo.png";

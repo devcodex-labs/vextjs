@@ -52,16 +52,16 @@ public/
 
 Add business files as needed; the template does not create every directory below in advance:
 
-| Task                      | Location and accompanying work                                                                                                                                                                             |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Add a dashboard page      | `src/frontend/pages/admin/dashboard.tsx` and register `/` in `src/routes/admin/dashboard.ts`; the page does not create a URL                                                                               |
-| Add reusable UI           | `src/frontend/components/UserMenu.tsx`, imported by a page or layout                                                                                                                                       |
-| Add a shared admin layout | `src/frontend/pages/admin/layout.tsx`; see [Layouts and Components](/frontend/layouts-and-components) for inheritance and data                                                                             |
-| Add page styles           | For default SSR, prefer `src/frontend/styles/card.style.ts` (JSCSS) or plain CSS, imported and used by UI; see [Styles and Assets](./styles-and-assets#css-modules) for production CSS Modules limitations |
-| Add another locale        | `src/frontend/locales/zh-CN.ts`, with locale configuration and copy coverage checked                                                                                                                       |
-| Add a 404 page            | `src/frontend/pages/error/404.tsx`, mapped as described in [Error Pages and Document](/frontend/errors-and-document)                                                                                       |
+| Task                      | Location and accompanying work                                                                                                       |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Add a dashboard page      | `src/frontend/pages/admin/dashboard.tsx` and register `/` in `src/routes/admin/dashboard.ts`; the page does not create a URL         |
+| Add reusable UI           | `src/frontend/components/UserMenu.tsx`, imported by a page or layout                                                                 |
+| Add a shared admin layout | `src/frontend/pages/admin/layout.tsx`; see [Layouts and Components](/frontend/layouts-and-components) for inheritance and data       |
+| Add page styles           | Plain CSS, CSS Modules, or `src/frontend/styles/card.style.ts` (JSCSS), imported by UI; see [Styles and Assets](./styles-and-assets) |
+| Add another locale        | `src/frontend/locales/zh-CN.ts`, with locale configuration and copy coverage checked                                                 |
+| Add a 404 page            | `src/frontend/pages/error/404.tsx`, mapped as described in [Error Pages and Document](/frontend/errors-and-document)                 |
 
-Put URL-addressed files under `public/**`. `src/frontend/assets/**` is for files in the browser build graph. Directly importing an image in a current SSR page has a build limitation; use the Public URL example below first. Inlining and hashing depend on the actual build configuration.
+Put URL-addressed files under `public/**`. Supported images and fonts in `src/frontend/assets/**` can be imported by pages and components; SSR and browser output share the artifact URL. Inlining and hashing depend on build settings.
 
 ## Frontend Source Boundary
 
@@ -177,7 +177,7 @@ export function Hero() {
 }
 ```
 
-The current browser build has loaders for PNG, SVG, and similar resources, but the SSR build lacks the corresponding image loader. Directly importing an image into a page or its component can fail the build that includes that page. A type declaration or disabling runtime SSR does not supply that build step. This example uses a Public URL and does not ask readers to edit generated files or add a build plugin.
+This example uses a stable Public URL. Supported PNG, SVG, and other image/font imports can also be used directly. SSR reuses verified browser URLs, including inline data URLs and CDN prefixes, without editing generated files.
 
 For an existing browser-only entry where importing an asset is supported, a missing TypeScript module declaration can be added in an application-owned type directory:
 
@@ -189,7 +189,7 @@ declare module "*.svg" {
 }
 ```
 
-The declaration only helps type checking; the file and build loader must still exist. It cannot solve the SSR limitation above. See [Styles and Assets](/frontend/styles-and-assets) for formats, CSS Modules, and media handling.
+The declaration only helps type checking. The file must exist and use a supported resource format. See [Styles and Assets](/frontend/styles-and-assets) for formats, CSS Modules, and media handling.
 
 `public/**` is copied into frontend output and its static asset inventory. Do not place server configuration or other private files there. Local development and production servers serve it under the configured `publicPath`; see [Static Assets and CDN](/frontend/static-assets-and-cdn) for CDN rewriting.
 

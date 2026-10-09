@@ -168,7 +168,7 @@ app.get("/article/:slug", { frontend: { hydration: "none" } }, handler);
 
 ## 避免 Mismatch
 
-保持 SSR 与浏览器输出确定。若关闭 SSR 或使用 `clientOnly: true`，还需检查 [CSR 空 shell 的当前限制](/zh/frontend/csr-and-spa-fallback#空-shell-的当前限制)：当前入口会对空 body 调用 `hydrateRoot`，该 mismatch 不能通过调整业务时间或随机数解决。
+保持 SSR 与浏览器输出确定。关闭 SSR、`clientOnly: true` 或客户端 fallback 的空 shell 会使用 `createRoot`；完成 SSR 的页面使用 `hydrateRoot`，即使组件返回 null。模式验证见 [CSR 挂载行为](/zh/frontend/csr-and-spa-fallback#空-shell-的挂载行为)。
 
 | 风险                           | 更好的做法                                  |
 | ------------------------------ | ------------------------------------------- |

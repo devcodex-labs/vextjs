@@ -20,6 +20,7 @@
 | `query`       | `Record<string, string>`                | URL 查询参数（已解析）                                                                                |
 | `body`        | `unknown`                               | 请求体（由 body-parser 中间件填充）                                                                   |
 | `headers`     | `Record<string, string \| undefined>`   | 请求头（全部小写 key）                                                                                |
+| `locale`      | `string \| undefined`                   | 请求元数据协商的语言；可供 frontend.i18n 的 inherit 读取，不依赖 requestId 开关                       |
 | `app`         | `VextApp`                               | 当前请求所属的应用实例                                                                                |
 | `signal`      | `AbortSignal`                           | 客户端连接关闭或路由期限到达时中止；应传给支持取消的下游操作                                          |
 | `requestId`   | `string`                                | 请求唯一标识                                                                                          |

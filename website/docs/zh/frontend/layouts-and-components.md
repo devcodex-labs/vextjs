@@ -31,14 +31,14 @@ layout 适合稳定页面外壳：导航、侧边栏、账号菜单、面包屑�
 
 ## 显式选择 Layout
 
-`res.render` 第三个参数中的 `options.layout` 控制本次布局。当前全局 `frontend.render.layout` 虽可配置，但渲染器尚未消费它；需要禁用布局时使用每次渲染的 `layout: false`。
+`frontend.render.layout` 提供全局布局默认值；`res.render` 第三个参数的显式 `options.layout` 优先。设为 `false` 禁用布局，设为 `true` 恢复自动布局；相同规则应用于 buffered、streaming 与页面 envelope。
 
-| 值            | 含义                                                     |
-| ------------- | -------------------------------------------------------- |
-| `true` 或省略 | 使用自动目录 layout chain                                |
-| `false`       | 当前 render 禁用 layout                                  |
-| `string`      | 使用一个指定 layout                                      |
-| `string[]`    | 选择一组布局，按注册表顺序应用，不按数组输入顺序重新排序 |
+| 值         | 含义                                                               |
+| ---------- | ------------------------------------------------------------------ |
+| `true`     | 使用自动目录 layout chain；省略时继承全局 `frontend.render.layout` |
+| `false`    | 当前 render 禁用 layout                                            |
+| `string`   | 使用一个指定 layout                                                |
+| `string[]` | 选择一组布局，按注册表顺序应用，不按数组输入顺序重新排序           |
 
 ```ts
 res.render("admin/dashboard", props, {

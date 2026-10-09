@@ -92,7 +92,7 @@ Include every value that changes the rendered payload:
 - feature flag or experiment
 - data version
 
-If HTML differs per locale, make sure response cache and CDN cache vary by locale.
+If HTML varies by locale, response and CDN caches must isolate the actual language. Frontend i18n merges Vary for detection sources. Cookie, custom req.locale, and explicit overrides absent from URL/detection configuration bypass frontend freshness with private/no-store. See [I18n](./i18n).
 
 The default route response cache includes method, normalized URL, and declared vary. It does not automatically include the business user, feature flag, or data version. Use `vary`, a trusted `partitionKey`, or a custom key. A custom key replaces the default URL composition, so include every input that actually affects the result. See the [Response Cache guide](/guide/cache) for default internal key format and concurrency limits; do not infer a deletable cache key from the render payload.
 

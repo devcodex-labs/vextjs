@@ -1,4 +1,4 @@
-import fg from "fast-glob";
+import fg from "../safe-glob.js";
 import path from "node:path";
 import { backendSourceIgnore } from "./shared-esbuild-config.js";
 import type { FrontendLayoutInput } from "../project/layout.js";

@@ -2,7 +2,7 @@ import * as esbuild from "esbuild";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import fg from "fast-glob";
+import fg from "../../lib/safe-glob.js";
 import type { ResolvedVextFrontendConfig } from "../contract/types.js";
 import { withProjectOwner } from "../../lib/project/owner.js";
 import { ArtifactDraft } from "../../lib/project/artifact-draft.js";

@@ -114,7 +114,7 @@ src/frontend/pages/_document.html
 
 模板不会执行任意表达式。数据通过 `props`、`layoutData`、`messages` 或 `head` 传入。
 
-启用 `frontend.i18n.htmlLang` 时，`{vext.lang}` 是请求级的。`res.render(page, props, { locale })` 会在 SSR 阶段更新最终 `<html lang>`；`htmlLang: false` 会移除 Vext 生成的 lang marker。
+启用 `frontend.i18n.htmlLang` 时，`{vext.lang}` 使用请求的有效语言，显式 `options.locale` 优先；页面 envelope 携带同一语言，客户端导航也更新 `<html lang>`。`htmlLang: false` 移除 Vext 生成的 lang marker，但导航缓存仍按 envelope 的有效语言隔离。
 
 ## Head 与 CSP Nonce
 

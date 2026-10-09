@@ -52,16 +52,16 @@ public/
 
 业务文件按需要增加，模板没有预先生成下面所有目录：
 
-| 任务                      | 放置位置与配套工作                                                                                                                                                |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 新增 dashboard 页面       | `src/frontend/pages/admin/dashboard.tsx`，并在 `src/routes/admin/dashboard.ts` 注册 `/`；页面文件不会自动创建 URL                                                 |
-| 新增可复用 UI             | `src/frontend/components/UserMenu.tsx`，由页面或 layout 导入                                                                                                      |
-| 给 admin 页面增加公共布局 | `src/frontend/pages/admin/layout.tsx`；继承和数据规则见[Layout 与组件](/zh/frontend/layouts-and-components)                                                       |
-| 添加页面样式              | 默认 SSR 优先使用 `src/frontend/styles/card.style.ts`（JSCSS）或普通 CSS，由 UI 导入并使用；CSS Modules 的生产限制见[样式与资源](./styles-and-assets#css-modules) |
-| 添加第二种语言            | `src/frontend/locales/zh-CN.ts`，同时核对语言配置与文案覆盖                                                                                                       |
-| 添加 404 页面             | `src/frontend/pages/error/404.tsx`，根据[错误页与 Document](/zh/frontend/errors-and-document)配置状态映射                                                         |
+| 任务                      | 放置位置与配套工作                                                                                                           |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| 新增 dashboard 页面       | `src/frontend/pages/admin/dashboard.tsx`，并在 `src/routes/admin/dashboard.ts` 注册 `/`；页面文件不会自动创建 URL            |
+| 新增可复用 UI             | `src/frontend/components/UserMenu.tsx`，由页面或 layout 导入                                                                 |
+| 给 admin 页面增加公共布局 | `src/frontend/pages/admin/layout.tsx`；继承和数据规则见[Layout 与组件](/zh/frontend/layouts-and-components)                  |
+| 添加页面样式              | 普通 CSS、CSS Modules 或 `src/frontend/styles/card.style.ts`（JSCSS）；由 UI 导入并使用，见[样式与资源](./styles-and-assets) |
+| 添加第二种语言            | `src/frontend/locales/zh-CN.ts`，同时核对语言配置与文案覆盖                                                                  |
+| 添加 404 页面             | `src/frontend/pages/error/404.tsx`，根据[错误页与 Document](/zh/frontend/errors-and-document)配置状态映射                    |
 
-需要通过固定 URL 访问的文件放 `public/**`。`src/frontend/assets/**` 用于浏览器构建图中的资源；当前 SSR 页面直接 import 图片存在构建限制，先使用本页的 Public URL 示例。资源是否内联或带 hash 取决于实际构建配置。
+需要通过固定 URL 访问的文件放 `public/**`。`src/frontend/assets/**` 中支持的图片与字体可以直接 import 到页面或组件；SSR 与浏览器共用产物 URL。资源是否内联或带 hash 取决于实际构建配置。
 
 ## 前端源码边界
 
@@ -179,7 +179,7 @@ export function Hero() {
 }
 ```
 
-当前浏览器构建为 PNG、SVG 等资源配置了 loader，但 SSR 构建没有对应的图片 loader。把图片直接 import 到页面或其组件中，会使包含这些页面的构建失败；添加类型声明或仅关闭运行时 SSR 都不能补齐这个构建环节。这里采用 Public URL，不要求读者修改生成文件或自行补构建插件。
+这个示例使用稳定的 Public URL。也可以 import 支持的 PNG、SVG 等图片或字体；SSR 构建会复用浏览器构建确认的公开 URL，包括内联 data URL 与 CDN 前缀，不需要自行修改生成文件。
 
 对已有、确实支持资源 import 的浏览器入口，TypeScript 若缺少资源模块声明，可在应用维护的类型目录添加声明，例如：
 
@@ -191,7 +191,7 @@ declare module "*.svg" {
 }
 ```
 
-声明只帮助类型检查，实际文件和构建 loader 仍需存在，不能用它解决上述 SSR 限制。更多格式、CSS Modules 和媒体处理见[样式与资源](/zh/frontend/styles-and-assets)。
+声明只帮助类型检查，文件仍需真实存在并属于支持的资源格式。更多格式、CSS Modules 和媒体处理见[样式与资源](/zh/frontend/styles-and-assets)。
 
 `public/**` 会复制到前端输出目录并进入静态资源清单。不要放服务端配置或其他不应公开的文件；开发与生产的本地服务按配置的 `publicPath` 提供资源，CDN URL 改写另见[静态资源与 CDN](/zh/frontend/static-assets-and-cdn)。
 

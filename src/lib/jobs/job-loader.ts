@@ -1,5 +1,5 @@
 import path from "node:path";
-import fg from "fast-glob";
+import fg from "../safe-glob.js";
 import { importUserModule } from "../user-module-loader.js";
 import { resolveModuleDefault } from "../interop.js";
 import { resolveProjectRolePath } from "../project/layout.js";

@@ -351,6 +351,15 @@ export async function loadPlugins(
   options: LoadPluginsOptions = {},
 ): Promise<void> {
   const { setupTimeout = 30_000, startupProfiler } = options;
+  if (
+    !Number.isInteger(setupTimeout) ||
+    setupTimeout <= 0 ||
+    setupTimeout > 2_147_483_647
+  ) {
+    throw new Error(
+      "[vextjs] plugin setupTimeout must be a positive integer <= 2147483647 (milliseconds).",
+    );
+  }
 
   // ── 1. 检查 plugins/ 目录是否存在 ─────────────────────────
   const dirExists = await directoryExists(pluginsDir);

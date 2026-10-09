@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import fg from "fast-glob";
+import fg from "../../safe-glob.js";
 import { resolveModelsDirectory } from "../../project/layout.js";
 import { resolveModelEntry } from "../../plugins/monsqlize/model-loader.js";
 import type { VextCodeDocItem, VextCodeDocsSourceConfig } from "../types.js";

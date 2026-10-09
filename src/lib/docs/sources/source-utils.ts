@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { extname, relative, sep } from "node:path";
-import fg from "fast-glob";
+import fg from "../../safe-glob.js";
 import type { VextCodeDocsSourceConfig } from "../types.js";
 
 export const CODE_DOCS_SOURCE_EXTENSIONS = [
@@ -37,8 +37,9 @@ export async function scanCodeSourceFiles(
   if (!existsSync(dir)) {
     return [];
   }
-  const include =
-    config.include ?? [`**/*.{${CODE_DOCS_SOURCE_EXTENSIONS.join(",")}}`];
+  const include = config.include ?? [
+    `**/*.{${CODE_DOCS_SOURCE_EXTENSIONS.join(",")}}`,
+  ];
   const exclude = [
     "**/*.d.ts",
     "**/*.test.*",

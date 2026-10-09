@@ -376,7 +376,10 @@ export async function bootstrap(
     // 此阶段 app.use() 可用，插件可注册全局中间件
     internals.enterPluginSetup();
     try {
-      await loadPlugins(app, join(srcDir, "plugins"), { startupProfiler });
+      await loadPlugins(app, join(srcDir, "plugins"), {
+        startupProfiler,
+        setupTimeout: config.plugin?.setupTimeout,
+      });
     } finally {
       internals.exitPluginSetup();
     }
@@ -1254,11 +1257,11 @@ async function startClusterMaster(rootDir: string): Promise<void> {
   // 创建并启动 Master
   const runtimeIdentity = createRuntimeSnapshotIdentity(rootDir, "cluster");
   const master = new ClusterMaster({
-    onStopped: () =>
+    onStopped: (exitCode) =>
       patchRuntimeSnapshotSafe(rootDir, {
         runtimeIdentity,
-        summary: { state: "stopped" },
-        event: { type: "shutdown" },
+        summary: { state: exitCode === 0 ? "stopped" : "failed", exitCode },
+        event: { type: exitCode === 0 ? "shutdown" : "fatal-capacity-loss" },
         workers: [],
       }),
     workers,
@@ -1305,6 +1308,15 @@ async function startClusterMaster(rootDir: string): Promise<void> {
       event: { type: "worker-ready", ...event },
     });
   });
+  master.on("all-workers-dead", () => {
+    console.error(
+      "[cluster] no workers and no pending recovery; shutting down with exit code 1. Configure supervisor restart backoff.",
+    );
+    void master.gracefulShutdown("fatal capacity loss", 1).catch((error) => {
+      console.error("[cluster] fatal shutdown failed:", error);
+      process.exit(1);
+    });
+  });
   master.on("worker-exit", (event) => {
     void patchRuntimeSnapshotSafe(rootDir, {
       runtimeIdentity,
@@ -1335,6 +1347,10 @@ async function startClusterMaster(rootDir: string): Promise<void> {
     phase: "listen",
     detail: { cluster: true, workers: workerCount },
   });
+
+  // Terminal capacity loss during startup already owns fatal shutdown; do not
+  // overwrite its failed snapshot or tell the CLI parent this instance is ready.
+  if (!master.isRunning()) return;
 
   const readyWorkers = master.getReadyWorkerCount();
   await patchRuntimeSnapshotSafe(rootDir, {

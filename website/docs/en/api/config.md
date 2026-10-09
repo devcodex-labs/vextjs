@@ -138,9 +138,12 @@ export default config;
 
 ### `VextConfig`
 
+Configure automatic plugin deadlines through `plugin`; see [VextPluginConfig](#vextpluginconfig).
+
 | Field             | Type                                                    | Default Value         | Description                                                                  |
 | ----------------- | ------------------------------------------------------- | --------------------- | ---------------------------------------------------------------------------- |
 | `locale`          | [`VextLocaleConfig`](#vextlocaleconfig)                 | Module fallback below | Backend language and message directory                                       |
+| `plugin`          | [`VextPluginConfig`](#vextpluginconfig)                 | Module fallback below | Automatic plugin setup deadline and custom fields                            |
 | `port`            | `number`                                                | `3000`                | HTTP listening port                                                          |
 | `host`            | `string`                                                | `'0.0.0.0'`           | HTTP listening address                                                       |
 | `adapter`         | `string \| Function \| VextAdapter`                     | `'native'`            | Low-level adapter                                                            |
@@ -323,6 +326,16 @@ Once global limiting is explicitly enabled, a route can override max/window/stri
 
 Instances sharing a policy should use the same target and prefix. Give distinct policies separate keys. Built-in store checks may allow a request on failure; see [Storage failures and allow behavior](/guide/rate-limit#storage-failures-and-allow-policy).
 
+## VextPluginConfig
+
+config.plugin controls automatic plugin loading and preserves custom application plugin fields.
+
+| Field               | Type   | Default | Description                                                                  |
+| ------------------- | ------ | ------- | ---------------------------------------------------------------------------- |
+| plugin.setupTimeout | number | 30000   | Per-plugin setup deadline in milliseconds; integer from 1 through 2147483647 |
+
+vext dev, vext start, and createTestApp share this value. Timeout aborts the setup signal, stops later plugins, and invokes registered rollback cleanup; plugins must still honor cancellation and stop their work. The manual createTestApp({ setupPlugins }) callback is outside this loader deadline. Changes require restart; see [Plugins](/guide/plugins).
+
 ## VextLocaleConfig
 
 Backend language configuration is separate from `frontend.i18n`:
@@ -333,7 +346,7 @@ Backend language configuration is separate from `frontend.i18n`:
 | `supported` | `string[]` | Unset by default; when configured, matches Accept-Language and falls back to `default`             |
 | `directory` | `string`   | `src/locales`; relative to service root or absolute; directories in `src` map into compiled output |
 
-Language metadata depends on request context, independent of `requestId.enabled`. Outside a request, the application default applies. See [Backend i18n](/guide/i18n) for dictionaries and matching order; frontend locale must be selected explicitly as described in [Frontend i18n](/frontend/i18n).
+Request metadata always fills req.locale independently of requestId. With request context enabled it also fills the store used by error translation; without context or outside a request, translation uses the app default. See [Backend i18n](/guide/i18n) for dictionaries and matching order, and [Frontend i18n](/frontend/i18n) for inheritance or independent detection.
 
 ## VextRequestIdConfig
 
@@ -947,20 +960,20 @@ Built-in frontend build and static serving configuration.
 | `render.fallback`                                      | `'client' \| 'error'`                | `'client'`                                                   | Whether SSR failures fall back to a client shell or an error response                                          |
 | `render.streaming`                                     | `'buffered' \| 'auto'`               | `'buffered'`                                                 | Keep `renderToString` compatibility or stream the shell and Suspense boundaries                                |
 | `render.timeoutMs`                                     | `number`                             | `3000`                                                       | Abort unfinished streaming SSR; checked after synchronous buffered rendering                                   |
-| `render.layout`                                        | `boolean`                            | `true`                                                       | Whether to enable the nested layout chain                                                                      |
+| `render.layout`                                        | `boolean`                            | `true`                                                       | Global layout default; explicit render options.layout takes priority                                           |
 | `errorPages`                                           | `object`                             | Built-in error-page conventions                              | Default and status-specific error-page mappings                                                                |
 | `errorPages.default`                                   | `string`                             | `'error/default'`                                            | Default error page id                                                                                          |
 | `errorPages.status`                                    | `object`                             | `{ 404: 'error/404', 500: 'error/500' }`                     | Status code to error page id mapping                                                                           |
 | `i18n`                                                 | `object`                             | `{ enabled: false }`                                         | Frontend page message layer, SSR messages, and `{vext.lang}`                                                   |
 | `i18n.enabled`                                         | `boolean`                            | `false`                                                      | Whether frontend locale discovery and message artifacts are enabled                                            |
 | `i18n.source`                                          | `string`                             | `'locales'`                                                  | Frontend message directory resolved from `root`                                                                |
-| `i18n.defaultLocale`                                   | `'inherit' \| string`                | `'inherit'`                                                  | Default locale; `inherit` follows the request-level locale                                                     |
-| `i18n.detect`                                          | `string[]`                           | `['accept-language']`                                        | SSR locale detection sources                                                                                   |
-| `i18n.inject`                                          | `'used' \| 'all'`                    | `'used'`                                                     | Whether to inject used messages or all messages                                                                |
+| `i18n.defaultLocale`                                   | `'inherit' \| string`                | `'inherit'`                                                  | Prefer matching req.locale; a concrete default is the fallback after detection                                 |
+| `i18n.detect`                                          | `string[]`                           | `['accept-language']`                                        | Ordered query, header/x-vext-locale, cookie, or accept-language detection; unknown sources are rejected        |
+| `i18n.inject`                                          | `'used' \| 'all'`                    | `'used'`                                                     | used emits a diagnostic and currently loads the selected language's full messages without component trimming   |
 | `i18n.clientSwitch`                                    | `'reload'`                           | `'reload'`                                                   | Initial client locale switch strategy                                                                          |
 | `i18n.clientLoad`                                      | `'current' \| 'all'`                 | `'current'`                                                  | Whether the browser loads only the current SSR locale or all locales                                           |
 | `i18n.htmlLang`                                        | `boolean`                            | `true`                                                       | Whether to write `{vext.lang}` / `<html lang>`                                                                 |
-| `i18n.vary`                                            | `boolean`                            | `true`                                                       | Whether locale affects response vary/cache behavior                                                            |
+| `i18n.vary`                                            | `boolean`                            | `true`                                                       | Merge detection headers into Vary; false leaves external cache isolation to the application                    |
 | `dev`                                                  | `object`                             | Built-in dev defaults                                        | Browser development event, refresh, and overlay controls                                                       |
 | `dev.hot`                                              | `boolean`                            | `true`                                                       | Development frontend hot update channel                                                                        |
 | `dev.fastRefresh`                                      | `boolean`                            | `true`                                                       | React Fast Refresh                                                                                             |
@@ -1030,7 +1043,7 @@ Built-in frontend build and static serving configuration.
 | `deploy.upload.include`                                | `string[]`                           | `['**/*']`                                                   | Deploy-manifest paths eligible for upload                                                                      |
 | `deploy.upload.exclude`                                | `string[]`                           | `['**/*.map']`                                               | Deploy-manifest paths omitted from upload                                                                      |
 
-The `i18n.*` fields above describe the declared configuration shape. Current frontend runtime does not perform automatic locale discovery, message injection, client switching, or HTML language setting from these fields alone. Select the locale and load messages explicitly as shown in [Frontend i18n](/frontend/i18n).
+Frontend i18n shares the effective locale across HTML, navigation envelopes, and freshness keys; detection merges Vary. inject:used component trimming remains reserved and diagnosed, while the app owns language switching. See [Frontend i18n](/frontend/i18n).
 
 ```typescript
 import type { VextUserConfig } from "vextjs";
@@ -1061,7 +1074,7 @@ The SPA scope example needs a real shell page. Start with `scopes[].ssr: true` a
 
 ### Adapter extension contracts
 
-`frontend.adapter` reserves an in-process typed extension contract. `VextFrontendAdapter` declares `name`, `framework`, and an optional `resolveBuildOptions(config)`, but the current built-in build and render flow does not call that resolver. Do not assume its compiler options take effect. This is not automatic plugin discovery and does not enable another bundler, RSC, Server Functions, or PPR.
+The generic frontend.adapter resolver is deprecated. `VextFrontendAdapter` declares `resolveBuildOptions(config)`, which is ignored; configuring a function emits a build diagnostic. Use the implemented build.client/build.server settings. The reserved field is planned for removal in the next breaking release; it does not enable another bundler, RSC, Server Functions, or PPR.
 
 `frontend.seo` is documented end-to-end in [SEO, Sitemap, and Robots](/frontend/seo-sitemap). `publicOrigin` is a deployment origin, not a fixed page URL: the current pathname or an explicit page canonical supplies the per-page portion. Runtime artifacts accept only exact declared hosts; providers do not receive `app` or `app.db` implicitly.
 
@@ -1115,7 +1128,7 @@ Cluster multi-process configuration. For the complete interface definition, see 
 | `memoryThreshold`  | `number`                       | `1073741824`  | Worker heapUsed threshold in bytes; a periodic breach asks Master for replacement rather than exiting immediately                            |
 | `pidFile`          | `string`                       | `'.vext.pid'` | PID file path (for `vext stop` / `vext reload` to locate the process)                                                                        |
 | `titlePrefix`      | `string`                       | `'vext'`      | Worker process title prefix                                                                                                                  |
-| `sticky`           | `'none' \| 'ip'`               | `'none'`      | Scheduling branch; IP-based Worker assignment is not implemented                                                                             |
+| `sticky`           | `'none' \| 'ip'`               | `'none'`      | ip is deprecated and diagnosed, still round-robin; use external load-balancer affinity. Planned removal in the next breaking release         |
 
 ### `healthCheck` — heartbeat detection
 

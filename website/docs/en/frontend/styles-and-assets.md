@@ -27,7 +27,7 @@ body {
 }
 ```
 
-Use global CSS for reset, base typography, and design tokens. For local styles on current SSR pages, prefer JSCSS; see the production CSS Modules limitation below.
+Use global CSS for reset, base typography, and design tokens. Component-local styles can use CSS Modules, plain CSS, or JSCSS.
 
 A file's existence does not mean the browser loads it. With the root layout from [Layouts and Components](./layouts-and-components), add `import "../styles/app.css";` at the top of `src/frontend/pages/layout.tsx`, retaining its existing export and children. Alternatively, point the existing `frontend.styles.entry` to this file. Do not maintain two different global base stylesheets.
 
@@ -35,9 +35,9 @@ Vext does not compile Sass or SCSS source files. If a project needs Sass, compil
 
 ## CSS Modules
 
-`.module.css` uses CSS Modules by default, but the current default production settings can generate different SSR and browser class names. The browser build minifies while the server renderer does not, so the same example may produce `.a` versus `card_card`. Even without console errors, the SSR DOM may not match browser CSS and styling may fail.
+`.module.css` uses CSS Modules by default. The compiler creates one stable class mapping per source file and shares it between browser and SSR builds, with independently configurable minification. Identically named files in different directories stay scoped. `composes`, `:local`, `:global`, and CSS `@import` are supported.
 
-Until this naming consistency is fixed, prefer plain CSS or JSCSS for SSR pages. The following preserves CSS Module syntax and types, but is not a production SSR path already verified by default. Do not infer cross-build consistency from a successful build or one changed minify switch alone.
+The component below works in production SSR pages. Verify server DOM classes, selectors in public CSS, and actual browser computed styles. An error-free Console alone does not prove styling is correct.
 
 ```css
 /* src/frontend/styles/card.module.css */
@@ -96,9 +96,9 @@ Use `panel` as an element's `className`. `setVar()` creates a declaration for ex
 
 ## Imported Assets
 
-The browser build handles imported assets through esbuild. The current SSR build lacks the corresponding image loader, so do not put this image import directly in an SSR-registered page or its component. Its build can fail even if type checking passes; disabling runtime SSR does not skip the server bundle build. Prefer the Public URL below for default pages.
+Supported image and font imports resolve to the same public URL in browser and SSR output. File assets use their browser-generated hash URL; assets within `inlineLimit` use a shared data URL. `publicPath` and `deploy.assetBaseUrl` apply consistently. Supported formats are PNG, JPEG, GIF, WebP, AVIF, SVG, ICO, WOFF/WOFF2, TTF, and EOT.
 
-The following only illustrates import syntax when a real image and an existing browser entry with the appropriate loader are present and that entry is not referenced by SSR:
+First add a real `src/frontend/assets/logo.png`, then import it directly into a page or component:
 
 ```tsx
 import logoUrl from "@assets/logo.png";
@@ -152,4 +152,4 @@ Replace the example domain with your actual CDN. First verify same-origin delive
 
 ## Verify Styles
 
-Run `npm run build` in the application root, start `npm start -- --port 3000`, and open the page that uses the style. Check that CSS requests succeed, classes match generated rules, and borders and spacing appear. For a dynamic variable, inspect the target element's computed style. If CSS Modules reproduce the naming issue, treat it as a current limitation and use plain CSS or JSCSS; an error-free Console is not proof of correct styling. If an imported image triggers an SSR loader error, use a Public URL or the media Image path described above. Stop the service afterward.
+Run `npm run build`, start `npm start -- --port 3000`, and open the styled page with and without JavaScript. Verify CSS selectors match server DOM classes and computed styles remain correct after hydration and an event update. For a dynamic variable, inspect the target element. Verify image/font URLs and any inline or CDN settings. Stop the service afterward.

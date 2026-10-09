@@ -235,10 +235,10 @@ describe("Chinese guide examples from Markdown", () => {
         .set("Accept-Language", "en-US");
       expect(en.status).toBe(404);
       expect(en.body).toMatchObject({ code: 40001, message: "User not found" });
-      const exactFirst = await app.request
+      const qualityFirst = await app.request
         .get("/i18n-demo/not-found")
         .set("Accept-Language", "zh;q=1,en-US;q=0.5");
-      expect(exactFirst.body.message).toBe("User not found");
+      expect(qualityFirst.body.message).toBe("用户不存在");
       const balance = await app.request
         .get("/i18n-demo/balance")
         .set("Accept-Language", "zh-CN");

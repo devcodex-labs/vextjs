@@ -17,9 +17,9 @@ Vext 有两个静态资源位置，它们行为不同。
 
 ## Import 型资源
 
-当前仅浏览器构建配置了图片 loader，SSR 构建没有对应 loader。不能把图片 import 放进已注册 SSR 页面或其组件；即使关闭运行时 SSR，该页面仍参与服务端 bundle 构建。默认页面优先使用 Public URL，或使用下文基于媒体清单的 `Image`。
+已注册的 SSR 页面与浏览器组件可以直接 import 支持的图片或字体。两端共用公开 URL 或内联 data URL，SSR 不生成私有资源副本。直接 import 与下文 `Image` 的媒体变体处理是不同路径。
 
-下面仅为浏览器资源 import 的形态示例，前提是已有支持该 loader、未被 SSR 入口引用的浏览器入口，并准备了 `src/frontend/assets/logo.png`：
+准备 `src/frontend/assets/logo.png` 后即可使用：
 
 ```tsx
 import logoUrl from "@assets/logo.png";

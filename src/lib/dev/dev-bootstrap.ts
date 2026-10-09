@@ -603,7 +603,10 @@ async function devBootstrapOwned(
     if (existsSync(pluginsDir)) {
       internals.enterPluginSetup();
       try {
-        await loadPlugins(app, pluginsDir, { startupProfiler });
+        await loadPlugins(app, pluginsDir, {
+          startupProfiler,
+          setupTimeout: config.plugin?.setupTimeout,
+        });
       } finally {
         internals.exitPluginSetup();
       }

@@ -27,7 +27,7 @@ body {
 }
 ```
 
-全局 CSS 适合 reset、基础排版和设计 token。当前 SSR 页面需要局部样式时优先使用 JSCSS，CSS Modules 的生产限制见下节。
+全局 CSS 适合 reset、基础排版和设计 token。组件局部样式可使用下节的 CSS Modules 或 JSCSS。
 
 文件存在不代表已进入浏览器。沿用[布局与组件](./layouts-and-components)中的根布局，在 `src/frontend/pages/layout.tsx` 顶部加入 `import "../styles/app.css";`，保留原布局导出与 children；也可把现有 `frontend.styles.entry` 指向该文件。不要同时维护两份不同的全局基础样式。
 
@@ -35,9 +35,9 @@ Vext 不会编译 Sass 或 SCSS 源文件。如需 Sass，请在交给 Vext 前�
 
 ## CSS Modules
 
-`.module.css` 默认按 CSS Modules 处理，但当前默认生产配置存在 SSR 与浏览器 class 名不一致的限制：浏览器构建开启压缩，服务端 renderer 默认不压缩，同一示例可能分别生成 `.a` 和 `card_card`。实际页面即使没有 console 错误，SSR DOM 仍可能无法匹配浏览器 CSS，导致样式不生效。
+`.module.css` 默认按 CSS Modules 处理。构建器为同一源文件生成一次稳定的 class 映射，浏览器与 SSR 共用；两端的 minify 设置可以独立调整。同名文件位于不同目录时保持独立作用域，支持 `composes`、`:local`、`:global` 与 CSS `@import`。
 
-在这一命名一致性问题修复前，SSR 页面优先使用普通 CSS 或下节 JSCSS。下面保留 CSS Module 语法和类型声明示例，不作为默认生产 SSR 已通过的使用路径；不能只凭 build 成功或仅修改一个 minify 开关就推定所有页面一致。
+下面的组件可用于生产 SSR 页面。验证时同时检查服务端 DOM class、实际公开 CSS 选择器和浏览器 computed style；Console 无错误并不能单独证明样式正确。
 
 ```css
 /* src/frontend/styles/card.module.css */
@@ -58,7 +58,7 @@ export function Card(props: { children: ReactNode }) {
 }
 ```
 
-组件需要由真实页面 import 并渲染才参与页面；`@styles` 使用解析后的样式目录别名。保留 `frontend.build.css.modules: true` 才符合这里的 class map 用法，并按上面的限制逐项核对服务端 class 与浏览器规则。
+组件需要由真实页面 import 并渲染才参与页面；`@styles` 使用解析后的样式目录别名。保留 `frontend.build.css.modules: true` 才符合这里的 class map 用法。
 
 TypeScript 项目还需要模块声明（已有等价声明时复用）：
 
@@ -96,9 +96,9 @@ export const panel = style({
 
 ## Import 型资源
 
-浏览器构建中的 import 型资源由 esbuild 处理；当前 SSR 构建没有对应的图片 loader，不能把下面的图片 import 直接放进 SSR 注册页面或其组件。否则即使类型检查通过，构建仍会失败；仅关闭运行时 SSR 也不会取消这一步构建。默认页面应先使用下节的 Public URL。
+图片与字体 import 共用浏览器资源登记表：浏览器构建生成公开文件 URL 或 data URL，SSR 导出同一值，不在 server 目录再生成一份资源。支持 PNG、JPEG、GIF、WebP、AVIF、SVG、ICO 及 WOFF/WOFF2/TTF/EOT；URL 遵循 `publicPath` 和 `deploy.assetBaseUrl`，小资源按 `build.assets.inlineLimit` 内联。
 
-下面仅展示资源 import 的代码形态，前提是已有支持该资源 loader、且不被 SSR 入口引用的浏览器入口与真实图片文件：
+准备真实图片文件后，可在已注册的 SSR 页面或公共组件中使用：
 
 ```tsx
 import logoUrl from "@assets/logo.png";
@@ -152,4 +152,4 @@ export default {
 
 ## 验证样式
 
-在应用根目录执行 `npm run build`，启动 `npm start -- --port 3000`，访问实际使用样式的页面。检查 CSS 请求成功、class 与生成规则匹配、边框和间距可见；动态变量要观察目标元素的 computed style。CSS Module 若重现上述命名问题，应判为受当前限制影响并切换普通 CSS/JSCSS，不能以 Console 无错误代替样式检查。图片 import 若触发 SSR loader 错误，按上面的 Public URL 或媒体 Image 路径处理。结束后停止服务。
+在应用根目录执行 `npm run build`，启动 `npm start -- --port 3000`，访问实际使用样式的页面。检查 CSS 请求成功、class 与生成规则匹配、边框和间距可见；动态变量要观察目标元素的 computed style。分别关闭 JavaScript、完成 hydration 并点击更新，确认样式一致。图片 import 的 SSR URL 应与浏览器 URL 相同，公开文件可请求、内联资源不需要独立上传。结束后停止服务。

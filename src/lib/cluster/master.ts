@@ -56,7 +56,7 @@ function shouldLogStartupLifecycle(): boolean {
  */
 export interface ClusterMasterConfig {
   /** 内部宿主在所有 worker 停止后完成诊断落盘；异常不阻断关闭。 */
-  onStopped?: () => Promise<void>;
+  onStopped?: (exitCode: number) => Promise<void>;
   /** Worker 数量配置 */
   workers: "auto" | "auto-1" | number;
   /** Worker 崩溃后是否自动重启 */
@@ -174,6 +174,10 @@ export class ClusterMaster extends EventEmitter {
 
   /** 是否正在执行 Rolling Restart */
   private isReloading = false;
+  private isStarting = false;
+  private activeForks = 0;
+  private pendingRestarts = new Set<ReturnType<typeof setTimeout>>();
+  private capacityLossEmitted = false;
 
   /**
    * 尚未 ready 且由当前调用方负责处置的候选 Worker。
@@ -271,6 +275,7 @@ export class ClusterMaster extends EventEmitter {
    * @throws 首个 Worker 启动失败时抛出错误
    */
   async start(): Promise<void> {
+    this.isStarting = true;
     this.workerCount = resolveWorkerCount(this.config.workers);
 
     // ── 设置进程标题 ──────────────────────────────────────
@@ -294,6 +299,11 @@ export class ClusterMaster extends EventEmitter {
       cluster.schedulingPolicy = cluster.SCHED_NONE;
     } else {
       cluster.schedulingPolicy = cluster.SCHED_RR;
+    }
+    if (this.config.sticky === "ip") {
+      console.warn(
+        '[cluster] sticky="ip" is deprecated and does not provide IP affinity; using round-robin. Configure affinity in an external load balancer.',
+      );
     }
 
     if (shouldLogStartupLifecycle()) {
@@ -327,6 +337,7 @@ export class ClusterMaster extends EventEmitter {
             `[cluster] ❌ first worker failed: ${(err as Error).message}`,
           );
           this.startupFailed = true;
+          this.isStarting = false;
           this.cleanup();
           throw err;
         }
@@ -346,6 +357,8 @@ export class ClusterMaster extends EventEmitter {
     }
 
     const readyCount = this.getReadyWorkerCount();
+    this.isStarting = false;
+    this.checkAllDead();
     if (shouldLogStartupLifecycle()) {
       console.log(
         `[cluster] ✅ ${readyCount}/${this.workerCount} workers ready`,
@@ -366,9 +379,11 @@ export class ClusterMaster extends EventEmitter {
    *
    * @param trigger 触发源（如 'SIGTERM'、'SIGINT'，用于日志输出）
    */
-  async gracefulShutdown(trigger: string): Promise<void> {
+  async gracefulShutdown(trigger: string, exitCode = 0): Promise<void> {
     if (this.isShuttingDown) return;
     this.isShuttingDown = true;
+    for (const timer of this.pendingRestarts) clearTimeout(timer);
+    this.pendingRestarts.clear();
 
     console.log(`[cluster] graceful shutdown triggered by ${trigger}`);
 
@@ -400,7 +415,7 @@ export class ClusterMaster extends EventEmitter {
     this.cleanup();
 
     try {
-      await this.config.onStopped?.();
+      await this.config.onStopped?.(exitCode);
     } catch (error) {
       console.warn(
         "[cluster] stopped observation failed:",
@@ -408,7 +423,7 @@ export class ClusterMaster extends EventEmitter {
       );
     }
     console.log("[cluster] all workers stopped, master exiting");
-    process.exit(0);
+    process.exit(exitCode);
   }
 
   /**
@@ -492,6 +507,7 @@ export class ClusterMaster extends EventEmitter {
     }
 
     this.isReloading = false;
+    this.checkAllDead();
 
     console.log(
       `[cluster] rolling restart complete, ${replaced}/${oldWorkerIds.length} replaced`,
@@ -589,50 +605,57 @@ export class ClusterMaster extends EventEmitter {
   private async forkWorker(
     options: { retryOnEarlyExit?: boolean } = {},
   ): Promise<ClusterWorker> {
-    const nextId = this.nextWorkerId++;
-
-    const worker = cluster.fork({
-      VEXT_WORKER_ID: String(nextId),
-      VEXT_MODE: "start",
-    });
-
-    const meta: WorkerMeta = {
-      id: worker.id,
-      startTime: Date.now(),
-      restartCount: 0,
-      lastHeartbeat: Date.now(),
-      state: "starting",
-    };
-    this.workers.set(worker.id, meta);
-    if (!options.retryOnEarlyExit) {
-      this.ownedStartupWorkerIds.add(worker.id);
-    }
-
-    // 设置 Worker 进程标题
+    this.activeForks++;
     try {
-      worker.send({
-        type: "set-title",
-        title: `${this.config.titlePrefix}:worker:${nextId}`,
+      const nextId = this.nextWorkerId++;
+
+      const worker = cluster.fork({
+        VEXT_WORKER_ID: String(nextId),
+        VEXT_MODE: "start",
       });
-    } catch {
-      // Worker 可能在 send 之前就退出了
+
+      const meta: WorkerMeta = {
+        id: worker.id,
+        startTime: Date.now(),
+        restartCount: 0,
+        lastHeartbeat: Date.now(),
+        state: "starting",
+      };
+      this.workers.set(worker.id, meta);
+      if (!options.retryOnEarlyExit) {
+        this.ownedStartupWorkerIds.add(worker.id);
+      }
+
+      // 设置 Worker 进程标题
+      try {
+        worker.send({
+          type: "set-title",
+          title: `${this.config.titlePrefix}:worker:${nextId}`,
+        });
+      } catch {
+        // Worker 可能在 send 之前就退出了
+      }
+
+      // 注册 IPC 消息监听
+      worker.on("message", (msg: unknown) =>
+        this.handleWorkerMessage(worker, msg),
+      );
+
+      // 等待 Worker 就绪
+      await this.waitForWorkerReady(worker);
+      this.ownedStartupWorkerIds.delete(worker.id);
+      this.capacityLossEmitted = false;
+
+      this.emit("worker-ready", {
+        workerId: worker.id,
+        pid: worker.process.pid!,
+      } satisfies ClusterMasterEvents["worker-ready"]);
+
+      return worker;
+    } finally {
+      this.activeForks--;
+      this.checkAllDead();
     }
-
-    // 注册 IPC 消息监听
-    worker.on("message", (msg: unknown) =>
-      this.handleWorkerMessage(worker, msg),
-    );
-
-    // 等待 Worker 就绪
-    await this.waitForWorkerReady(worker);
-    this.ownedStartupWorkerIds.delete(worker.id);
-
-    this.emit("worker-ready", {
-      workerId: worker.id,
-      pid: worker.process.pid!,
-    } satisfies ClusterMasterEvents["worker-ready"]);
-
-    return worker;
   }
 
   /**
@@ -884,12 +907,14 @@ export class ClusterMaster extends EventEmitter {
     // 尚未完成，异常退出也会走正常 auto-restart，维持目标容量。
     if (wasOwnedStartupCandidate) {
       this.removeWorkerExitListenerIfTerminated();
+      this.checkAllDead();
       return;
     }
 
     // 正常替换流程中的旧 Worker 退出 → 不重启
     if (meta?.state === "draining") {
       this.removeWorkerExitListenerIfTerminated();
+      this.checkAllDead();
       return;
     }
 
@@ -917,7 +942,8 @@ export class ClusterMaster extends EventEmitter {
     const delay = this.calculateRestartDelay();
     console.log(`[cluster] restarting worker in ${delay}ms...`);
 
-    setTimeout(async () => {
+    const timer = setTimeout(async () => {
+      this.pendingRestarts.delete(timer);
       if (this.isShuttingDown) return;
       try {
         await this.forkWorker({ retryOnEarlyExit: true });
@@ -928,6 +954,7 @@ export class ClusterMaster extends EventEmitter {
         this.checkAllDead();
       }
     }, delay);
+    this.pendingRestarts.add(timer);
   }
 
   // ── 频率保护 + 指数退避 ──────────────────────────────────
@@ -1141,7 +1168,17 @@ export class ClusterMaster extends EventEmitter {
    * 发射 'all-workers-dead' 事件。
    */
   private checkAllDead(): void {
-    if (this.workers.size === 0) {
+    if (
+      this.workers.size === 0 &&
+      !this.isStarting &&
+      !this.isReloading &&
+      !this.isShuttingDown &&
+      !this.startupFailed &&
+      this.activeForks === 0 &&
+      this.pendingRestarts.size === 0 &&
+      !this.capacityLossEmitted
+    ) {
+      this.capacityLossEmitted = true;
       this.emit("all-workers-dead");
     }
   }

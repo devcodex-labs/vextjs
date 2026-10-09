@@ -398,227 +398,241 @@ export async function createTestApp(
 
   // ── 2. 创建 app ──────────────────────────────────────
   const { app, internals } = createApp(finalConfig);
-  const localeLayout = resolveLocaleDirectory(
-    rootDir,
-    srcDir,
-    finalConfig.locale?.directory,
-  );
-  // 与正式启动一致，在插件/服务执行前加载；坏字典使初始化失败而非返回失真的测试app。
-  await loadI18n(app, localeLayout.directory, {
-    rootDir,
-    compiled: localeLayout.compiled,
-  });
-  const hooks = app.hooks as VextInternalHooks;
-  const sessionRuntime = createConfiguredSessionRuntime(finalConfig.session);
-  app.onClose(sessionRuntime.close);
-  const rateLimitRuntime = createRateLimitRuntime(finalConfig.rateLimit, {
-    rootDir,
-    runtimeMode: "test",
-  });
-  app.onClose(rateLimitRuntime.close);
-  const corsMiddleware = createCorsMiddleware(finalConfig.cors);
-
-  // ── 2a. resolveAdapter（异步按需加载）─────────────────
-  app.adapter = await resolveAdapter(finalConfig, app);
-
-  const fetchCfg = finalConfig.fetch as VextFetchConfig | undefined;
-  app.fetch = createVextFetch(
-    app.logger,
-    fetchCfg ?? {},
-    finalConfig.requestId?.header ?? "x-request-id",
-    hooks,
-  ) as VextApp["fetch"];
-
-  // ── 3. 插件 ──────────────────────────────────────────
-  if (setupPluginsFn) {
-    // 用户提供的手动插件注册函数（精确控制依赖）
-    internals.enterPluginSetup();
-    try {
-      await setupPluginsFn(app);
-    } finally {
-      internals.exitPluginSetup();
-    }
-  } else if (shouldLoadPlugins) {
-    // 自动扫描 src/plugins/
-    internals.enterPluginSetup();
-    try {
-      await loadPlugins(app, join(srcDir, "plugins"));
-    } finally {
-      internals.exitPluginSetup();
-    }
-  }
-
-  // ── 4. 中间件 ────────────────────────────────────────
-  let middlewareRegistry: MiddlewareRegistry | undefined;
-  if (shouldLoadMiddlewares && finalConfig.middlewares?.length) {
-    middlewareRegistry = await loadMiddlewares(
-      join(srcDir, "middlewares"),
-      finalConfig.middlewares,
-      app.logger,
-      finalConfig.logger?.lifecycleLevel ?? "concise",
+  try {
+    const localeLayout = resolveLocaleDirectory(
       rootDir,
+      srcDir,
+      finalConfig.locale?.directory,
     );
-  }
-
-  // ── 5. Services ──────────────────────────────────────
-  if (shouldLoadServices) {
-    await loadServices(app, join(srcDir, "services"), { rootDir });
-  }
-  // mock services 覆盖（后执行，优先级更高）
-  if (mockServices) {
-    Object.assign(app.services, mockServices);
-  }
-
-  // ── 6. Routes ────────────────────────────────────────
-  if (shouldLoadRoutes) {
-    await loadRoutes(app, join(srcDir, "routes"), {
-      middlewareDefs: middlewareRegistry ?? {},
-      globalMiddlewares: internals.getGlobalMiddlewares(),
-      sessionMiddleware: sessionRuntime.middleware,
-      corsMiddleware,
+    // 与正式启动一致，在插件/服务执行前加载；坏字典使初始化失败而非返回失真的测试app。
+    await loadI18n(app, localeLayout.directory, {
       rootDir,
-      frontendMode: "development",
+      compiled: localeLayout.compiled,
     });
-    internals.lockUse(); // 测试环境也需锁定，保持行为一致
-  }
+    const hooks = app.hooks as VextInternalHooks;
+    const sessionRuntime = createConfiguredSessionRuntime(finalConfig.session);
+    app.onClose(sessionRuntime.close);
+    const rateLimitRuntime = createRateLimitRuntime(finalConfig.rateLimit, {
+      rootDir,
+      runtimeMode: "test",
+    });
+    app.onClose(rateLimitRuntime.close);
+    const corsMiddleware = createCorsMiddleware(finalConfig.cors);
 
-  // ── 7. 注册内置中间件（与 bootstrap 步骤⑥ 一致）────
-  //
-  // 测试环境也需要注册内置中间件以保证行为与生产一致：
-  //   requestId → authContext → requestHook → securityHeaders → cors → body-parser → response-wrapper
-  //   + 错误处理 + 404 兜底
-  //
-  // 注意：rate-limit 默认禁用（TEST_DEFAULTS），但如果用户显式启用则注册。
-  //
-  // 🔧 同步 bootstrap.ts / dev-bootstrap.ts：
-  //   - rate-limit 仅在 enabled === true 时注册；其他中间件保持各自条件守卫
-  //   - request-metadata 独立于 ID 开关注册，保持语言与显式头传播。
+    // ── 2a. resolveAdapter（异步按需加载）─────────────────
+    app.adapter = await resolveAdapter(finalConfig, app);
 
-  // requestId（config.requestId.enabled，默认 true）
-  app.adapter.registerMiddleware(
-    createRequestMetadataMiddleware(
-      fetchCfg?.propagateHeaders ?? [],
-      finalConfig.locale as
-        | import("../types/app.js").VextLocaleConfig
-        | undefined,
-      app,
-    ),
-  );
-  if (finalConfig.requestId?.enabled !== false) {
-    const requestIdMiddleware = createRequestIdMiddleware(
-      finalConfig.requestId,
-      () => internals.getRequestIdGenerator(),
-    );
-    app.adapter.registerMiddleware(requestIdMiddleware);
-  }
+    const fetchCfg = finalConfig.fetch as VextFetchConfig | undefined;
+    app.fetch = createVextFetch(
+      app.logger,
+      fetchCfg ?? {},
+      finalConfig.requestId?.header ?? "x-request-id",
+      hooks,
+    ) as VextApp["fetch"];
 
-  if (finalConfig.requestContext?.enabled !== false) {
-    app.adapter.registerMiddleware(createAuthContextMiddleware());
-  }
+    // ── 3. 插件 ──────────────────────────────────────────
+    if (setupPluginsFn) {
+      // 用户提供的手动插件注册函数（精确控制依赖）
+      internals.enterPluginSetup();
+      try {
+        await setupPluginsFn(app);
+      } finally {
+        internals.exitPluginSetup();
+      }
+    } else if (shouldLoadPlugins) {
+      // 自动扫描 src/plugins/
+      internals.enterPluginSetup();
+      try {
+        await loadPlugins(app, join(srcDir, "plugins"), {
+          setupTimeout: finalConfig.plugin?.setupTimeout,
+        });
+      } finally {
+        internals.exitPluginSetup();
+      }
+    }
 
-  app.adapter.registerMiddleware(createRequestHookMiddleware(hooks));
-
-  if (finalConfig.securityHeaders?.enabled === true) {
-    app.adapter.registerMiddleware(
-      createSecurityHeadersMiddleware(finalConfig.securityHeaders),
-    );
-  }
-
-  // cors（config.cors.enabled，默认 true）
-  if (finalConfig.cors?.enabled !== false) {
-    app.adapter.registerMiddleware(corsMiddleware);
-  }
-
-  // body-parser（config.bodyParser.enabled，默认 true）
-  if (finalConfig.bodyParser?.enabled !== false) {
-    const bodyParserMiddleware = createBodyParserMiddleware(
-      finalConfig.bodyParser,
-      finalConfig.multipart,
-    );
-    app.adapter.registerMiddleware(bodyParserMiddleware);
-  }
-
-  if (finalConfig.rateLimit?.enabled === true) {
-    app.adapter.registerMiddleware(
-      createRateLimitMiddleware(
-        finalConfig.rateLimit,
-        () => internals.getRateLimiter(),
-        rateLimitRuntime,
-      ),
-    );
-  }
-
-  // response-wrapper（config.response.wrap，默认 true）
-  if (finalConfig.response?.wrap !== false) {
-    app.adapter.registerMiddleware(responseWrapper);
-  }
-
-  if (finalConfig.accessLog?.enabled !== false) {
-    app.adapter.registerMiddleware(
-      createAccessLogMiddleware(finalConfig.accessLog ?? {}, app.logger),
-    );
-  }
-
-  if (finalConfig.session?.enabled === true) {
-    if (internals.getGlobalMiddlewares().some(isSessionMiddleware)) {
-      app.logger.warn(
-        "[vextjs] config.session.enabled already auto-registers Session; remove manual app.use(session()) to avoid redundant middleware.",
+    // ── 4. 中间件 ────────────────────────────────────────
+    let middlewareRegistry: MiddlewareRegistry | undefined;
+    if (shouldLoadMiddlewares && finalConfig.middlewares?.length) {
+      middlewareRegistry = await loadMiddlewares(
+        join(srcDir, "middlewares"),
+        finalConfig.middlewares,
+        app.logger,
+        finalConfig.logger?.lifecycleLevel ?? "concise",
+        rootDir,
       );
     }
-    app.adapter.registerMiddleware(sessionRuntime.middleware);
+
+    // ── 5. Services ──────────────────────────────────────
+    if (shouldLoadServices) {
+      await loadServices(app, join(srcDir, "services"), { rootDir });
+    }
+    // mock services 覆盖（后执行，优先级更高）
+    if (mockServices) {
+      Object.assign(app.services, mockServices);
+    }
+
+    // ── 6. Routes ────────────────────────────────────────
+    if (shouldLoadRoutes) {
+      await loadRoutes(app, join(srcDir, "routes"), {
+        middlewareDefs: middlewareRegistry ?? {},
+        globalMiddlewares: internals.getGlobalMiddlewares(),
+        sessionMiddleware: sessionRuntime.middleware,
+        corsMiddleware,
+        rootDir,
+        frontendMode: "development",
+      });
+      internals.lockUse(); // 测试环境也需锁定，保持行为一致
+    }
+
+    // ── 7. 注册内置中间件（与 bootstrap 步骤⑥ 一致）────
+    //
+    // 测试环境也需要注册内置中间件以保证行为与生产一致：
+    //   requestId → authContext → requestHook → securityHeaders → cors → body-parser → response-wrapper
+    //   + 错误处理 + 404 兜底
+    //
+    // 注意：rate-limit 默认禁用（TEST_DEFAULTS），但如果用户显式启用则注册。
+    //
+    // 🔧 同步 bootstrap.ts / dev-bootstrap.ts：
+    //   - rate-limit 仅在 enabled === true 时注册；其他中间件保持各自条件守卫
+    //   - request-metadata 独立于 ID 开关注册，保持语言与显式头传播。
+
+    // requestId（config.requestId.enabled，默认 true）
+    app.adapter.registerMiddleware(
+      createRequestMetadataMiddleware(
+        fetchCfg?.propagateHeaders ?? [],
+        finalConfig.locale as
+          | import("../types/app.js").VextLocaleConfig
+          | undefined,
+        app,
+      ),
+    );
+    if (finalConfig.requestId?.enabled !== false) {
+      const requestIdMiddleware = createRequestIdMiddleware(
+        finalConfig.requestId,
+        () => internals.getRequestIdGenerator(),
+      );
+      app.adapter.registerMiddleware(requestIdMiddleware);
+    }
+
+    if (finalConfig.requestContext?.enabled !== false) {
+      app.adapter.registerMiddleware(createAuthContextMiddleware());
+    }
+
+    app.adapter.registerMiddleware(createRequestHookMiddleware(hooks));
+
+    if (finalConfig.securityHeaders?.enabled === true) {
+      app.adapter.registerMiddleware(
+        createSecurityHeadersMiddleware(finalConfig.securityHeaders),
+      );
+    }
+
+    // cors（config.cors.enabled，默认 true）
+    if (finalConfig.cors?.enabled !== false) {
+      app.adapter.registerMiddleware(corsMiddleware);
+    }
+
+    // body-parser（config.bodyParser.enabled，默认 true）
+    if (finalConfig.bodyParser?.enabled !== false) {
+      const bodyParserMiddleware = createBodyParserMiddleware(
+        finalConfig.bodyParser,
+        finalConfig.multipart,
+      );
+      app.adapter.registerMiddleware(bodyParserMiddleware);
+    }
+
+    if (finalConfig.rateLimit?.enabled === true) {
+      app.adapter.registerMiddleware(
+        createRateLimitMiddleware(
+          finalConfig.rateLimit,
+          () => internals.getRateLimiter(),
+          rateLimitRuntime,
+        ),
+      );
+    }
+
+    // response-wrapper（config.response.wrap，默认 true）
+    if (finalConfig.response?.wrap !== false) {
+      app.adapter.registerMiddleware(responseWrapper);
+    }
+
+    if (finalConfig.accessLog?.enabled !== false) {
+      app.adapter.registerMiddleware(
+        createAccessLogMiddleware(finalConfig.accessLog ?? {}, app.logger),
+      );
+    }
+
+    if (finalConfig.session?.enabled === true) {
+      if (internals.getGlobalMiddlewares().some(isSessionMiddleware)) {
+        app.logger.warn(
+          "[vextjs] config.session.enabled already auto-registers Session; remove manual app.use(session()) to avoid redundant middleware.",
+        );
+      }
+      app.adapter.registerMiddleware(sessionRuntime.middleware);
+    }
+
+    // 插件全局中间件
+    for (const mw of internals.getGlobalMiddlewares()) {
+      app.adapter.registerMiddleware(mw);
+    }
+
+    if (finalConfig.csrf?.enabled === true) {
+      app.adapter.registerMiddleware(createCsrfMiddleware(finalConfig.csrf));
+    }
+
+    // 错误处理 + 404 兜底（可选 devOverlay 与 CLI/dev bootstrap 对齐）
+    const errorHandler = createErrorHandler(
+      finalConfig.response ?? {},
+      devOverlay,
+      app.logger,
+      hooks,
+    );
+    app.adapter.registerErrorHandler(
+      withSecurityHeadersErrorHandler(
+        errorHandler,
+        finalConfig.securityHeaders,
+      ),
+    );
+
+    const notFoundHandler = createNotFoundHandler(hooks);
+    app.adapter.registerNotFound(
+      withSecurityHeadersNotFoundHandler(
+        notFoundHandler,
+        finalConfig.securityHeaders,
+      ),
+    );
+
+    // ── 8. onReady 生命周期 ──────────────────────────────
+    // Match bootstrap: plugins/services that register app.onReady must run
+    // before the first test request (B08 env lifecycle / ready hooks).
+    await internals.runReady();
+
+    // ── 9. 构造 TestRequest ──────────────────────────────
+    //
+    // 获取 adapter 的 buildHandler() 构建请求处理函数，
+    // 通过内存中的 mock IncomingMessage / ServerResponse 模拟 HTTP 请求，
+    // 无需启动 TCP 监听。
+    const handler = app.adapter.buildHandler();
+    const request = createTestRequest(handler);
+
+    return {
+      app,
+      request,
+
+      async close(): Promise<void> {
+        // 触发所有 onClose 钩子（测试环境无 server，不传 serverHandle）
+        // config._testMode = true → shutdown() 内部不会调用 process.exit(0)
+        await internals.shutdown();
+      },
+    };
+  } catch (error) {
+    try {
+      await internals.shutdown(undefined, { skipExit: true });
+    } catch {
+      /* Preserve the initialization failure. */
+    }
+    throw error;
   }
-
-  // 插件全局中间件
-  for (const mw of internals.getGlobalMiddlewares()) {
-    app.adapter.registerMiddleware(mw);
-  }
-
-  if (finalConfig.csrf?.enabled === true) {
-    app.adapter.registerMiddleware(createCsrfMiddleware(finalConfig.csrf));
-  }
-
-  // 错误处理 + 404 兜底（可选 devOverlay 与 CLI/dev bootstrap 对齐）
-  const errorHandler = createErrorHandler(
-    finalConfig.response ?? {},
-    devOverlay,
-    app.logger,
-    hooks,
-  );
-  app.adapter.registerErrorHandler(
-    withSecurityHeadersErrorHandler(errorHandler, finalConfig.securityHeaders),
-  );
-
-  const notFoundHandler = createNotFoundHandler(hooks);
-  app.adapter.registerNotFound(
-    withSecurityHeadersNotFoundHandler(
-      notFoundHandler,
-      finalConfig.securityHeaders,
-    ),
-  );
-
-  // ── 8. onReady 生命周期 ──────────────────────────────
-  // Match bootstrap: plugins/services that register app.onReady must run
-  // before the first test request (B08 env lifecycle / ready hooks).
-  await internals.runReady();
-
-  // ── 9. 构造 TestRequest ──────────────────────────────
-  //
-  // 获取 adapter 的 buildHandler() 构建请求处理函数，
-  // 通过内存中的 mock IncomingMessage / ServerResponse 模拟 HTTP 请求，
-  // 无需启动 TCP 监听。
-  const handler = app.adapter.buildHandler();
-  const request = createTestRequest(handler);
-
-  return {
-    app,
-    request,
-
-    async close(): Promise<void> {
-      // 触发所有 onClose 钩子（测试环境无 server，不传 serverHandle）
-      // config._testMode = true → shutdown() 内部不会调用 process.exit(0)
-      await internals.shutdown();
-    },
-  };
 }
 
 export async function createTestJobRunner(

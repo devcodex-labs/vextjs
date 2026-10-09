@@ -59,11 +59,11 @@ export default {
 
 主示例保留 shell 的 SSR，随后由浏览器接管交互和内部路由；这不要求每个客户端路径都有独立的服务端页面。
 
-### 空 shell 的当前限制
+### 空 shell 的挂载行为
 
-`ssr: false` 会保留 document、资源和 hydration payload，但不输出服务端页面 body。当前生成的浏览器入口仍调用 `hydrateRoot`，没有为空 root 切换到 `createRoot`。因此本例改为 `ssr: false` 后会出现 hydration mismatch（生产 React #418），React 恢复渲染后页面仍可能显示。这不满足“无浏览器错误”的验证条件。
+`ssr: false` 会保留 document、资源和页面 payload，但不输出服务端页面 body。渲染结果记录实际挂载模式：CSR、`clientOnly: true` 和 buffered SSR 的 client fallback 使用 `createRoot`；完成 SSR 的页面使用 `hydrateRoot`。合法 SSR 组件返回 null 时仍属于 SSR，不按 root 是否为空判断。
 
-在该入口行为修复前，优先保留本例的 `ssr: true`，并让首次 SSR 与客户端输出一致；浏览器专属逻辑放在 effect 中。不要通过忽略 console 错误将空 shell 判为通过。路由 `clientOnly: true`、全局或单次渲染关闭 SSR 也会走空 body 与同一浏览器入口，需按此限制评估。
+可以将本例设为 `ssr: false` 来交付空 shell。验证首屏、事件更新和 Console，确认没有 hydration mismatch。保留 SSR 时，首次服务端与客户端输出仍须一致；浏览器专属逻辑放在 effect 中。
 
 ## 请求匹配
 

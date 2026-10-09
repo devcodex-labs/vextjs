@@ -1,10 +1,11 @@
 import * as esbuild from "esbuild";
+import { SharedFrontendImports } from "./shared-imports.js";
 import { withProjectOwner } from "../../lib/project/owner.js";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
-import fg from "fast-glob";
+import fg from "../../lib/safe-glob.js";
 import { fileURLToPath } from "node:url";
 import type {
   ResolvedVextFrontendConfig,
@@ -208,6 +209,7 @@ async function createFrontendClientArtifacts(
     (entryPoint): entryPoint is string => Boolean(entryPoint),
   );
   assertBrowserExternalRuntimeMappings(config);
+  const sharedImports = new SharedFrontendImports(config);
   const buildResult = await esbuild.build({
     write: false,
     entryPoints: browserEntryPoints,
@@ -216,6 +218,7 @@ async function createFrontendClientArtifacts(
     format: "esm",
     target: config.build.client.target,
     outdir: config.build.client.outDir,
+    publicPath: getAssetBase(config),
     entryNames: path.posix.join(
       config.build.client.assetsDir,
       config.build.client.entryNames,
@@ -255,8 +258,8 @@ async function createFrontendClientArtifacts(
     },
     plugins: [
       createArtifactDraftPlugin(draft),
-      createAssetInlineLimitPlugin(config),
-      createCssModulesPlugin(config),
+      sharedImports.browserAssetsPlugin(),
+      sharedImports.cssPlugin(true),
       createReactRefreshRegistrationPlugin(
         config,
         options.rootDir,
@@ -268,6 +271,7 @@ async function createFrontendClientArtifacts(
     logLevel: "warning",
   });
   for (const file of buildResult.outputFiles) draft.add(file);
+  sharedImports.captureAssetOutputs(buildResult.metafile);
   if (config.build.diagnostics.leakScan) {
     assertBrowserMetafileHasNoServerLeaks(
       config,
@@ -297,6 +301,8 @@ async function createFrontendClientArtifacts(
     },
     plugins: [
       createArtifactDraftPlugin(draft),
+      sharedImports.serverAssetsPlugin(),
+      sharedImports.cssPlugin(false),
       createFrontendServerResolverPlugin(config),
     ],
     nodePaths,
@@ -523,47 +529,6 @@ async function createFrontendClientArtifacts(
       ...registry.warnings,
       ...(contract?.warnings ?? []),
     ],
-  };
-}
-
-function createAssetInlineLimitPlugin(
-  config: ResolvedVextFrontendConfig,
-): esbuild.Plugin | undefined {
-  if (config.build.assets.inlineLimit <= 0) return undefined;
-  return {
-    name: "vext-asset-inline-limit",
-    setup(build) {
-      build.onLoad(
-        {
-          filter: /\.(?:png|jpe?g|gif|webp|avif|svg|ico|woff2?|ttf|eot)$/,
-        },
-        async (args) => {
-          const content = await readFile(args.path);
-          if (content.byteLength > config.build.assets.inlineLimit) {
-            return undefined;
-          }
-          return {
-            contents: content,
-            loader: "dataurl",
-          };
-        },
-      );
-    },
-  };
-}
-
-function createCssModulesPlugin(
-  config: ResolvedVextFrontendConfig,
-): esbuild.Plugin | undefined {
-  if (!config.build.css.modules) return undefined;
-  return {
-    name: "vext-css-modules",
-    setup(build) {
-      build.onLoad({ filter: /\.module\.css$/ }, async (args) => ({
-        contents: await readFile(args.path, "utf-8"),
-        loader: "local-css",
-      }));
-    },
   };
 }
 

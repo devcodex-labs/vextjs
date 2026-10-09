@@ -138,9 +138,12 @@ export default config;
 
 ### `VextConfig`
 
+自动插件初始化期限通过 `plugin` 配置，完整类型见 [VextPluginConfig](#vextpluginconfig)。
+
 | 字段              | 类型                                                    | 默认值               | 说明                                                             |
 | ----------------- | ------------------------------------------------------- | -------------------- | ---------------------------------------------------------------- |
 | `locale`          | [`VextLocaleConfig`](#vextlocaleconfig)                 | 模块回退，见下方     | 后端语言与消息目录                                               |
+| `plugin`          | [`VextPluginConfig`](#vextpluginconfig)                 | 模块回退，见下方     | 自动插件初始化期限与自定义配置                                   |
 | `port`            | `number`                                                | `3000`               | HTTP 监听端口                                                    |
 | `host`            | `string`                                                | `'0.0.0.0'`          | HTTP 监听地址                                                    |
 | `adapter`         | `string \| Function \| VextAdapter`                     | `'native'`           | 底层适配器                                                       |
@@ -325,6 +328,16 @@ rateLimit.store 默认 "memory"，支持 "redis" 或 Redis 对象。各进程内
 
 同一策略的实例应使用一致目标与前缀，不同策略应设计独立键。内置 Store 检查错误可能放行，见[限流故障语义](/zh/guide/rate-limit#存储故障与放行策略)。
 
+## VextPluginConfig
+
+`config.plugin` 控制自动插件加载；自定义插件字段保留给应用使用。
+
+| 字段                  | 类型     | 默认值  | 说明                                              |
+| --------------------- | -------- | ------- | ------------------------------------------------- |
+| `plugin.setupTimeout` | `number` | `30000` | 单插件 setup 期限，毫秒；须为 1–2147483647 的整数 |
+
+`vext dev`、`vext start` 与 `createTestApp` 共用该值。超时发送取消信号、停止后续插件并回滚已注册的清理；插件仍需监听 signal 并自行停止工作。手动 `createTestApp({ setupPlugins })` 回调不受此配置控制。修改配置需重启，详见[插件](/zh/guide/plugins)。
+
 ## VextLocaleConfig
 
 后端语言配置与 frontend.i18n 职责不同：
@@ -335,7 +348,7 @@ rateLimit.store 默认 "memory"，支持 "redis" 或 Redis 对象。各进程内
 | supported | string[] | 未配置；配置后按 Accept-Language 匹配，无匹配使用 default   |
 | directory | string   | src/locales；相对服务根或绝对路径，src 内目录随编译输出映射 |
 
-语言元数据独立于 requestId.enabled，依赖请求上下文；请求外使用应用默认语言。词典与匹配顺序见[后端国际化](/zh/guide/i18n)，前端须按[前端国际化](/zh/frontend/i18n)显式确定 locale。
+请求语言始终写入 `req.locale`，独立于 requestId 开关；启用请求上下文后也写入 store，错误翻译据此选语言。请求上下文关闭或请求外调用使用应用默认语言。词典与匹配顺序见[后端国际化](/zh/guide/i18n)，前端可按[前端国际化](/zh/frontend/i18n)继承或独立探测。
 
 ## VextRequestIdConfig
 
@@ -1064,20 +1077,20 @@ export default {
 | `render.fallback`                                      | `'client' \| 'error'`                | `'client'`                                                   | buffered SSR 失败时回退客户端壳还是错误响应                                             |
 | `render.streaming`                                     | `'buffered' \| 'auto'`               | `'buffered'`                                                 | 保留 `renderToString` 兼容路径，或流式发送 shell 与 Suspense boundaries                 |
 | `render.timeoutMs`                                     | `number`                             | `3000`                                                       | 中止未完成的 streaming SSR；buffered 同步渲染返回后再检查                               |
-| `render.layout`                                        | `boolean`                            | `true`                                                       | 当前解析该值，但布局选择链未使用全局值；按次控制请使用 res.render(..., { layout })      |
+| `render.layout`                                        | `boolean`                            | `true`                                                       | 全局布局默认值；显式 render options.layout 优先                                         |
 | `errorPages`                                           | `object`                             | 内置 error-page 约定                                         | 默认错误页与按状态码映射的错误页                                                        |
 | `errorPages.default`                                   | `string`                             | `'error/default'`                                            | 默认错误页 page id                                                                      |
 | `errorPages.status`                                    | `object`                             | `{ 404: 'error/404', 500: 'error/500' }`                     | 状态码到错误页 page id 的映射                                                           |
 | `i18n`                                                 | `object`                             | `{ enabled: false }`                                         | 前端页面文案层、SSR messages 与 `{vext.lang}`                                           |
 | `i18n.enabled`                                         | `boolean`                            | `false`                                                      | 是否启用前端 locale 发现与 message artifacts                                            |
 | `i18n.source`                                          | `string`                             | `'locales'`                                                  | 前端文案目录，相对 `root` 解析                                                          |
-| `i18n.defaultLocale`                                   | `'inherit' \| string`                | `'inherit'`                                                  | inherit 未自动继承 req.locale；显式 options.locale 或具体默认语言                       |
-| `i18n.detect`                                          | `string[]`                           | `['accept-language']`                                        | 仅解析字段，未按列表执行自动探测                                                        |
-| `i18n.inject`                                          | `'used' \| 'all'`                    | `'used'`                                                     | 仅解析字段，未实现按使用位置裁剪                                                        |
+| `i18n.defaultLocale`                                   | `'inherit' \| string`                | `'inherit'`                                                  | 继承匹配的 req.locale；具体值为自动探测后的回退                                         |
+| `i18n.detect`                                          | `string[]`                           | `['accept-language']`                                        | 按顺序探测 query、header/x-vext-locale、cookie、accept-language；不支持的来源拒绝配置   |
+| `i18n.inject`                                          | `'all' \| 'used'`                    | `'used'`                                                     | used 暂未按组件裁剪，构建会诊断；当前仍加载选定语言完整消息                             |
 | `i18n.clientSwitch`                                    | `'reload'`                           | `'reload'`                                                   | 仅解析字段，不自动切换页面                                                              |
 | `i18n.clientLoad`                                      | `'current' \| 'all'`                 | `'current'`                                                  | 浏览器端只加载当前 SSR locale，或加载全部 locale                                        |
 | `i18n.htmlLang`                                        | `boolean`                            | `true`                                                       | 是否写入 `{vext.lang}` / `<html lang>`                                                  |
-| `i18n.vary`                                            | `boolean`                            | `true`                                                       | 仅解析字段，语言 Vary/cache key 由应用设置                                              |
+| `i18n.vary`                                            | `boolean`                            | `true`                                                       | 自动合并探测涉及的 Vary；false 时应用负责外部缓存隔离                                   |
 | `dev`                                                  | `object`                             | 内置 dev 默认值                                              | 浏览器开发事件、refresh 与 overlay 控制                                                 |
 | `dev.hot`                                              | `boolean`                            | `true`                                                       | 开发期前端热更新通道                                                                    |
 | `dev.fastRefresh`                                      | `boolean`                            | `true`                                                       | React Fast Refresh                                                                      |
@@ -1170,13 +1183,13 @@ export default {
 } satisfies VextUserConfig;
 ```
 
-本表列的是配置合同，以下运行限制仍适用：ssr:false / clientOnly 的空壳 hydration、生产 SSR 的 CSS Modules 类名一致性、服务端直接 import 图片的 loader、静态 sitemap/robots 的 MIME，分别见[渲染模式](/zh/frontend/rendering-modes)、[样式与资源](/zh/frontend/styles-and-assets)、[静态资源](/zh/frontend/static-assets-and-cdn)、[SEO](/zh/frontend/seo-sitemap)。字段可配置不意味着这些限制已修复。
+SSR 与浏览器共享 CSS Modules 类名和资源 import URL；CSR 空 shell 使用 createRoot，完成 SSR 使用 hydrateRoot；静态 sitemap/robots 使用正确 MIME。验证步骤见[渲染模式](/zh/frontend/rendering-modes)、[样式与资源](/zh/frontend/styles-and-assets)、[静态资源](/zh/frontend/static-assets-and-cdn)与[SEO](/zh/frontend/seo-sitemap)。
 
-上面的 SPA scope 示例还需要真实 shell 页面；当前建议先使用 scopes[].ssr:true，按[CSR 与 SPA fallback](/zh/frontend/csr-and-spa-fallback)验证 hydration 与未知路径行为。
+上面的 SPA scope 示例还需要真实 shell 页面。`scopes[].ssr` 可按需求选择，按[CSR 与 SPA fallback](/zh/frontend/csr-and-spa-fallback)验证挂载与未知路径行为。
 
 ### 适配器扩展契约
 
-`frontend.adapter` 保留了进程内的类型化扩展合同。`VextFrontendAdapter` 声明 `name`、`framework` 以及可选的 `resolveBuildOptions(config)`，但当前内置构建和渲染链尚未调用该 resolver，不能据此承诺编译器选项会生效。它也不是自动插件发现机制，不会启用另一套 bundler、RSC、Server Functions 或 PPR。
+`frontend.adapter` 的通用 resolver 已弃用：`VextFrontendAdapter` 声明的 `resolveBuildOptions(config)` 不会执行，配置函数时构建会明确诊断。请使用已接入的 `build.client` / `build.server`；该保留字段计划在下一个破坏性版本移除。它不会启用另一套 bundler、RSC、Server Functions 或 PPR。
 
 `frontend.seo` 的完整用法见 [SEO、Sitemap 与 Robots](/zh/frontend/seo-sitemap)。`publicOrigin` 是部署 origin，不是固定页面 URL；当前 pathname 或页面显式 canonical 提供每页部分。runtime 产物只接受精确声明的 Host，provider 也不会隐式收到 `app` 或 `app.db`。
 
@@ -1230,7 +1243,7 @@ Cluster 多进程配置。完整接口定义见 `src/types/app.ts` `VextClusterC
 | `memoryThreshold`  | `number`                       | `1073741824`  | Worker heapUsed 阈值（bytes）；周期超限请求 Master 替换，不立即退出                                              |
 | `pidFile`          | `string`                       | `'.vext.pid'` | PID 文件路径（供 `vext stop` / `vext reload` 定位进程）                                                          |
 | `titlePrefix`      | `string`                       | `'vext'`      | Worker 进程标题前缀                                                                                              |
-| `sticky`           | `'none' \| 'ip'`               | `'none'`      | 调度策略分支；ip 未实现按客户端 IP 分配 Worker                                                                   |
+| `sticky`           | `'none' \| 'ip'`               | `'none'`      | ip 已弃用并诊断，仍为 round-robin；IP 会话亲和性请使用外部负载均衡，计划在下一个破坏性版本移除 ip                |
 
 ### `healthCheck` — 心跳检测
 

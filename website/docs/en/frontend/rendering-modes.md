@@ -115,7 +115,7 @@ The builder renders the page directly with `{ params }`; it does not execute the
 
 Use `mode: "revalidate"` with a positive `revalidate` interval in seconds for persisted runtime freshness entries. Vext single-flights concurrent refreshes, atomically replaces successful output, and keeps last-known-good output on refresh failure. This storage reuses only public GET/HEAD render payloads; authenticated or session-bearing requests bypass it. Server code can invalidate a tag with `invalidateFrontendFreshness(rootDir, { tag })`; browser `revalidate()` operates on the browser navigation cache. Do not confuse them. See [Render Data and Cache](/frontend/render-data-and-cache).
 
-`clientOnly: true` preserves route, document, data, and asset behavior but intentionally omits the server page body. These policies are not PPR. The current browser entry still calls `hydrateRoot` for an empty body and may report a mismatch before recovering. Do not accept this as error-free CSR; the same limit applies to disabling SSR and buffered client fallback. Keep SSR for now when possible, and see [CSR and SPA Fallback](./csr-and-spa-fallback#current-limitation-of-an-empty-shell) for the limitation and comparison check.
+`clientOnly: true` preserves route, document, data, and asset behavior while omitting the server page body. The empty shell uses `createRoot`; completed SSR uses `hydrateRoot`. See [CSR mounting](./csr-and-spa-fallback#empty-shell-mounting-behavior). These policies are not PPR.
 
 ## Server-only HTML without Hydration
 

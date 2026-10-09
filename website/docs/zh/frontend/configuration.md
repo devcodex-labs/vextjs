@@ -37,15 +37,15 @@ export default {
 
 ## 决定要配置什么
 
-| 需要什么                   | 先从哪里开始     | 配置项                                                          | 会发生什么                                                                   | 如何验证                                     |
-| -------------------------- | ---------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------- |
-| SSR React 页面             | `frontend: true` | 不需要其它字段                                                  | Vext 发现 `src/frontend`，构建 browser + SSR 输出，并从应用 origin 提供它们  | `vext build` 后执行 `vext start`             |
-| 不同的源码布局             | 内置目录约定     | `root`、`pages`、`componentsDir`、`styles.entry` 或 `assetsDir` | 只改变发现路径，生成 entry 仍由 Vext 管理                                    | build 后加载一个页面和全局样式               |
-| 浏览器兼容或体积目标       | 生产默认值       | `build.target`、`build.vendorChunks` 或 `build.budgets`         | 改变 esbuild 输出、报告阈值或浏览器支持范围                                  | 检查 `size-report.json` 和生产页面           |
-| CDN 承担 immutable assets  | 同源交付         | `deploy.assetBaseUrl`，可选 `deploy.upload`                     | 生成的 JS/CSS URL 指向 CDN；HTML/SSR 仍由 Node 负责                          | dry-run upload，再请求 SSR 页面和 hash asset |
-| 可被搜索引擎发现的公开页面 | 未配置全局 SEO   | `seo`，以及路由/render 元数据                                   | canonical/meta 与可选 sitemap/robots 由框架统一生成                          | 检查两个页面 canonical 与选定 SEO 产物       |
-| client-router 子应用       | 不捕获 fallback  | `spaFallback.scopes`                                            | 只有已声明路径会交给 browser shell                                           | 检查 scope 内 URL 与被排除的 `/api/**` URL   |
-| 多语言页面文案             | 默认关闭         | `i18n`                                                          | 生成 locale artifacts，document language 取显式 render locale 或具体默认语言 | build 后请求两个 locale                      |
+| 需要什么                   | 先从哪里开始     | 配置项                                                          | 会发生什么                                                                  | 如何验证                                     |
+| -------------------------- | ---------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------- |
+| SSR React 页面             | `frontend: true` | 不需要其它字段                                                  | Vext 发现 `src/frontend`，构建 browser + SSR 输出，并从应用 origin 提供它们 | `vext build` 后执行 `vext start`             |
+| 不同的源码布局             | 内置目录约定     | `root`、`pages`、`componentsDir`、`styles.entry` 或 `assetsDir` | 只改变发现路径，生成 entry 仍由 Vext 管理                                   | build 后加载一个页面和全局样式               |
+| 浏览器兼容或体积目标       | 生产默认值       | `build.target`、`build.vendorChunks` 或 `build.budgets`         | 改变 esbuild 输出、报告阈值或浏览器支持范围                                 | 检查 `size-report.json` 和生产页面           |
+| CDN 承担 immutable assets  | 同源交付         | `deploy.assetBaseUrl`，可选 `deploy.upload`                     | 生成的 JS/CSS URL 指向 CDN；HTML/SSR 仍由 Node 负责                         | dry-run upload，再请求 SSR 页面和 hash asset |
+| 可被搜索引擎发现的公开页面 | 未配置全局 SEO   | `seo`，以及路由/render 元数据                                   | canonical/meta 与可选 sitemap/robots 由框架统一生成                         | 检查两个页面 canonical 与选定 SEO 产物       |
+| client-router 子应用       | 不捕获 fallback  | `spaFallback.scopes`                                            | 只有已声明路径会交给 browser shell                                          | 检查 scope 内 URL 与被排除的 `/api/**` URL   |
+| 多语言页面文案             | 默认关闭         | `i18n`                                                          | 请求语言协商、HTML、页面 envelope 与导航共用有效语言                        | build 后验证两种语言及缓存隔离               |
 
 不要因为字段存在就添加它。全局默认使用 React + esbuild、SSR 开启、buffered streaming、浏览器代码拆分开启、生产浏览器压缩开启，且没有 CDN 地址、上传默认关闭（默认上传 adapter 是 filesystem）。全栈模板另外显式配置了 streaming: auto 和前端国际化；以应用实际配置为准。
 
@@ -154,24 +154,24 @@ export default {
 
 ## 核心字段
 
-| 字段                     | 默认值                                                                    | 含义                                                                              |
-| ------------------------ | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `frontend.enabled`       | `false`                                                                   | 启用内置前端流水线                                                                |
-| `frontend.framework`     | `"react"`                                                                 | 内置 React 支持的框架标签                                                         |
-| `frontend.root`          | `"src/frontend"`                                                          | 用户前端源码根目录                                                                |
-| `frontend.pages`         | 内置 page 约定                                                            | page、document 与 error-page 的发现配置                                           |
-| `frontend.componentsDir` | `"components"`                                                            | 从 `frontend.root` 解析的共享组件目录                                             |
-| `frontend.assetsDir`     | `"assets"`                                                                | import 型图片、字体与媒体源目录                                                   |
-| `frontend.indexHtml`     | 跟随解析后的 `pages.document`（默认 `src/frontend/pages/_document.html`） | Document 模板；显式配置相对项目根                                                 |
-| `frontend.outDir`        | dev 为 `.vext/client`，build 为 `dist/client`                             | 前端输出目录                                                                      |
-| `frontend.publicDir`     | `"public"`                                                                | 公共静态资源目录                                                                  |
-| `frontend.publicPath`    | `"/"`                                                                     | 公开资源 URL 前缀                                                                 |
-| `frontend.alias`         | 内置 `@frontend/@pages/@components/@styles/@assets`                       | 前端安全 import alias；不要把整个 `src` alias 到浏览器代码                        |
-| `frontend.apiClient`     | `true`                                                                    | 输出 route/client contract artifacts；不需要生成 client artifact 时才设为 `false` |
-| `frontend.errorPages`    | 内置 error-page 约定                                                      | 把默认或状态码特定 SSR 错误映射到 page                                            |
-| `frontend.adapter`       | 无                                                                        | 公开类型保留的扩展字段；当前内置构建/渲染链未调用其方法，不应据此接入通用插件     |
+| 字段                     | 默认值                                                                    | 含义                                                                                                  |
+| ------------------------ | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `frontend.enabled`       | `false`                                                                   | 启用内置前端流水线                                                                                    |
+| `frontend.framework`     | `"react"`                                                                 | 内置 React 支持的框架标签                                                                             |
+| `frontend.root`          | `"src/frontend"`                                                          | 用户前端源码根目录                                                                                    |
+| `frontend.pages`         | 内置 page 约定                                                            | page、document 与 error-page 的发现配置                                                               |
+| `frontend.componentsDir` | `"components"`                                                            | 从 `frontend.root` 解析的共享组件目录                                                                 |
+| `frontend.assetsDir`     | `"assets"`                                                                | import 型图片、字体与媒体源目录                                                                       |
+| `frontend.indexHtml`     | 跟随解析后的 `pages.document`（默认 `src/frontend/pages/_document.html`） | Document 模板；显式配置相对项目根                                                                     |
+| `frontend.outDir`        | dev 为 `.vext/client`，build 为 `dist/client`                             | 前端输出目录                                                                                          |
+| `frontend.publicDir`     | `"public"`                                                                | 公共静态资源目录                                                                                      |
+| `frontend.publicPath`    | `"/"`                                                                     | 公开资源 URL 前缀                                                                                     |
+| `frontend.alias`         | 内置 `@frontend/@pages/@components/@styles/@assets`                       | 前端安全 import alias；不要把整个 `src` alias 到浏览器代码                                            |
+| `frontend.apiClient`     | `true`                                                                    | 输出 route/client contract artifacts；不需要生成 client artifact 时才设为 `false`                     |
+| `frontend.errorPages`    | 内置 error-page 约定                                                      | 把默认或状态码特定 SSR 错误映射到 page                                                                |
+| `frontend.adapter`       | 无                                                                        | 保留但已弃用的通用扩展字段；resolver 会发出未生效诊断，构建选项请使用 `build.client` / `build.server` |
 
-目录字段的相对基准与 TypeScript paths 同步见[项目结构](/zh/frontend/project-structure)。`assetsDir` 和 alias 不会自动补齐 SSR 图片 import 的 loader，当前页面使用 Public URL 的边界也见该页。
+目录字段的相对基准与 TypeScript paths 同步见[项目结构](/zh/frontend/project-structure)。支持的图片与字体 import 在浏览器和 SSR 构建中共用公开 URL；alias 只改变解析路径。
 
 ## Render 字段
 
@@ -181,7 +181,7 @@ export default {
 | `frontend.render.streaming` | `"buffered"` | `auto` 在条件允许时使用流式传输；不是所有 Adapter/响应路径都保证流式                |
 | `frontend.render.fallback`  | `"client"`   | buffered SSR 失败时的回退策略；可设为 `"error"`                                     |
 | `frontend.render.timeoutMs` | `3000`       | 渲染超时预算，单位毫秒                                                              |
-| `frontend.render.layout`    | `true`       | 已解析但当前布局选择链未使用此全局值；控制布局请使用 res.render 第三个参数的 layout |
+| `frontend.render.layout`    | `true`       | 全局布局默认值；`res.render` 的显式 `options.layout` 优先，可设 `false` 禁用布局    |
 
 渲染基础见[SSR](/zh/frontend/ssr)，模式选择见[渲染模式](/zh/frontend/rendering-modes)。同步 SSR 的超时是在渲染返回后检查，不会抢占同步 JavaScript 执行；流式响应开始发送后的失败也不能按普通 buffered 响应重写。关闭 SSR 与关闭浏览器 hydration 是不同设置，后者见[Hydration](/zh/frontend/hydration)。
 
@@ -198,24 +198,24 @@ export default {
 
 ## Build 字段
 
-| 字段                                                             | 默认值                                | 含义                                                                                                  |
-| ---------------------------------------------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `frontend.build.target`                                          | `"es2022"`                            | 传给 esbuild 的默认浏览器目标；`build.client.target` 可覆盖                                           |
-| `frontend.build.minify`                                          | 生产期 `true`                         | 压缩浏览器产物；与 server renderer 设置独立                                                           |
-| `frontend.build.sourcemap`                                       | 开发期 `true`                         | 生成浏览器 source map；生产期默认 `false`                                                             |
-| `frontend.build.client.assetsDir`                                | `"assets"`                            | 浏览器 bundle 资源子目录                                                                              |
-| `frontend.build.client.entryNames` / `chunkNames` / `assetNames` | `"[name]-[hash]"`                     | hash 文件名模式；应保留 hash 以使用 immutable cache                                                   |
-| `frontend.build.client.splitting`                                | `true`                                | 启用浏览器代码拆分                                                                                    |
-| `frontend.build.client.external`                                 | `[]`                                  | 浏览器 external 模块                                                                                  |
-| `frontend.build.client.externalRuntime`                          | `{}`                                  | 浏览器 external 的 import-map URL                                                                     |
-| `frontend.build.server.outFile`                                  | `frontend.outDir/server/renderer.cjs` | SSR bundle；显式值相对项目根解析，必须仍在 frontend.outDir 内。server.minify 默认 false               |
-| `frontend.build.vendorChunks`                                    | enabled                               | 共享 runtime chunk 策略；只在有测量依据时调整 packages                                                |
-| `frontend.build.budgets`                                         | 全部限制 `0`                          | 约束 raw/gzip/brotli 预算；baseline 稳定前使用 `warnOnly`                                             |
-| `frontend.build.assets.inlineLimit`                              | `0`                                   | 0 不启用；支持的浏览器资源大小不超过此值时可内联，不补齐 SSR 图片 loader                              |
-| `frontend.build.css.modules`                                     | `true`                                | 启用 CSS Modules；默认生产 SSR 的 class 命名一致性限制见[样式与资源](./styles-and-assets#css-modules) |
-| `frontend.build.diagnostics.leakScan`                            | `true`                                | 阻断服务端模块进入浏览器 graph                                                                        |
-| `frontend.build.diagnostics.sizeReport`                          | `true`                                | 写入 `size-report.json`                                                                               |
-| `frontend.build.diagnostics.performanceReport`                   | `true`                                | 包含路由级性能指标                                                                                    |
+| 字段                                                             | 默认值                                | 含义                                                                                                    |
+| ---------------------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `frontend.build.target`                                          | `"es2022"`                            | 传给 esbuild 的默认浏览器目标；`build.client.target` 可覆盖                                             |
+| `frontend.build.minify`                                          | 生产期 `true`                         | 压缩浏览器产物；与 server renderer 设置独立                                                             |
+| `frontend.build.sourcemap`                                       | 开发期 `true`                         | 生成浏览器 source map；生产期默认 `false`                                                               |
+| `frontend.build.client.assetsDir`                                | `"assets"`                            | 浏览器 bundle 资源子目录                                                                                |
+| `frontend.build.client.entryNames` / `chunkNames` / `assetNames` | `"[name]-[hash]"`                     | hash 文件名模式；应保留 hash 以使用 immutable cache                                                     |
+| `frontend.build.client.splitting`                                | `true`                                | 启用浏览器代码拆分                                                                                      |
+| `frontend.build.client.external`                                 | `[]`                                  | 浏览器 external 模块                                                                                    |
+| `frontend.build.client.externalRuntime`                          | `{}`                                  | 浏览器 external 的 import-map URL                                                                       |
+| `frontend.build.server.outFile`                                  | `frontend.outDir/server/renderer.cjs` | SSR bundle；显式值相对项目根解析，必须仍在 frontend.outDir 内。server.minify 默认 false                 |
+| `frontend.build.vendorChunks`                                    | enabled                               | 共享 runtime chunk 策略；只在有测量依据时调整 packages                                                  |
+| `frontend.build.budgets`                                         | 全部限制 `0`                          | 约束 raw/gzip/brotli 预算；baseline 稳定前使用 `warnOnly`                                               |
+| `frontend.build.assets.inlineLimit`                              | `0`                                   | 0 不内联；支持的资源大小不超过阈值时使用 data URL，SSR 与浏览器取相同值                                 |
+| `frontend.build.css.modules`                                     | `true`                                | 启用 CSS Modules；SSR 与浏览器共享类名和 composes 映射，见[样式与资源](./styles-and-assets#css-modules) |
+| `frontend.build.diagnostics.leakScan`                            | `true`                                | 阻断服务端模块进入浏览器 graph                                                                          |
+| `frontend.build.diagnostics.sizeReport`                          | `true`                                | 写入 `size-report.json`                                                                                 |
+| `frontend.build.diagnostics.performanceReport`                   | `true`                                | 包含路由级性能指标                                                                                      |
 
 React 相关 browser external 必须提供 `externalRuntime` 映射，否则构建会用友好诊断失败。
 
@@ -237,6 +237,8 @@ React 相关 browser external 必须提供 `externalRuntime` 映射，否则构�
 | `frontend.deploy.upload.prefix` / `concurrency` | `""` / `4`                                | upload key 命名空间与并行度                                   |
 | `frontend.deploy.upload.stateFile`              | `.vext/deploy/frontend-assets-state.json` | 增量上传状态文件                                              |
 | `frontend.deploy.upload.exclude`                | `["**/*.map"]`                            | 不上传的文件                                                  |
+
+glob 配置（例如部署 include/exclude、媒体扫描与样式 include）统一限制为每组最多 1024 个 pattern、单个最长 4096 字符、括号嵌套最多 100 层、单个 brace 展开估计最多 4096 项。超出时在调用匹配器前报错；这是输入预算保护，上游 `braces` 的审计项仍需等待修复。
 
 `assetBaseUrl` 必须是绝对 URL。`deploy-manifest.json` 描述本次可交付的 JS、CSS、已产出的媒体和选中的 public 文件；生成清单本身不会上传。默认排除 source map，SSR renderer 和入口 HTML 不作为 CDN 上传资源。每次更换 adapter、prefix 或 include/exclude 规则前，都要先执行 `npx vextjs deploy assets --dry-run`。
 
@@ -267,18 +269,19 @@ export default {
 
 ## I18n 字段
 
-| 字段                              | 默认值                           | 含义                                                                               |
-| --------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------- |
-| `frontend.i18n.enabled`           | `false`                          | 显式开启后扫描并打包前端页面文案                                                   |
-| `frontend.i18n.source`            | `locales`                        | 从 `frontend.root` 解析的 locale 源目录                                            |
-| `frontend.i18n.defaultLocale`     | `"inherit"`                      | fallback 配置值；当前不会自动继承 req.locale，应填写具体语言或显式传 render locale |
-| `frontend.i18n.detect` / `inject` | `["accept-language"]` / `"used"` | 已解析的声明字段；当前渲染链未实现自动探测或按组件裁剪消息                         |
-| `frontend.i18n.clientLoad`        | `"current"`                      | 浏览器 locale 加载模式                                                             |
-| `frontend.i18n.clientSwitch`      | `"reload"`                       | 声明字段；语言选择与页面导航需由应用实现                                           |
-| `frontend.i18n.htmlLang`          | `true`                           | 写入请求级 `{vext.lang}` / `<html lang>`                                           |
-| `frontend.i18n.vary`              | `true`                           | 声明字段；当前不自动追加语言 Vary，需应用按实际语言来源配置缓存                    |
+| 字段                          | 默认值                | 含义                                                                                                     |
+| ----------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------- |
+| `frontend.i18n.enabled`       | `false`               | 显式开启后扫描并打包前端页面文案                                                                         |
+| `frontend.i18n.source`        | `locales`             | 从 `frontend.root` 解析的 locale 源目录                                                                  |
+| `frontend.i18n.defaultLocale` | `"inherit"`           | 优先继承匹配的 `req.locale`；具体默认值作为自动探测后的回退                                              |
+| `frontend.i18n.detect`        | `["accept-language"]` | 按顺序探测 query.locale、header（X-Vext-Locale）、cookie.locale 或 accept-language；不支持的来源会被拒绝 |
+| `frontend.i18n.inject`        | `"used"`              | used 尚未按组件裁剪，构建会诊断；当前加载选定语言的完整消息                                              |
+| `frontend.i18n.clientLoad`    | `"current"`           | 浏览器 locale 加载模式                                                                                   |
+| `frontend.i18n.clientSwitch`  | `"reload"`            | 声明字段；语言选择与页面导航需由应用实现                                                                 |
+| `frontend.i18n.htmlLang`      | `true`                | 写入请求级 `{vext.lang}` / `<html lang>`                                                                 |
+| `frontend.i18n.vary`          | `true`                | 合并实际探测涉及的语言头与既有 Vary；false 时由应用负责外部缓存隔离                                      |
 
-完整可运行示例与 SSR/浏览器加载边界见[前端多语言](./i18n)。表中的声明字段不能作为已实现能力或自动行为的证据。
+完整可运行示例与语言优先级、SSR/浏览器加载及缓存边界见[前端多语言](./i18n)。`inject: "used"` 和 `clientSwitch` 的保留行为在该页单独说明。
 
 ## Dev 字段
 
@@ -308,7 +311,7 @@ export default {
 
 应声明单独 scope，而不是全站 catch-all。API、OpenAPI 和文档路由默认被排除，避免 client-router shell 遮住运维 endpoint。
 
-`spaFallback: true` 是一个特别分支：它创建根路径 `/`、page 为 `index` 的 scope；不等于省略配置。自定义全局 `exclude` 会替换默认数组，需自行保留所需排除项。Fallback 还受请求方法、Accept 和已有路由等条件约束，详见[CSR 与 SPA Fallback](/zh/frontend/csr-and-spa-fallback)。当前空 shell 仍由 `hydrateRoot` 接管，会出现 mismatch 后恢复渲染；建议显式设置 scope 的 `ssr: true`，具体边界见该页“空 shell 的当前限制”。
+`spaFallback: true` 是一个特别分支：它创建根路径 `/`、page 为 `index` 的 scope；不等于省略配置。自定义全局 `exclude` 会替换默认数组，需自行保留所需排除项。Fallback 还受请求方法、Accept 和已有路由等条件约束，详见[CSR 与 SPA Fallback](/zh/frontend/csr-and-spa-fallback)。未生成 SSR 正文的 shell 使用 `createRoot`；完成 SSR 的页面使用 `hydrateRoot`。
 
 ## 验证配置变更
 

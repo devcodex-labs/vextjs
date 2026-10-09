@@ -41,6 +41,10 @@ import {
   type VextDocumentPolicy,
 } from "./document-policy.js";
 import { resolveSeoHead } from "./seo.js";
+import {
+  resolveFrontendLocale,
+  applyLocaleHeaders,
+} from "./locale-resolution.js";
 
 const require = createRequire(import.meta.url);
 
@@ -51,6 +55,8 @@ export interface CreateFrontendRendererOptions {
 }
 
 export interface VextRenderPayload {
+  /** Actual initial rendering outcome; empty SSR is still server rendering. */
+  mountMode?: "server" | "client";
   page: string;
   props: Record<string, unknown>;
   options: VextRenderOptions;
@@ -629,6 +635,17 @@ function streamRenderedPage(input: {
   req?: VextRequest;
 }): void {
   assertPageExists(input.page, input.assets.manifest);
+  const locale = resolveFrontendLocale(
+    input.i18n,
+    input.assets.manifest.i18n.locales.map((entry) => entry.locale),
+    input.req,
+    input.options.locale,
+  );
+  input.options = {
+    ...input.options,
+    layout: input.options.layout ?? input.render.layout,
+    ...(input.i18n.enabled ? { locale: locale.locale } : {}),
+  };
   const renderPageStream = input.assets.serverRenderer.renderPageStream;
   if (!renderPageStream) {
     throw new Error(
@@ -653,6 +670,9 @@ function streamRenderedPage(input: {
     input.config.seo,
     input.req,
   );
+  payload.mountMode = "server";
+  payload.cache.noStore ||= locale.noStore;
+  applyLocaleHeaders(headers, locale);
   applyPageCachePolicy(headers, payload.cache.noStore || status >= 400);
   const documentPolicy = resolveDocumentPolicy({
     config: input.config,
@@ -924,6 +944,8 @@ function renderedPageToEnvelope(
         layouts: payload.layouts,
         head: payload.head,
         assets: payload.assets,
+        locale: payload.options.locale,
+        messages: payload.options.messages,
       },
       cache: payload.cache,
     },
@@ -1190,6 +1212,17 @@ function renderPageDocument(input: {
   req?: VextRequest;
 }): VextRenderedHtml {
   assertPageExists(input.page, input.assets.manifest);
+  const locale = resolveFrontendLocale(
+    input.i18n,
+    input.assets.manifest.i18n.locales.map((entry) => entry.locale),
+    input.req,
+    input.options.locale,
+  );
+  input.options = {
+    ...input.options,
+    layout: input.options.layout ?? input.render.layout,
+    ...(input.i18n.enabled ? { locale: locale.locale } : {}),
+  };
 
   const status = input.options.status ?? input.currentStatus ?? 200;
   const headers: Record<string, string> = {
@@ -1208,6 +1241,8 @@ function renderPageDocument(input: {
     input.seo,
     input.req,
   );
+  payload.cache.noStore ||= locale.noStore;
+  applyLocaleHeaders(headers, locale);
   applyPageCachePolicy(headers, payload.cache.noStore || status >= 400);
   const documentPolicy = resolveDocumentPolicy({
     config: { render: input.render },
@@ -1215,6 +1250,7 @@ function renderPageDocument(input: {
     req: input.req,
   });
   const ssr = renderServerPageBody(input);
+  payload.mountMode = ssr.html === undefined ? "client" : "server";
   const html = renderDocument(input.assets.template, {
     page: input.page,
     manifest: input.assets.manifest,
@@ -1438,6 +1474,16 @@ function renderBuiltinErrorDocument(input: {
   req?: VextRequest;
 }): VextRenderedHtml {
   const error = input.props.error as Record<string, unknown> | undefined;
+  const locale = resolveFrontendLocale(
+    input.i18n,
+    input.assets.manifest.i18n.locales.map((entry) => entry.locale),
+    input.req,
+    input.options.locale,
+  );
+  input.options = {
+    ...input.options,
+    ...(input.i18n.enabled ? { locale: locale.locale } : {}),
+  };
   const message =
     typeof error?.message === "string"
       ? error.message
@@ -1460,6 +1506,7 @@ function renderBuiltinErrorDocument(input: {
     input.seo,
     input.req,
   );
+  applyLocaleHeaders(headers, locale);
   applyPageCachePolicy(headers, true);
   const documentPolicy = resolveDocumentPolicy({
     config: {
@@ -1760,7 +1807,10 @@ function extractReactPreloads(rendered: { html?: string; head?: string }): {
     html = html.slice(match[0].length);
   }
   const head = [rendered.head, ...preloads].filter(Boolean).join("\n");
-  return { html: html || undefined, head: head || undefined };
+  return {
+    html: rendered.html === undefined ? undefined : html,
+    head: head || undefined,
+  };
 }
 
 function escapeCssString(value: string): string {

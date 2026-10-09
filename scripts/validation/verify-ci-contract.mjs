@@ -185,6 +185,7 @@ requireTokens("windows-node22", jobBlock("windows-node22"), [
   "test/unit/artifact-draft.test.ts",
   "test/unit/cli/build-command.test.ts",
   "test/unit/frontend-deploy-validation.test.ts",
+  "test/unit/frontend-repairs.test.ts",
   "npm run verify:exports",
 ]);
 
@@ -289,4 +290,17 @@ if (releaseJobBlock("publish").includes("NPM_TOKEN")) {
   );
 }
 
+requireOrderedTokens("frontend-browser", jobBlock("frontend-browser"), [
+  "node-version: 22",
+  "run: npm ci",
+  "run: npm run build",
+  "run: npx playwright-core install --with-deps chromium",
+  "run: npm run test:browser",
+  "if: always()",
+  "path: output/frontend-browser",
+]);
+requireTokens("browser summary", jobBlock("ci-ok"), [
+  "frontend-browser,",
+  "needs.frontend-browser.result",
+]);
 console.log("CI workflow contract verified.");

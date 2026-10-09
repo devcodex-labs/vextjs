@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import os from "node:os";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 
@@ -370,11 +371,22 @@ async function runPackedMcpSyncSmoke(consumerRoot) {
       "--json",
     ]),
   );
+  const expectedCodexConfig = path.join(
+    path.resolve(
+      process.env.CODEX_HOME ??
+        path.join(
+          process.env.USERPROFILE ?? process.env.HOME ?? os.homedir(),
+          ".codex",
+        ),
+    ),
+    "config.toml",
+  );
   if (
     sync.status !== "ok" ||
     sync.applied !== undefined ||
     sync.plan?.targets?.[0]?.host !== "codex" ||
-    sync.plan?.targets?.[0]?.configPath !== ".codex/config.toml"
+    sync.plan?.targets?.[0]?.configScope !== "user" ||
+    sync.plan?.targets?.[0]?.configPath !== expectedCodexConfig
   ) {
     throw new Error("Packed MCP sync plan smoke returned unexpected output.");
   }
@@ -415,9 +427,11 @@ async function runPackedMcpSyncSmoke(consumerRoot) {
     path.join(tomlFixture, "package.json"),
     `${JSON.stringify({ name: "packed-mcp-sync-toml-write-fixture", version: "1.0.0", type: "module", dependencies: { vextjs: pkg.version } }, null, 2)}\n`,
   );
+  // Exercise TOML writes through a project-scoped host. Codex's user config
+  // is checked above without mutating the developer's real host settings.
   writeFileSync(
     path.join(tomlFixture, "src", "config", "default.ts"),
-    'export default { server: { port: 3000 }, dev: { mcp: { enabled: true, hosts: ["codex"], sync: "auto" } } };\n',
+    'export default { server: { port: 3000 }, dev: { mcp: { enabled: true, hosts: ["grok"], sync: "auto" } } };\n',
   );
   const tomlWritten = JSON.parse(
     await runPackedCli(consumerRoot, [
@@ -426,11 +440,11 @@ async function runPackedMcpSyncSmoke(consumerRoot) {
       "--root",
       tomlFixture,
       "--host",
-      "codex",
+      "grok",
       "--json",
     ]),
   );
-  const tomlConfig = path.join(tomlFixture, ".codex", "config.toml");
+  const tomlConfig = path.join(tomlFixture, ".grok", "config.toml");
   if (
     tomlWritten.status !== "ok" ||
     tomlWritten.applied?.targets?.[0]?.status !== "written" ||

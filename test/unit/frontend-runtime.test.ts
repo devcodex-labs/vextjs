@@ -2100,10 +2100,12 @@ describe("frontend client build", () => {
         "utf-8",
       );
       for (const match of source.matchAll(
-        /(?:\bfrom\s*|\bimport\s*)["'](\.\/[^"']+\.js)["']/gu,
+        /(?:\bfrom\s*|\bimport\s*)["']([^"']+\.js)["']/gu,
       )) {
         await addStaticClosure(
-          path.posix.join(path.posix.dirname(asset.path), match[1]!),
+          match[1]!.startsWith(defaultResult.config.publicPath)
+            ? match[1]!
+            : path.posix.join(path.posix.dirname(asset.path), match[1]!),
         );
       }
     };

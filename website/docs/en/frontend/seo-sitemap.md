@@ -93,7 +93,7 @@ export default function AboutPage() {
 
 Run `npm run build` and confirm that the default `dist/client/sitemap.xml` contains `https://www.example.com/about` and `robots.txt` contains the sitemap URL. Start `npm start -- --port 3000` and request `/about`: raw HTML should contain `About Us | Example`, canonical, description, `og:type=profile`, and visible body. This no-hydration example should have no Vext hydration data or browser entry. Check that `/sitemap.xml` and `/robots.txt` return 200 and have the expected content, then stop the server.
 
-The current built-in frontend static server does not include XML/TXT in its extension-to-MIME table: those built files respond as `application/octet-stream`, even though the deploy manifest records their correct MIME types. When hosting built files, configure `application/xml; charset=utf-8` and `text/plain; charset=utf-8` at the static host/CDN, or use runtime mode below, which sets the respective MIME types. Manifest metadata alone does not establish an HTTP Content-Type.
+The built-in static server and deploy manifest share the MIME mapping: sitemap responds as `application/xml; charset=utf-8`, and robots as `text/plain; charset=utf-8`. External static hosts/CDNs still need their own matching Content-Type configuration; verify the actual HTTP response.
 
 The example origin is an output URL, not a domain that local verification must contact. Replace it for deployment. Build-mode files do not select a runtime Host. A title in HTML does not itself prove search-engine indexing.
 

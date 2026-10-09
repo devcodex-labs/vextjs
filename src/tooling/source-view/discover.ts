@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { setImmediate as yieldToEventLoop } from "node:timers/promises";
-import micromatch from "micromatch";
+import micromatch from "../../lib/safe-micromatch.js";
 import { assertRealPathInside } from "../../lib/path-boundary.js";
 import { resolveSourceLimits } from "./policy.js";
 import { SourceViewError, type SourceLimits } from "./types.js";

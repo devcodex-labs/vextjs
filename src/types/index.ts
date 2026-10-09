@@ -112,6 +112,7 @@ export type {
   VextRateLimiter,
   VextValidator,
   VextConfig,
+  VextPluginConfig,
   VextConfigOverride,
   VextConfigOverrideAtomicPathRegistry,
   VextDevConfig,

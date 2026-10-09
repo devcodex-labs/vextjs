@@ -204,6 +204,8 @@
         "config:openapi.title",
         "config:openapi.tryItOutEnabled",
         "config:openapi.version",
+        "config:plugin",
+        "config:plugin.setupTimeout",
         "config:port",
         "config:rateLimit",
         "config:rateLimit.enabled",
@@ -289,7 +291,8 @@
         "config:shutdown",
         "config:shutdown.onFatalError",
         "config:shutdown.timeout",
-        "config:trustProxy"
+        "config:trustProxy",
+        "symbol:vextjs#VextPluginConfig"
       ]
     },
     {

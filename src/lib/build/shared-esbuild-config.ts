@@ -1,5 +1,5 @@
 import type { BuildOptions, Loader } from "esbuild";
-import fg from "fast-glob";
+import fg from "../safe-glob.js";
 import path from "node:path";
 import { createBackendModulePlugin } from "./backend-module-plugin.js";
 import { isPathInside } from "../path-boundary.js";

@@ -79,7 +79,7 @@ export default function AboutPage() {
 
 运行 `npm run build`，在默认 `dist/client/sitemap.xml` 确认含 `https://www.example.com/about`，`robots.txt` 含 sitemap URL。启动 `npm start -- --port 3000` 后请求 `/about`，原始 HTML 应包含“关于我们 | Example”标题、canonical、description 与 `og:type=profile`；因为本例 hydration 为 none，不应有 Vext hydration 数据/浏览器入口。页面正文应可见。HTTP 访问 `/sitemap.xml` 与 `/robots.txt` 应200且内容正确，验证后停止服务。
 
-当前 build 产物的部署 manifest 标注正确 XML/TXT MIME，但内置前端静态服务的扩展名表未覆盖这两种文件，实测响应为 `application/octet-stream`。上线 build 文件时，需要由静态托管/CDN设置 `application/xml; charset=utf-8` 和 `text/plain; charset=utf-8`，或采用下文会设置对应 MIME 的 runtime 模式；不能将 manifest 正确当作 HTTP Content-Type 已正确。
+部署 manifest 与内置前端静态服务共用 MIME 表，XML 返回 `application/xml; charset=utf-8`，TXT 返回 `text/plain; charset=utf-8`。外部静态托管/CDN 也须保持这些类型；验收实际 HTTP Content-Type 与文件内容。
 
 示例 origin 是输出地址，不要求本地请求连接该域名；部署时换成真实 origin。build 模式静态文件不做 runtime Host 选择。不要仅看到 HTML 里存在 title 就推定搜索引擎已经收录。
 

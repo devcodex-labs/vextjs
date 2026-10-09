@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import fg from "fast-glob";
+import fg from "../../lib/safe-glob.js";
 import sharp from "sharp";
 import subsetFont from "subset-font";
 import type { ArtifactCandidate } from "../../lib/project/artifact-transaction.js";
@@ -80,6 +80,35 @@ export async function createFrontendMediaArtifacts(
   return { result: { manifestPath, manifest }, files };
 }
 
+function hasRasterSignature(content: Buffer): boolean {
+  if (
+    content
+      .subarray(0, 8)
+      .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  )
+    return true;
+  if (content[0] === 0xff && content[1] === 0xd8 && content[2] === 0xff)
+    return true;
+  if (["GIF87a", "GIF89a"].includes(content.toString("ascii", 0, 6)))
+    return true;
+  if (
+    content.toString("ascii", 0, 4) === "RIFF" &&
+    content.toString("ascii", 8, 12) === "WEBP"
+  )
+    return true;
+  if (content.length < 16 || content.toString("ascii", 4, 8) !== "ftyp")
+    return false;
+  const size = content.readUInt32BE(0);
+  if (size < 16 || size > content.length) return false;
+  for (let offset = 8; offset + 4 <= size; offset += offset === 8 ? 8 : 4) {
+    if (
+      ["avif", "avis"].includes(content.toString("ascii", offset, offset + 4))
+    )
+      return true;
+  }
+  return false;
+}
+
 async function createLocalImageVariants(
   config: ResolvedVextFrontendConfig,
   files: ArtifactCandidate[],
@@ -96,7 +125,20 @@ async function createLocalImageVariants(
   )) {
     const source = path.relative(config.root, filePath).replace(/\\/gu, "/");
     const sourceBuffer = await readFile(filePath);
+    if (!hasRasterSignature(sourceBuffer)) {
+      throw new Error(
+        `[vextjs] local image "${source}" must contain a supported raster format.`,
+      );
+    }
     const metadata = await sharp(sourceBuffer, { failOn: "error" }).metadata();
+    if (
+      !metadata.format ||
+      !["jpeg", "png", "gif", "webp", "avif", "heif"].includes(metadata.format)
+    ) {
+      throw new Error(
+        `[vextjs] local image "${source}" must contain a supported raster format; detected ${metadata.format ?? "unknown"}.`,
+      );
+    }
     const width = metadata.width;
     const height = metadata.height;
     if (!width || !height) {

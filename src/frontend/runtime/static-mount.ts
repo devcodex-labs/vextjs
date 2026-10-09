@@ -14,6 +14,7 @@ import type {
   VextFrontendUserConfig,
 } from "../contract/types.js";
 import { getFrontendStaticCacheControl } from "../asset-cache-policy.js";
+import { getFrontendContentType as mimeTypeFor } from "../deploy/content-type.js";
 import { resolveFrontendConfig } from "../tooling/config-resolver.js";
 import { createFrontendRenderer } from "./renderer.js";
 import {
@@ -453,37 +454,4 @@ function getAssetCacheControl(
     path.relative(config.outDir, filePath),
     config.build.client.assetsDir,
   );
-}
-
-function mimeTypeFor(filePath: string): string {
-  switch (path.extname(filePath).toLowerCase()) {
-    case ".html":
-      return "text/html; charset=utf-8";
-    case ".js":
-    case ".mjs":
-      return "text/javascript; charset=utf-8";
-    case ".css":
-      return "text/css; charset=utf-8";
-    case ".json":
-      return "application/json; charset=utf-8";
-    case ".svg":
-      return "image/svg+xml";
-    case ".png":
-      return "image/png";
-    case ".jpg":
-    case ".jpeg":
-      return "image/jpeg";
-    case ".gif":
-      return "image/gif";
-    case ".webp":
-      return "image/webp";
-    case ".ico":
-      return "image/x-icon";
-    case ".woff":
-      return "font/woff";
-    case ".woff2":
-      return "font/woff2";
-    default:
-      return "application/octet-stream";
-  }
 }

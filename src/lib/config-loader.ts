@@ -691,6 +691,29 @@ function validateConfig(config: Record<string, unknown>): void {
     }
   }
 
+  const plugin = config.plugin as Record<string, unknown> | undefined;
+  if (plugin !== undefined) {
+    if (
+      typeof plugin !== "object" ||
+      plugin === null ||
+      Array.isArray(plugin)
+    ) {
+      throw new Error("[vextjs] config.plugin must be an object.");
+    }
+    const timeout = plugin.setupTimeout;
+    if (
+      timeout !== undefined &&
+      (typeof timeout !== "number" ||
+        !Number.isInteger(timeout) ||
+        timeout <= 0 ||
+        timeout > 2_147_483_647)
+    ) {
+      throw new Error(
+        "[vextjs] config.plugin.setupTimeout must be a positive integer <= 2147483647 (milliseconds).",
+      );
+    }
+  }
+
   // ── locale ────────────────────────────────────────────
   const locale = config.locale as Record<string, unknown> | undefined;
   if (locale !== undefined) {
@@ -1275,6 +1298,15 @@ function validateFrontendConfig(value: unknown, path: string): void {
     validateOptionalString(i18n.source, `${path}.i18n.source`);
     validateOptionalString(i18n.defaultLocale, `${path}.i18n.defaultLocale`);
     validateOptionalStringArray(i18n.detect, `${path}.i18n.detect`);
+    for (const source of (i18n.detect ?? []) as string[]) {
+      validateEnum(source, `${path}.i18n.detect[]`, [
+        "accept-language",
+        "header",
+        "x-vext-locale",
+        "cookie",
+        "query",
+      ]);
+    }
     validateEnum(i18n.inject, `${path}.i18n.inject`, ["used", "all"]);
     validateEnum(i18n.clientLoad, `${path}.i18n.clientLoad`, [
       "current",

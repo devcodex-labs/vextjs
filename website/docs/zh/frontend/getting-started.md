@@ -122,7 +122,7 @@ export default function DashboardPage(props: { totalUsers: number }) {
 
 ## 添加样式
 
-这里用 Vext JSCSS 的 `style()` 定义一份静态卡片样式。普通 CSS 也可使用；CSS Modules 的默认生产 SSR 命名限制见[样式与资源](./styles-and-assets#css-modules)。
+这里用 Vext JSCSS 的 `style()` 定义一份静态卡片样式。普通 CSS 与 CSS Modules 也可使用，见[样式与资源](./styles-and-assets#css-modules)。
 
 ```ts
 // src/frontend/styles/card.style.ts

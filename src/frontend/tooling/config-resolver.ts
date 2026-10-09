@@ -78,6 +78,21 @@ export function resolveFrontendConfig(
   );
   const spaFallback = normalizeSpaFallback(raw?.spaFallback);
   const seo = normalizeSeo(raw?.seo);
+  for (const source of raw?.i18n?.detect ?? []) {
+    if (
+      ![
+        "accept-language",
+        "header",
+        "x-vext-locale",
+        "cookie",
+        "query",
+      ].includes(source)
+    ) {
+      throw new Error(
+        `[vextjs] config.frontend.i18n.detect does not support ${JSON.stringify(source)}. Use accept-language, header, cookie, or query.`,
+      );
+    }
+  }
   const apiClient = raw?.apiClient;
   const media = normalizeMedia(raw?.media);
   const build = raw?.build ?? {};

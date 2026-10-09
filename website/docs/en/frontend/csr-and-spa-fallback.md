@@ -59,11 +59,11 @@ Object-form `scopes[]` defaults to an empty array, so omitting it does not take 
 
 The main example retains SSR for the shell, after which the browser handles interaction and internal routing. Each client path does not need a separate server page.
 
-### Current Limitation of an Empty Shell
+### Empty-shell mounting behavior
 
-`ssr: false` keeps the document, assets, and hydration payload but omits the server-rendered page body. The generated browser entry still calls `hydrateRoot`; it does not switch to `createRoot` for an empty root. Changing this example to `ssr: false` therefore causes a hydration mismatch (React error #418 in production). React may recover and display the page, but this does not satisfy an “error-free browser” verification condition.
+`ssr: false` retains the document, assets, and page payload without server-rendered body content. The renderer records the actual mount mode: CSR, `clientOnly: true`, and buffered client fallback use `createRoot`; completed SSR uses `hydrateRoot`. An SSR component returning null still counts as completed SSR; the browser does not infer the mode from an empty root.
 
-Until the entry behavior is fixed, prefer `ssr: true` here and keep the initial SSR and client output consistent. Put browser-only logic in an effect. Do not ignore console errors to declare an empty shell successful. Route `clientOnly: true`, global SSR disablement, and per-render SSR disablement also use an empty body with the same browser entry; assess them against this limitation.
+You can set this example to `ssr: false` to serve an empty shell. Verify the first screen, event updates, and an error-free Console. With SSR enabled, initial server and browser output must still agree; keep browser-only logic in effects.
 
 ## Request Matching
 

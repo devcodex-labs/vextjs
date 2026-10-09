@@ -81,7 +81,7 @@ res.render("admin/dashboard", props, {
 
 Do not import services directly from layout components.
 
-Check that the layout belongs to the current page's layout chain and that render options have not set `layout: false` or selected another layout. A `layoutData` key resolves according to the actual layout ID or directory; it is not an arbitrary component name.
+Check that the layout is in the page's layout chain and inspect the effective global frontend.render.layout and per-render options.layout. layoutData keys resolve by actual layout ID or directory, not arbitrary component names.
 
 **Verify:** Open the page directly and navigate to it through the client. Confirm that the corresponding layout receives its data and that the shared layout retains the expected state. See [Layouts and Components](/frontend/layouts-and-components).
 
@@ -104,12 +104,12 @@ Check that server and browser assets came from the same build. Route `frontend.h
 
 Check how each asset is referenced:
 
-| File                           | Reference                                                                               |
-| ------------------------------ | --------------------------------------------------------------------------------------- |
-| `public/logo.png`              | `/logo.png` under the default publicPath; use the actual mounted base URL if customized |
-| `src/frontend/assets/logo.png` | Avoid direct imports in default SSR pages; use a Public URL or the media Image contract |
+| File                           | Reference                                                                                  |
+| ------------------------------ | ------------------------------------------------------------------------------------------ |
+| `public/logo.png`              | `/logo.png` under the default publicPath; use the actual mounted base URL if customized    |
+| `src/frontend/assets/logo.png` | Direct imports are supported; check artifact URLs, inlineLimit, publicPath, and CDN prefix |
 
-The browser build has image loaders, but the current SSR build has no matching loaders. Importing PNG/SVG images directly from a page or its components therefore fails the build. Type declarations or disabling runtime SSR do not supply this build step. Imported assets are suitable only for browser entries with the required loader that stay outside the SSR page registry. See [Imported Assets](./styles-and-assets#imported-assets), [Public Assets](./styles-and-assets#public-assets), and [Media Image](./static-assets-and-cdn).
+Supported image/font imports share URLs in SSR and browser builds. Type declarations only help TypeScript; missing files, unsupported formats, and deployment URL errors still require repair. See [Imported Assets](./styles-and-assets#imported-assets), [Public Assets](./styles-and-assets#public-assets), and [Media Image](./static-assets-and-cdn).
 
 If production CDN URLs are wrong, check `frontend.deploy.assetBaseUrl`, `publicPath`, and `deploy-manifest.json`.
 

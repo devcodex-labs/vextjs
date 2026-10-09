@@ -45,7 +45,7 @@ To disable frontend entirely, use `frontend: false` and remove or adapt handlers
 | CDN-hosted immutable assets            | Same-origin delivery | `deploy.assetBaseUrl` and optionally `deploy.upload`             | Generated JS/CSS URLs point at the CDN; Node still owns HTML/SSR                                      | Dry-run the upload and request an SSR page + hashed asset  |
 | Search-visible public pages            | SEO disabled         | `seo`, plus route/render metadata                                | Canonical/meta output and optional sitemap/robots become framework-owned                              | Inspect two page canonicals and the selected SEO artifacts |
 | A client-router island                 | No fallback capture  | `spaFallback.scopes`                                             | Only declared paths are served by the browser shell                                                   | Check an in-scope URL and an excluded `/api/**` URL        |
-| Localized page copy                    | Disabled             | `i18n`                                                           | Locale artifacts; document language uses an explicit render locale or concrete default                | Build and request two locales                              |
+| Multilingual page copy                 | Disabled             | `i18n`                                                           | Request negotiation, HTML, page envelopes, and navigation share the effective language                | Build and verify two languages and cache isolation         |
 
 Avoid adding a field merely because it exists. Global defaults use React and esbuild, SSR on, buffered streaming, browser splitting and production minification on, and no CDN URL or upload. The full-stack starter separately configures `streaming: "auto"` and frontend i18n; inspect the app's actual configuration.
 
@@ -156,34 +156,34 @@ export default {
 
 ## Core Fields
 
-| Field                    | Default                                                                 | Meaning                                                                                            |
-| ------------------------ | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `frontend.enabled`       | `false`                                                                 | Enable built-in frontend pipeline                                                                  |
-| `frontend.framework`     | `"react"`                                                               | Framework label for built-in React support                                                         |
-| `frontend.root`          | `"src/frontend"`                                                        | User frontend source root                                                                          |
-| `frontend.pages`         | Built-in page conventions                                               | Page, document, and error-page discovery settings                                                  |
-| `frontend.componentsDir` | `"components"`                                                          | Shared component directory resolved from `frontend.root`                                           |
-| `frontend.assetsDir`     | `"assets"`                                                              | Imported image, font, and media source directory                                                   |
-| `frontend.indexHtml`     | Resolved `pages.document` (default `src/frontend/pages/_document.html`) | Document template; explicit path is relative to the project root                                   |
-| `frontend.outDir`        | `.vext/client` in dev, `dist/client` in build                           | Frontend output directory                                                                          |
-| `frontend.publicDir`     | `"public"`                                                              | Static public directory                                                                            |
-| `frontend.publicPath`    | `"/"`                                                                   | Public asset URL prefix                                                                            |
-| `frontend.alias`         | Built-in `@frontend/@pages/@components/@styles/@assets`                 | Frontend-safe import aliases; do not alias all of `src` into browser code                          |
-| `frontend.apiClient`     | `true`                                                                  | Emit route/client contract artifacts; set `false` only when no generated client artifact is wanted |
-| `frontend.errorPages`    | Built-in error page conventions                                         | Map default or status-specific SSR errors to pages                                                 |
-| `frontend.adapter`       | none                                                                    | Reserved public type extension field; current built-in build/render path does not call its methods |
+| Field                    | Default                                                                 | Meaning                                                                                                                                         |
+| ------------------------ | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `frontend.enabled`       | `false`                                                                 | Enable built-in frontend pipeline                                                                                                               |
+| `frontend.framework`     | `"react"`                                                               | Framework label for built-in React support                                                                                                      |
+| `frontend.root`          | `"src/frontend"`                                                        | User frontend source root                                                                                                                       |
+| `frontend.pages`         | Built-in page conventions                                               | Page, document, and error-page discovery settings                                                                                               |
+| `frontend.componentsDir` | `"components"`                                                          | Shared component directory resolved from `frontend.root`                                                                                        |
+| `frontend.assetsDir`     | `"assets"`                                                              | Imported image, font, and media source directory                                                                                                |
+| `frontend.indexHtml`     | Resolved `pages.document` (default `src/frontend/pages/_document.html`) | Document template; explicit path is relative to the project root                                                                                |
+| `frontend.outDir`        | `.vext/client` in dev, `dist/client` in build                           | Frontend output directory                                                                                                                       |
+| `frontend.publicDir`     | `"public"`                                                              | Static public directory                                                                                                                         |
+| `frontend.publicPath`    | `"/"`                                                                   | Public asset URL prefix                                                                                                                         |
+| `frontend.alias`         | Built-in `@frontend/@pages/@components/@styles/@assets`                 | Frontend-safe import aliases; do not alias all of `src` into browser code                                                                       |
+| `frontend.apiClient`     | `true`                                                                  | Emit route/client contract artifacts; set `false` only when no generated client artifact is wanted                                              |
+| `frontend.errorPages`    | Built-in error page conventions                                         | Map default or status-specific SSR errors to pages                                                                                              |
+| `frontend.adapter`       | none                                                                    | Reserved and deprecated extension field; resolver emits an ignored-setting diagnostic. Use `build.client` / `build.server` for compiler options |
 
-Relative directory bases and TypeScript paths are covered in [Project Structure](./project-structure). `assetsDir` and aliases do not add an SSR image-import loader; use the Public URL boundary described there.
+Relative directory bases and TypeScript paths are covered in [Project Structure](./project-structure). Supported image/font imports share public URLs in browser and SSR builds; aliases only change path resolution.
 
 ## Render Fields
 
-| Field                       | Default      | Meaning                                                                                                        |
-| --------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------- |
-| `frontend.render.ssr`       | `true`       | SSR default; a render option can override it, and route `clientOnly` disables server page content.             |
-| `frontend.render.streaming` | `"buffered"` | `auto` streams when conditions allow; not every adapter/response path guarantees streaming.                    |
-| `frontend.render.fallback`  | `"client"`   | Fallback after buffered SSR failure; may be `"error"`.                                                         |
-| `frontend.render.timeoutMs` | `3000`       | Render time budget in milliseconds.                                                                            |
-| `frontend.render.layout`    | `true`       | Parsed but not used by the current layout-selection path; select with the third `res.render` argument instead. |
+| Field                       | Default      | Meaning                                                                                                       |
+| --------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------- |
+| `frontend.render.ssr`       | `true`       | SSR default; a render option can override it, and route `clientOnly` disables server page content.            |
+| `frontend.render.streaming` | `"buffered"` | `auto` streams when conditions allow; not every adapter/response path guarantees streaming.                   |
+| `frontend.render.fallback`  | `"client"`   | Fallback after buffered SSR failure; may be `"error"`.                                                        |
+| `frontend.render.timeoutMs` | `3000`       | Render time budget in milliseconds.                                                                           |
+| `frontend.render.layout`    | `true`       | Global layout default; an explicit render `options.layout` takes priority, including false to disable layouts |
 
 See [SSR](./ssr) and [Rendering Modes](./rendering-modes). A synchronous SSR timeout is checked after rendering returns and cannot preempt synchronous JavaScript. Once a streamed response starts, a failure cannot be rewritten like a normal buffered response. Disabling SSR and disabling browser hydration are separate settings; see [Hydration](./hydration).
 
@@ -213,8 +213,8 @@ See [SSR](./ssr) and [Rendering Modes](./rendering-modes). A synchronous SSR tim
 | `frontend.build.server.outFile`                                  | `frontend.outDir/server/renderer.cjs` | SSR bundle; an explicit path resolves from the project root and must stay inside `frontend.outDir`; server minify defaults to false |
 | `frontend.build.vendorChunks`                                    | enabled                               | Shared runtime chunk strategy; configure packages only for a measured reason                                                        |
 | `frontend.build.budgets`                                         | all limits `0`                        | Enforce raw/gzip/brotli budget thresholds; use `warnOnly` while baselines settle                                                    |
-| `frontend.build.assets.inlineLimit`                              | `0`                                   | Disabled at zero; supported browser assets no larger than the threshold can be inlined, without adding an SSR image loader          |
-| `frontend.build.css.modules`                                     | `true`                                | Enable CSS Modules; see [Styles and Assets](./styles-and-assets#css-modules) for SSR class-name limits                              |
+| `frontend.build.assets.inlineLimit`                              | `0`                                   | Zero disables inlining; supported assets within the threshold use the same data URL in SSR and browser output                       |
+| `frontend.build.css.modules`                                     | `true`                                | CSS Modules with shared SSR/browser class and composes mappings; see [Styles and Assets](./styles-and-assets#css-modules)           |
 | `frontend.build.diagnostics.leakScan`                            | `true`                                | Block server-only imports from browser graph                                                                                        |
 | `frontend.build.diagnostics.sizeReport`                          | `true`                                | Write `size-report.json`                                                                                                            |
 | `frontend.build.diagnostics.performanceReport`                   | `true`                                | Include route-level performance metrics                                                                                             |
@@ -242,6 +242,8 @@ into a release-blocking gate.
 | `frontend.deploy.upload.prefix` / `concurrency` | `""` / `4`                                | Upload key namespace and parallelism                                            |
 | `frontend.deploy.upload.stateFile`              | `.vext/deploy/frontend-assets-state.json` | Incremental upload state                                                        |
 | `frontend.deploy.upload.exclude`                | `["**/*.map"]`                            | Files excluded from upload                                                      |
+
+Glob configuration such as deploy include/exclude, media scans, and style includes is limited to 1024 patterns per group, 4096 characters per pattern, 100 nesting levels, and an estimated 4096 brace expansions per pattern. Excessive input fails before entering matchers. This input budget does not clear the upstream `braces` audit advisory.
 
 `assetBaseUrl` must be an absolute URL. `deploy-manifest.json` describes deliverable JS, CSS, produced media, and selected public files; creating it does not upload anything. Source maps are excluded by default; SSR renderer and entry HTML are not CDN upload assets. Run `npx vextjs deploy assets --dry-run` before changing adapter, prefix, or include/exclude rules.
 
@@ -274,18 +276,19 @@ field list is in the [API reference](../api/config#vextfrontendconfig).
 
 ## I18n Fields
 
-| Field                             | Default                          | Meaning                                                                                                                               |
-| --------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `frontend.i18n.enabled`           | `false`                          | Scan and bundle frontend page copy when explicitly enabled                                                                            |
-| `frontend.i18n.source`            | `locales`                        | Locale source directory resolved from `frontend.root`                                                                                 |
-| `frontend.i18n.defaultLocale`     | `"inherit"`                      | Fallback setting; the current render path does not automatically inherit `req.locale`; set a concrete value or explicit render locale |
-| `frontend.i18n.detect` / `inject` | `["accept-language"]` / `"used"` | Parsed declarations; current render path does not automatically detect locale or trim messages by component                           |
-| `frontend.i18n.clientLoad`        | `"current"`                      | Browser locale loading mode                                                                                                           |
-| `frontend.i18n.clientSwitch`      | `"reload"`                       | Declared field; the app implements language choice and page navigation                                                                |
-| `frontend.i18n.htmlLang`          | `true`                           | Write request-aware `{vext.lang}` / `<html lang>`                                                                                     |
-| `frontend.i18n.vary`              | `true`                           | Declared field; the app configures language `Vary` for its actual locale source                                                       |
+| Field                         | Default               | Meaning                                                                                                                   |
+| ----------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `frontend.i18n.enabled`       | `false`               | Scan and bundle frontend page copy when explicitly enabled                                                                |
+| `frontend.i18n.source`        | `locales`             | Locale source directory resolved from `frontend.root`                                                                     |
+| `frontend.i18n.defaultLocale` | `"inherit"`           | Prefer matching req.locale; a concrete default is the fallback after detection                                            |
+| `frontend.i18n.detect`        | `["accept-language"]` | Ordered query.locale, header/X-Vext-Locale, cookie.locale, or accept-language detection; unsupported sources are rejected |
+| `frontend.i18n.inject`        | `"used"`              | used is not trimmed per component and emits a diagnostic; the selected language's full messages are loaded                |
+| `frontend.i18n.clientLoad`    | `"current"`           | Browser locale loading mode                                                                                               |
+| `frontend.i18n.clientSwitch`  | `"reload"`            | Declared field; the app implements language choice and page navigation                                                    |
+| `frontend.i18n.htmlLang`      | `true`                | Write request-aware `{vext.lang}` / `<html lang>`                                                                         |
+| `frontend.i18n.vary`          | `true`                | Merge headers involved in detection into existing Vary; false leaves external cache isolation to the app                  |
 
-See [Frontend I18n](./i18n) for the complete runnable example and SSR/browser loading boundary. A parsed field is not evidence of implemented automatic behavior.
+See [Frontend I18n](./i18n) for locale priority, complete examples, SSR/browser loading, caching, and the reserved inject/clientSwitch behavior.
 
 ## Dev Fields
 
@@ -317,7 +320,7 @@ Declare individual scopes instead of a site-wide catch-all. API, OpenAPI, and
 documentation routes stay excluded by default so a client-router shell cannot
 hide an operational endpoint.
 
-`spaFallback: true` is a special branch that creates a root `/` scope for page `index`; it is different from omitting the setting. A custom global `exclude` replaces the default array, so retain exclusions the app needs. Fallback also depends on method, `Accept`, and existing routes. See [CSR and SPA Fallback](./csr-and-spa-fallback). The current empty shell is still handled by `hydrateRoot`, which may mismatch before recovery; explicitly use `ssr: true` for the scope as that page describes.
+`spaFallback: true` creates a root `/` scope for page `index`; it differs from omission. A custom global `exclude` replaces defaults, so retain required exclusions. Method, Accept, and existing routes also constrain fallback; see [CSR and SPA Fallback](./csr-and-spa-fallback). Empty client shells use createRoot; completed SSR uses hydrateRoot.
 
 ## Verify a Configuration Change
 

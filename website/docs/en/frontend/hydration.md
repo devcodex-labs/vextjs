@@ -172,7 +172,7 @@ request-dependent page metadata in `res.render(..., { seo })`.
 
 ## Avoid Mismatch
 
-Keep SSR and browser output deterministic. If SSR is disabled or `clientOnly: true` is used, also check the [current empty-shell limitation](/frontend/csr-and-spa-fallback#current-limitation-of-an-empty-shell): the browser entry calls `hydrateRoot` for an empty body, which cannot be fixed by adjusting an application's timestamp or random values.
+Keep SSR and browser output deterministic. SSR-disabled, clientOnly, and client-fallback shells use createRoot; completed SSR uses hydrateRoot even when a component returns null. See [CSR mounting](./csr-and-spa-fallback#empty-shell-mounting-behavior).
 
 | Risk                                | Better approach                                         |
 | ----------------------------------- | ------------------------------------------------------- |

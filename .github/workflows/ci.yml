@@ -472,12 +472,41 @@ jobs:
           test/unit/cli/build-command.test.ts
           test/unit/frontend-deploy-validation.test.ts
           test/unit/frontend-runtime.test.ts
+          test/unit/frontend-repairs.test.ts
           --reporter=verbose
 
       - name: Verify Windows package exports
         run: npm run verify:exports
 
   # ────────────────────────────────────────────────────────────
+  # Browser consumption: one Chromium lane covers rendering and navigation.
+  frontend-browser:
+    name: Frontend Browser (Node 22)
+    runs-on: ubuntu-latest
+    needs: lint-typecheck
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: "npm"
+      - name: Install dependencies
+        run: npm ci
+      - name: Build framework
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright-core install --with-deps chromium
+      - name: Validate real frontend consumer
+        run: npm run test:browser
+      - name: Save browser evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: frontend-browser-evidence
+          path: output/frontend-browser
+
   # 11. CI 总结（所有检查通过后的统一 status check）
   # ────────────────────────────────────────────────────────────
   ci-ok:
@@ -496,6 +525,7 @@ jobs:
         package-contracts,
         mcp-contracts,
         windows-node22,
+        frontend-browser,
       ]
     if: always()
 
@@ -513,6 +543,7 @@ jobs:
           echo "package-contracts: ${{ needs.package-contracts.result }}"
           echo "mcp-contracts: ${{ needs.mcp-contracts.result }}"
           echo "windows-node22: ${{ needs.windows-node22.result }}"
+          echo "frontend-browser: ${{ needs.frontend-browser.result }}"
 
           # version-check 可能被跳过（package.json 未变更），跳过视为通过
           if [[ "${{ needs.version-check.result }}" != "success" && "${{ needs.version-check.result }}" != "skipped" ]]; then
@@ -567,6 +598,11 @@ jobs:
 
           if [[ "${{ needs.windows-node22.result }}" != "success" ]]; then
             echo "❌ windows-node22 failed"
+            exit 1
+          fi
+
+          if [[ "${{ needs.frontend-browser.result }}" != "success" ]]; then
+            echo "❌ frontend-browser failed"
             exit 1
           fi
 

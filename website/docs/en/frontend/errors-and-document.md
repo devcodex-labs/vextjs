@@ -115,7 +115,7 @@ Use reserved Vext tokens:
 
 The template does not evaluate arbitrary expressions. Pass data through `props`, `layoutData`, `messages`, or `head`.
 
-`{vext.lang}` is request-aware when `frontend.i18n.htmlLang` is enabled. `res.render(page, props, { locale })` updates the final `<html lang>` value during SSR; `htmlLang: false` removes Vext's generated lang marker.
+With frontend.i18n.htmlLang enabled, `{vext.lang}` uses the effective request locale with an explicit options.locale taking priority. The page envelope carries that locale and browser navigation updates `<html lang>`. htmlLang:false removes the generated marker; navigation caches still use the envelope locale.
 
 ## Head and CSP Nonce
 

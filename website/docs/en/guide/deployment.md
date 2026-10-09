@@ -852,7 +852,7 @@ upstream vext_backend {
 }
 ```
 
-Vext Cluster reload does not update Master configuration, publish images, change a database schema or preserve every long connection. Current `sticky: "ip"` does not map client IPs to Workers. Do not depend on all Workers dying to make the Master exit and trigger a PM2 restart. Cover these limits with external health checks, capacity alarms and an explicit recovery procedure.
+Vext Cluster reload does not update Master configuration, publish images, change database schemas, or preserve every long connection. `sticky: "ip"` is deprecated and diagnoses its round-robin behavior; use external load-balancer affinity. With zero Workers and no pending replacement, the standard host records failed state, cleans its PID, and exits 1 for supervisor recovery. Remaining healthy Workers keep running, so monitor ready capacity and business health.
 
 ## Monitor alarms
 

@@ -13,7 +13,7 @@ npm start -- --port 3000
 
 Open `/article/interactive/intro` and `/article/intro` directly and check the full/none conditions below. Both original HTML responses should contain the article body and SEO title. The interactive route's button should increment its count; the other stays at `Clicks: 0`. Native GET forms and links should work in both. Inspect Console, Network, Elements, and Performance in browser developer tools; the final page merely appearing is not enough. Stop the service afterward.
 
-The following full-route checks assume SSR completed normally. If SSR is disabled, `clientOnly: true` is used, or an error causes client fallback, consult the [current empty-shell limitation](./csr-and-spa-fallback#current-limitation-of-an-empty-shell). React recovering the display does not mean the browser was error-free.
+The full-route checks below assume completed SSR. SSR-disabled, clientOnly, and client-fallback shells use createRoot; see [CSR mounting](./csr-and-spa-fallback#empty-shell-mounting-behavior). Both modes should have working interactions and no hydration errors.
 
 ## Default `full` route
 
@@ -58,13 +58,13 @@ These are intended for tests and diagnostics. They should stay quiet in producti
 
 ## Common Failures
 
-| Failure                                      | Likely cause                                                                                                       |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| JS 404 on a default route                    | Asset public path or static mount mismatch.                                                                        |
-| No `done` marker on a default route          | Client entry did not run or failed early.                                                                          |
-| Expecting `done` or preload on a `none` page | The test is applying default-policy signals to the wrong mode.                                                     |
-| Hydration mismatch                           | SSR/client output differs, or an empty shell still uses `hydrateRoot`; see the current limitation on the CSR page. |
-| Missing route preload on a default route     | Stale render manifest; rebuild before start.                                                                       |
+| Failure                                      | Likely cause                                                                                                            |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| JS 404 on a default route                    | Asset public path or static mount mismatch.                                                                             |
+| No `done` marker on a default route          | Client entry did not run or failed early.                                                                               |
+| Expecting `done` or preload on a `none` page | The test is applying default-policy signals to the wrong mode.                                                          |
+| Hydration mismatch                           | Inspect mountMode, SSR/client input, and matching build artifacts; CSR uses createRoot, completed SSR uses hydrateRoot. |
+| Missing route preload on a default route     | Stale render manifest; rebuild before start.                                                                            |
 
 ## When Maintaining This Repository's Docs
 

@@ -96,7 +96,7 @@ res.render(
 - feature flag 或 experiment
 - 数据版本
 
-如果 HTML 随 locale 变化，response cache 与 CDN cache 都要按 locale vary。
+如果 HTML 随 locale 变化，response cache 与 CDN cache 都要按实际语言隔离。前端 I18n 会合并语言探测涉及的 Vary；cookie、应用自定义 `req.locale` 或未体现在 URL/探测配置中的显式语言覆盖会 bypass frontend freshness 并使用 private/no-store。详见[多语言](./i18n)。
 
 路由响应缓存默认包含方法、规范化 URL 与所声明的 vary；不会自动加入业务用户、feature flag 或数据版本。可使用 `vary`、可信 `partitionKey` 或自定义 key，但自定义 key 会替换默认 URL 组合，须自行覆盖实际影响结果的入参。默认内部 key 格式和并发限制以[响应缓存指南](/zh/guide/cache)为准，不要从渲染 payload 猜出可删除的缓存 key。
 

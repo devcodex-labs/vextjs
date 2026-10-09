@@ -55,6 +55,8 @@ export interface VextRequest<
 
   /** URL 查询参数（已解析为键值对） */
   query: Record<string, string>;
+  /** 请求侧协商语言；请求元数据中间件填充，也可由应用覆盖。 */
+  locale?: string;
 
   /**
    * 请求体（由 body-parser 中间件负责填充）

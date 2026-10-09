@@ -14,6 +14,7 @@ import {
   type VextFrontendFreshnessResponse,
 } from "../../frontend/runtime/freshness.js";
 import { resolveFrontendConfig } from "../../frontend/tooling/config-resolver.js";
+import { resolveFrontendLocale } from "../../frontend/runtime/locale-resolution.js";
 import type { RouteOptions } from "../../types/app.js";
 import type { VextHeaders } from "../../types/headers.js";
 import type { VextMiddleware } from "../../types/middleware.js";
@@ -40,8 +41,14 @@ export function buildFrontendFreshnessMiddleware(
   if (freshness.mode === "dynamic") return undefined;
 
   const store = getFrontendFreshnessStore(options.rootDir);
+  const config = resolveFrontendConfig(options.config, {
+    rootDir: options.rootDir,
+    mode: options.mode,
+  });
   return async (req, res, next) => {
-    if (!isCacheableRequest(req) || isPrivateRequest(req)) {
+    const identity = resolveFrontendBuildIdentity(options);
+    const locale = resolveFrontendLocale(config.i18n, identity.locales, req);
+    if (!isCacheableRequest(req) || isPrivateRequest(req) || locale.noStore) {
       res.setHeader("Cache-Control", "private, no-store");
       res.setHeader("X-Vext-Freshness", "bypass");
       await next();
@@ -51,7 +58,8 @@ export function buildFrontendFreshnessMiddleware(
     const key = createRequestKey(
       req,
       freshness,
-      resolveFrontendBuildId(options),
+      identity.buildId,
+      locale.locale,
     );
     const read = await store.read(key);
     if (read.state === "fresh" && read.entry) {
@@ -63,7 +71,12 @@ export function buildFrontendFreshnessMiddleware(
       replay(res, read.entry, freshness, "stale");
       void store
         .singleFlight(key, async () => {
-          const captured = await captureRouteRender(res, next);
+          const captured = await captureRouteRender(
+            res,
+            next,
+            key.locale,
+            config.i18n.enabled,
+          );
           if (!captured) return undefined;
           return store.write({
             key,
@@ -77,7 +90,12 @@ export function buildFrontendFreshnessMiddleware(
     }
 
     const result = await store.singleFlight(key, async () => {
-      const captured = await captureRouteRender(res, next);
+      const captured = await captureRouteRender(
+        res,
+        next,
+        key.locale,
+        config.i18n.enabled,
+      );
       if (!captured) return undefined;
       return store.write({
         key,
@@ -112,6 +130,7 @@ function createRequestKey(
   req: VextRequest,
   freshness: VextRouteFreshnessIdentity,
   buildId: string,
+  locale: string,
 ): VextFrontendFreshnessKey {
   return {
     route: req.route || req.path,
@@ -121,11 +140,7 @@ function createRequestKey(
         left.localeCompare(right),
       ),
     ),
-    locale:
-      req.headers["x-vext-locale"] ??
-      req.cookie("locale") ??
-      req.headers["accept-language"]?.split(",")[0]?.trim() ??
-      "default",
+    locale,
     buildId,
     partition: "public",
     policy: {
@@ -140,24 +155,32 @@ function createRequestKey(
   };
 }
 
-function resolveFrontendBuildId(
+function resolveFrontendBuildIdentity(
   options: CreateFrontendFreshnessMiddlewareOptions,
-): string {
+): { buildId: string; locales: string[] } {
   const config = resolveFrontendConfig(options.config, {
     rootDir: options.rootDir,
     mode: options.mode,
   });
   const manifestPath = path.join(config.outDir, "render-manifest.json");
-  if (!existsSync(manifestPath)) return `unbuilt-${options.mode}`;
+  const fallback = { buildId: `unbuilt-${options.mode}`, locales: [] };
+  if (!existsSync(manifestPath)) return fallback;
   try {
     const manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as {
       buildId?: unknown;
+      i18n?: { locales?: Array<{ locale: string }> };
     };
-    return typeof manifest.buildId === "string" && manifest.buildId
-      ? manifest.buildId
-      : `unbuilt-${options.mode}`;
+    return {
+      buildId:
+        typeof manifest.buildId === "string" && manifest.buildId
+          ? manifest.buildId
+          : fallback.buildId,
+      locales: [
+        ...new Set((manifest.i18n?.locales ?? []).map((entry) => entry.locale)),
+      ],
+    };
   } catch {
-    return `unbuilt-${options.mode}`;
+    return fallback;
   }
 }
 
@@ -172,6 +195,8 @@ function freshnessTtlMs(
 async function captureRouteRender(
   res: VextResponse,
   next: () => Promise<void>,
+  locale: string,
+  i18nEnabled: boolean,
 ): Promise<VextFrontendFreshnessResponse | undefined> {
   const originalRender = res.render.bind(res);
   let captured: VextFrontendFreshnessResponse | undefined;
@@ -179,6 +204,33 @@ async function captureRouteRender(
     const result = res._captureFrontendRender?.(page, props, renderOptions);
     if (!result) {
       originalRender(page, props, renderOptions);
+      return;
+    }
+    const payload = (
+      result.payload as
+        | {
+            payload?: {
+              options?: { locale?: string };
+              cache?: { noStore?: boolean };
+            };
+          }
+        | undefined
+    )?.payload;
+    const cacheControl = Object.entries(result.headers).find(
+      ([name]) => name.toLowerCase() === "cache-control",
+    )?.[1];
+    if (
+      result.status >= 400 ||
+      payload?.cache?.noStore ||
+      /(?:private|no-store)/i.test(String(cacheControl ?? "")) ||
+      (i18nEnabled && payload?.options?.locale !== locale)
+    ) {
+      if (!res._isSent())
+        res._renderCached?.(result.payload, result.status, {
+          ...result.headers,
+          "Cache-Control": "private, no-store",
+          "X-Vext-Freshness": "bypass",
+        });
       return;
     }
     captured = result;

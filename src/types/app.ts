@@ -1005,7 +1005,7 @@ export interface VextClusterConfig {
   /** 进程标题前缀 @default 'vext' */
   titlePrefix: string;
 
-  /** 粘性会话模式 @default 'none' */
+  /** 默认 none；ip 是兼容保留值，使用 RR 并诊断，未实现 IP 粘性。@default 'none' */
   sticky: "none" | "ip";
 }
 
@@ -1117,7 +1117,16 @@ export interface VextDevConfig {
  *   - src/config/{env}.ts      — 环境覆盖（development / production / ...）
  *   - src/config/local.ts      — dev/test 本地层；生产不隐式加载，provider/CLI 后层仍可覆盖
  */
+export interface VextPluginConfig {
+  /** 每个插件 setup 的期限（毫秒），正整数，默认 30_000；修改需重启。 */
+  setupTimeout?: number;
+  /** 保留插件自定义配置。 */
+  [key: string]: unknown;
+}
+
 export interface VextConfig {
+  /** 插件初始化配置。 */
+  plugin?: VextPluginConfig;
   /** 应用独立的语言协商与消息目录配置。 */
   locale?: VextLocaleConfig;
   /** HTTP 监听端口（默认 3000） */

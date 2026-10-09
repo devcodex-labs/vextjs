@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import fg from "fast-glob";
+import fg from "../../lib/safe-glob.js";
 import { resolveFrameworkEntry } from "../../lib/consumer-resolver.js";
 import { detectProjectLanguage } from "../../lib/build/project-language.js";
 import { resolveBuildLocation } from "../../lib/build/build-location.js";

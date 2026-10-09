@@ -105,7 +105,7 @@ export default function PostPage(props: { params: { slug: string } }) {
 
 对运行时持久化的 freshness entry 使用 `mode: "revalidate"` 和正数秒级 `revalidate` 间隔。Vext 对并发刷新使用 single-flight、原子替换成功输出，并在刷新失败时保留 last-known-good 输出。该存储只复用公开 GET/HEAD 的 render payload，已认证或带 session 的请求绕过它。服务端可通过 `invalidateFrontendFreshness(rootDir, { tag })` 失效对应 tag；浏览器 `revalidate()` 则操作浏览器导航缓存，两者不要混用。缓存细节见 [Render Data 与缓存](/zh/frontend/render-data-and-cache)。
 
-`clientOnly: true` 保留 route、document、data 与 asset 行为，但不输出服务端 page body。这些策略不是 PPR。当前浏览器入口仍对空 body 使用 `hydrateRoot`，可能报告 mismatch 后恢复渲染，不能作为无错误的 CSR 能力通过验收；适用范围也包括关闭 SSR 和 buffered client fallback。当前推荐保留 SSR，具体限制及对照验证见 [CSR 与 SPA Fallback](/zh/frontend/csr-and-spa-fallback#空-shell-的当前限制)。
+`clientOnly: true` 保留 route、document、data 与 asset 行为，但不输出服务端 page body。这些策略不是 PPR。关闭 SSR、clientOnly 或 buffered client fallback 的结果使用 `createRoot`；成功 SSR 使用 `hydrateRoot`，包括合法的空 SSR。挂载行为与验证见 [CSR 与 SPA Fallback](/zh/frontend/csr-and-spa-fallback#空-shell-的挂载行为)。
 
 ## 纯服务端 HTML，不加载 Hydration
 

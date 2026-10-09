@@ -38,11 +38,13 @@ role: specification
 | static/revalidate/client-only | 路由声明和对应构建/运行产物                                                            | 不是任意响应自动缓存，也不保证跨进程共享内存                  |
 | 图片/字体处理                 | 本地输入和明确的media/deploy配置                                                       | 不默认下载远程图片或字体                                      |
 
-当前还需按以下已验证限制选择实现路径：
+选择实现路径时，核对以下已验证行为与保留边界：
 
-- [CSR 空 shell](./csr-and-spa-fallback#空-shell-的当前限制)的浏览器入口仍使用 hydrateRoot，可能报 mismatch 后恢复显示；不能作为无错误 CSR 验证通过，优先保留 shell SSR。
-- [CSS Modules](./styles-and-assets#css-modules)在默认生产 SSR 与浏览器构建间存在 class 命名不一致问题；当前 SSR 页面优先用普通 CSS 或 JSCSS。
-- [图片 import](./styles-and-assets#import-型资源)的 loader 只在浏览器构建侧配置；SSR 注册页面应使用 Public URL 或基于媒体清单的 Image，关闭运行时 SSR 不取消服务端 bundle 构建。
+- [CSR 空 shell](./csr-and-spa-fallback#空-shell-的挂载行为) 使用 createRoot；完成 SSR 的页面使用 hydrateRoot。
+- [CSS Modules](./styles-and-assets#css-modules) 在 SSR 与浏览器间共享类名、composes 与实际 CSS 产物。
+- [图片和字体 import](./styles-and-assets#import-型资源) 在 SSR 中复用浏览器的公开产物 URL，支持 inlineLimit 与 CDN 前缀。
+- 前端 I18n 的 inherit、detect、Vary 与导航语言已接入；`inject: "used"` 的组件级裁剪仍保留并诊断，详见[多语言](./i18n)。
+- 通用 `adapter.resolveBuildOptions` 已弃用且不会执行；使用 `build.client` / `build.server`，该字段计划在下一个破坏性版本移除。
 
 ## 路由与浏览器职责
 

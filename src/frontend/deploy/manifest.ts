@@ -1,8 +1,8 @@
 import { existsSync } from "node:fs";
 import { lstat, readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import fg from "fast-glob";
-import micromatch from "micromatch";
+import fg from "../../lib/safe-glob.js";
+import micromatch from "../../lib/safe-micromatch.js";
 import {
   normalizeSafeRelativePath,
   resolvePathInside,

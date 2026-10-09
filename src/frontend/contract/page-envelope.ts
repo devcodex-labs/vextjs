@@ -20,6 +20,10 @@ export interface VextPageEnvelopePageResultV1 {
   layouts: string[];
   head: VextRenderHeadOptions;
   assets: string[];
+  /** Effective language of this page, including navigation to another locale. */
+  locale?: string;
+  /** Explicit per-render messages, when the handler supplies an override. */
+  messages?: Record<string, unknown>;
 }
 
 export interface VextPageEnvelopeRedirectResultV1 {
@@ -73,7 +77,10 @@ export function isVextPageEnvelopeV1(
         value.result.layouts.every((item) => typeof item === "string") &&
         isRecord(value.result.head) &&
         Array.isArray(value.result.assets) &&
-        value.result.assets.every((item) => typeof item === "string")
+        value.result.assets.every((item) => typeof item === "string") &&
+        (value.result.locale === undefined ||
+          typeof value.result.locale === "string") &&
+        (value.result.messages === undefined || isRecord(value.result.messages))
       );
     case "redirect":
       return (
