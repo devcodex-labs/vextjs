@@ -320,7 +320,11 @@ describe("real IP sticky Cluster", () => {
     socket.write("GET / HTTP/1.1\r\nHost: localhost\r\n");
     socket.on("error", () => {});
     await new Promise((resolve) => setTimeout(resolve, 50));
-    const closed = once(socket, "close"),
+    // Forced teardown can produce ECONNRESET on Windows; the contract is that
+    // the connection closes and Master finishes normally, rather than a FIN.
+    const closed = new Promise<void>((resolve) =>
+        socket.once("close", () => resolve()),
+      ),
       exit = once(child, "exit");
     child.send({ type: "shutdown" });
     await closed;
