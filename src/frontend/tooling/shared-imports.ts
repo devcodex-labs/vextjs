@@ -1,7 +1,11 @@
 import path from "node:path";
 import { readFile } from "node:fs/promises";
 import * as esbuild from "esbuild";
-import { transform, type TransformResult } from "lightningcss";
+import {
+  transform,
+  type CSSModuleExport,
+  type TransformResult,
+} from "lightningcss";
 import type { ResolvedVextFrontendConfig } from "../contract/types.js";
 import { physicalPath } from "../../lib/path-boundary.js";
 import { evaluateGeneratedModule } from "../../lib/build/generated-module.js";
@@ -72,37 +76,51 @@ export class SharedFrontendImports {
             return undefined;
           }
           const compiled = await compile(args.path);
+          const exported = compiled.exports ?? {};
+          const moduleExports = Object.entries(exported);
+          // Lightning CSS's native binding assigns __proto__ as a prototype.
+          // Recover that export only when it has the actual CSS export shape.
+          const prototype = Object.getPrototypeOf(
+            exported,
+          ) as CSSModuleExport | null;
+          if (
+            !Object.hasOwn(exported, "__proto__") &&
+            prototype &&
+            Object.hasOwn(prototype, "name") &&
+            typeof prototype.name === "string" &&
+            Array.isArray(prototype.composes) &&
+            typeof prototype.isReferenced === "boolean"
+          ) {
+            moduleExports.push(["__proto__", prototype]);
+          }
           const imports: string[] = browser
             ? [`import ${JSON.stringify(`vext-compiled-css:${args.path}`)};`]
             : [];
           const dependencies = new Map<string, string>();
-          const entries = Object.entries(compiled.exports ?? {}).map(
-            ([key, value]) => {
-              const names = [JSON.stringify(value.name)];
-              for (const reference of value.composes) {
-                if (reference.type !== "dependency") {
-                  names.push(JSON.stringify(reference.name));
-                } else {
-                  let variable = dependencies.get(reference.specifier);
-                  if (!variable) {
-                    variable = `dependency${dependencies.size}`;
-                    dependencies.set(reference.specifier, variable);
-                    imports.push(
-                      `import ${variable} from ${JSON.stringify(reference.specifier)};`,
-                    );
-                  }
-                  names.push(`${variable}[${JSON.stringify(reference.name)}]`);
+          const entries = moduleExports.map(([key, value]) => {
+            const names = [JSON.stringify(value.name)];
+            for (const reference of value.composes) {
+              if (reference.type !== "dependency") {
+                names.push(JSON.stringify(reference.name));
+              } else {
+                let variable = dependencies.get(reference.specifier);
+                if (!variable) {
+                  variable = `dependency${dependencies.size}`;
+                  dependencies.set(reference.specifier, variable);
+                  imports.push(
+                    `import ${variable} from ${JSON.stringify(reference.specifier)};`,
+                  );
                 }
+                names.push(`${variable}[${JSON.stringify(reference.name)}]`);
               }
-              return `${JSON.stringify(key)}: [${names.join(",")}].join(" ")`;
-            },
-          );
+            }
+            return `[${JSON.stringify(key)}]: [${names.join(",")}].join(" ")`;
+          });
           return {
-            contents: `${imports.join("\n")}\nconst classes = {${entries.join(",")}};\nexport default classes;\n${Object.keys(
-              compiled.exports ?? {},
-            )
+            contents: `${imports.join("\n")}\nconst classes = {${entries.join(",")}};\nexport default classes;\n${moduleExports
+              .filter(([key]) => key !== "default")
               .map(
-                (key, index) =>
+                ([key], index) =>
                   `const class${index} = classes[${JSON.stringify(key)}]; export { class${index} as ${JSON.stringify(key)} };`,
               )
               .join("\n")}`,

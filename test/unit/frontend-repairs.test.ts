@@ -78,7 +78,7 @@ beforeAll(async () => {
   );
   await write(
     "src/frontend/styles/a/card.module.css",
-    '@import "./base.module.css"; .card { composes: base from "./base.module.css"; composes: global-card from global; color: red; } :global(.global-card) { border-width: 3px; }',
+    '@import "./base.module.css"; .card { composes: base from "./base.module.css"; composes: global-card from global; color: red; } :global(.global-card) { border-width: 3px; } .default {font-weight:700} .__proto__ {padding-top:7px}',
   );
   await write(
     "src/frontend/styles/b/card.module.css",
@@ -101,7 +101,7 @@ export default function Page(props) {
   if (props.fail && typeof window === "undefined") throw new Error("SSR probe failure");
   if (props.delay && typeof window === "undefined") { const until = Date.now() + props.delay; while (Date.now() < until) {} }
   const messages = useVextI18n();
-  return <main className={a.card} data-font={font} data-error-export={typeof VextPageResultError}><h1>{messages.title}</h1><img src={logo}/><aside className={b.card}>Other</aside></main>;
+  return <main className={a.card} data-font={font} data-error-export={typeof VextPageResultError}><h1>{messages.title}</h1><img src={logo}/><aside className={b.card}>Other</aside><span id="special" className={[a.default,a.__proto__].join(" ")}>Special</span></main>;
 }`,
   );
   await write("src/frontend/locales/en-US.json", '{"title":"Hello"}');
@@ -146,6 +146,11 @@ describe("frontend consumer repairs", () => {
     for (const name of classes) expect(css).toContain(`.${name}`);
     expect(css).toContain(`.${other}`);
     expect(classes).not.toContain(other);
+    const special = /<span id="special" class="([^"]+)"/
+      .exec(rendered.html)![1]!
+      .split(" ");
+    expect(special).toHaveLength(2);
+    for (const name of special) expect(css).toContain(`.${name}`);
     expect(rendered.html).toContain('data-error-export="function"');
     expect(rendered.payload.mountMode).toBe("server");
   });

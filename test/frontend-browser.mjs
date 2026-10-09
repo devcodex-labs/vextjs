@@ -96,7 +96,7 @@ export default defineRoutes(app => {
   );
   await write(
     "src/frontend/styles/card.module.css",
-    '.card { composes: base from "./base.module.css"; color: rgb(255, 0, 0); }',
+    '.card { composes: base from "./base.module.css"; color: rgb(255, 0, 0); } .default { font-weight: 700; } .__proto__ { padding-top: 7px; }',
   );
   await write(
     "src/frontend/components/card.module.css",
@@ -126,6 +126,7 @@ export default function Page(props) {
   useEffect(() => { document.body.dataset.hydrated = "yes"; }, []);
   return <main className={styles.card}><h1>{messages.title}</h1><p id="path">{props.path}</p>
     <img src={logo} alt="logo"/><aside className={other.card}>Other</aside>
+    <span id="special" className={[styles.default, styles.__proto__].join(" ")}>Special</span>
     <button id="counter" onClick={() => setCount(count+1)}>Count {count}</button>
     <Link id="next" href="/app/next?locale=zh-CN">Next language</Link>
     <Link id="custom" href="/app/messages?locale=en-US">Custom messages</Link>
@@ -183,6 +184,13 @@ export default function Page(props) {
       "rgb(0, 128, 0)",
     );
     assert.equal(await page.locator("[data-layout]").count(), 0);
+    assert.deepEqual(
+      await page.locator("#special").evaluate((node) => ({
+        weight: getComputedStyle(node).fontWeight,
+        padding: getComputedStyle(node).paddingTop,
+      })),
+      { weight: "700", padding: "7px" },
+    );
     assert.equal(
       await page
         .locator("img")

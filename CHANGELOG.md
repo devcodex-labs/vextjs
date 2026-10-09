@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Share CSS Module class/composes mappings and imported asset URLs between browser and SSR builds, including inlining and CDN prefixes. Mount client shells with `createRoot`, preserve empty completed SSR for hydration, export browser page errors, and honor the global layout default.
+- Share CSS Module class/composes mappings and imported asset URLs between browser and SSR builds, including `default`/`__proto__` class names, inlining, and CDN prefixes. Mount client shells with `createRoot`, preserve empty completed SSR for hydration, export browser page errors, and honor the global layout default.
 - Resolve frontend locales consistently across request inheritance, ordered detection, render payloads, navigation, HTML language, Vary, and freshness keys; bypass public caching for private or mismatched locale results. Diagnose the remaining `inject: "used"` component-trimming limitation.
 - Apply plugin setup deadlines to development, production, and testing, and clean failed test startup. Exit standard Cluster hosts with code 1, diagnostic state, and PID cleanup after terminal capacity loss while retaining healthy Workers and pending recovery.
 - Serve generated sitemap/robots with the shared XML/text MIME mapping and reject disguised SVG media before raster decoding.
