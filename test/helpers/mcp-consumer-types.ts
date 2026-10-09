@@ -72,11 +72,20 @@ export function checkMcpConsumerTypes(
     options,
     host,
   );
-  // 框架源码另有本仓库 tsc；这里检查真实框架/依赖类型下的全部候选，不伪造声明桩。
-  return ts
-    .getPreEmitDiagnostics(program)
-    .filter(
-      (diagnostic) =>
-        !diagnostic.file || files.has(normalize(diagnostic.file.fileName)),
-    );
+  // 框架源码另有本仓库 tsc。只检查全部候选的语法与语义，同时保留
+  // 真实 import 图用于类型解析；不要先检查整套框架实现再丢弃其诊断。
+  const candidates = program
+    .getSourceFiles()
+    .filter((file) => files.has(normalize(file.fileName)));
+  return [
+    ...program.getOptionsDiagnostics(),
+    ...program.getGlobalDiagnostics(),
+    ...candidates.flatMap((file) => [
+      ...program.getSyntacticDiagnostics(file),
+      ...program.getSemanticDiagnostics(file),
+    ]),
+  ].filter(
+    (diagnostic) =>
+      !diagnostic.file || files.has(normalize(diagnostic.file.fileName)),
+  );
 }
