@@ -239,7 +239,7 @@ CLI 向 Master 发送 SIGHUP 后即返回；发送成功不等于所有 Worker �
 滚动替换不重新创建 Master。Worker 数量、Master 心跳/退避配置以及启动时取得的 provider patch 等不会因发送信号就整体刷新；修改这些设置应重新启动完整服务，并按部署流程切换流量。
 
 :::warning 平台与构建条件
-Windows 不支持当前 `vext reload` 的信号操作，命令会失败。TypeScript 应先成功构建可用产物，再执行部署更新。省略 `cluster.reload` 使用默认等待参数，并不禁用 reload。代码、配置和产物的更新方式需保证旧、新 Worker 都能读取一致版本。
+Windows 不支持当前 `vext reload` 的信号操作，命令会失败。TypeScript 应先成功构建可用产物，再执行部署更新。省略 `cluster.reload` 不会禁用滚动重启，框架仍使用默认等待参数。代码、配置和产物的更新方式需保证旧、新 Worker 都能读取一致版本。
 :::
 
 ### `vext status` — 查看状态

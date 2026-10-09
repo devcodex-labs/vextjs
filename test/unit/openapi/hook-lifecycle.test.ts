@@ -88,8 +88,8 @@ describe("OpenAPI hook lifecycle", () => {
       "`openapi:afterGenerate` must also return patches synchronously",
     );
     expect(zhHooks).toContain("同步生命周期，不允许返回 Promise");
-    expect(enHooks).toContain(
-      "Synchronous life cycle, return of Promise is not allowed",
+    expect(enHooks).toMatch(
+      /synchronous events[^.\n]*reject Promise returns/iu,
     );
   });
 });

@@ -565,7 +565,7 @@ app.get(
 );
 ```
 
-Use `auth: { security: "bearerAuth" }` to choose a scheme explicitly. If `auth.security` is absent and `required: false` has no roles, scopes, permissions, or `check`, the Auth contract projects OpenAPI `security: []`. Otherwise, the explicit scheme takes priority and the fallback is `bearerAuth`. Roles, scopes, permissions, or `check` still require authentication at runtime; `auth.security` alone only affects documentation. Higher-priority `docs.security` can override the documentation result without changing runtime checks. `config.openapi.guardSecurityMap` remains for legacy middleware-only routes, not as the main path for new Auth examples.
+Use `auth: { security: "bearerAuth" }` to choose a scheme explicitly. If `auth.security` is absent, `auth: { required: false }` without roles, scopes, permissions, or `check` projects OpenAPI `security: []`. Otherwise, the explicit scheme takes priority and the fallback is `bearerAuth`. Roles, scopes, permissions, or `check` still require authentication at runtime; `auth.security` alone only affects documentation. Higher-priority `docs.security` can override the documentation result without changing runtime checks. `config.openapi.guardSecurityMap` remains for legacy middleware-only routes, not as the main path for new Auth examples.
 
 #### Keep runtime authorization, OpenAPI security, and Docs access separate
 

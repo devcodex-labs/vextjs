@@ -8,8 +8,8 @@ import type {
 import { isImmutableFrontendBundleAsset } from "../asset-cache-policy.js";
 import {
   normalizeSafeRelativePath,
+  physicalPath,
   resolvePathInside,
-  assertRealPathInside,
 } from "../../lib/path-boundary.js";
 import { getFrontendContentType } from "./content-type.js";
 import { createSha256, createSriSha256 } from "./integrity.js";
@@ -165,12 +165,7 @@ export async function validateFrontendDeployManifest(
       "[vextjs] frontend deploy manifest and public manifest belong to different builds. Run vext build again.",
     );
   const publicFiles = new Set(publicManifest.files);
-  const realRoot = assertRealPathInside(
-    config.outDir,
-    config.outDir,
-    "frontend output",
-    true,
-  );
+  const realRoot = physicalPath(config.outDir);
   for (let index = 0; index < manifest.assets.length; index += 1) {
     const asset = manifest.assets[index]!;
     if (!publicFiles.has(asset.file) || asset.file === "index.html") {
@@ -184,8 +179,11 @@ export async function validateFrontendDeployManifest(
       `frontend deploy manifest asset[${index}].file`,
       { realpath: true },
     );
+    const realSourcePath = physicalPath(sourcePath);
     if (
-      !publicFiles.has(path.relative(realRoot, sourcePath).replace(/\\/g, "/"))
+      !publicFiles.has(
+        path.relative(realRoot, realSourcePath).replace(/\\/g, "/"),
+      )
     ) {
       throw new Error(
         `[vextjs] frontend deploy asset resolves to a private file: ${asset.file}`,

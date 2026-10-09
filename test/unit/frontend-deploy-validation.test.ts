@@ -1,4 +1,11 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -13,6 +20,7 @@ import {
 } from "../../src/frontend/deploy/integrity.js";
 import { getFrontendContentType } from "../../src/frontend/deploy/content-type.js";
 import { deployFrontendAssets } from "../../src/frontend/deploy/uploader.js";
+import { validateFrontendDeployManifest } from "../../src/frontend/deploy/manifest-validator.js";
 import { resolveFrontendConfig } from "../../src/frontend/tooling/config-resolver.js";
 
 const tempDirs: string[] = [];
@@ -24,6 +32,29 @@ afterEach(async () => {
 });
 
 describe("frontend deploy manifest validation", () => {
+  it.each(["ordinary", "directory alias"])(
+    "accepts declared public assets from an %s output root",
+    async (kind) => {
+      const fixture = await createFixture();
+      let outDir = fixture.config.outDir;
+      if (kind === "directory alias") {
+        outDir = path.join(fixture.rootDir, "client-alias");
+        await symlink(
+          fixture.config.outDir,
+          outDir,
+          process.platform === "win32" ? "junction" : "dir",
+        );
+      }
+
+      await expect(
+        validateFrontendDeployManifest(fixture.manifest, {
+          ...fixture.config,
+          outDir,
+        }),
+      ).resolves.toEqual(fixture.manifest);
+    },
+  );
+
   it("rejects an otherwise valid private file before invoking the upload adapter", async () => {
     const fixture = await createFixture();
     // Removing the public declaration leaves valid bytes/hash/path metadata.

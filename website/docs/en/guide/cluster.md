@@ -239,7 +239,7 @@ If a new Worker fails to start, the old Worker remains and failure is recorded w
 Reload does not recreate the Master. Worker count, Master heartbeat/backoff settings, and the provider patch captured at startup do not all refresh on a signal. Restart the complete service and shift traffic according to your deployment process when these settings change.
 
 :::warning Prerequisites
-Windows does not support this reload signal operation; the command fails. Build valid TypeScript artifacts before deploying an update. Omitting `cluster.reload` uses default waits rather than disabling reload. Update code, config, and artifacts so old and new Workers can each read a consistent version.
+Windows does not support this reload signal operation; the command fails. Build valid TypeScript artifacts before deploying an update. Omitting `cluster.reload` does not disable rolling restart; the framework uses the default waits. Update code, config, and artifacts so old and new Workers can each read a consistent version.
 :::
 
 ### `vext status` — View status
@@ -523,7 +523,7 @@ Start with a controlled count, then adjust using CPU, memory, response latency, 
 
 ### How to monitor the status of each Worker?
 
-Use `vext status` to view the Master PID, PID file state, and single health endpoint details when `/health` is reachable. The current command does not emit a table for each Worker or per-worker request counts; production environments should use Prometheus or another monitoring system for richer multi-worker metrics.
+Use `vext status` to view the Master PID, PID file state, and single health endpoint details when `/health` is reachable. The current command does not print a worker table or per-worker request counts; production environments should use Prometheus or another monitoring system for richer multi-worker metrics.
 
 ### How is it different from PM2?
 

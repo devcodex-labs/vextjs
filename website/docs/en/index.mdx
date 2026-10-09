@@ -266,8 +266,9 @@ export const docsHref = (path) => `${basePath}${path}`;
       <div className="vext-adapter-row">
         <strong>Koa</strong>
         <span>
-          Supports onion-model flow; verify how existing Koa middleware
-          integrates.
+          {
+            "Supports onion-model flow; verify how existing Koa middleware integrates."
+          }
         </span>
         <em>flow</em>
       </div>
@@ -294,14 +295,17 @@ export const docsHref = (path) => `${basePath}${path}`;
       <div className="vext-signal">
         <strong>Rate Limit</strong>
         <span>
-          Disabled by default; after enabling it, verify quotas and storage
-          failures.
+          {
+            "Disabled by default; after enabling it, verify quotas and storage failures."
+          }
         </span>
       </div>
       <div className="vext-signal">
         <strong>Graceful</strong>
         <span>
-          Waits for requests and resource cleanup within the shutdown budget.
+          {
+            "Waits for requests and resource cleanup within the shutdown budget."
+          }
         </span>
       </div>
       <div className="vext-signal">

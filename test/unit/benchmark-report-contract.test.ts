@@ -118,12 +118,21 @@ describe("benchmark report semantics", () => {
       "../benchmark.html#%E5%AE%8C%E6%95%B4%E6%AD%A3%E5%BC%8F%E6%A0%B7%E6%9C%AC",
     );
     expect(siteConfig).toContain('link: "/benchmark.html"');
-    expect(en).not.toContain(
-      "github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md",
+    // Historical evidence may link to the repository report, but the formal
+    // sample itself must stay on this page rather than redirect readers there.
+    for (const page of [en, zh]) {
+      expect(page).toContain("<!-- benchmark-details:end -->");
+      const formalSample = page
+        .split("<!-- benchmark-details:start -->")[1]!
+        .split("<!-- benchmark-details:end -->")[0]!;
+      expect(formalSample).not.toContain(
+        "github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md",
+      );
+    }
+    expect(en).toContain(
+      "lacks the original `adapter-matrix-formal-release.json`",
     );
-    expect(zh).not.toContain(
-      "github.com/devcodex-labs/vextjs/blob/main/test/benchmark/RESULTS.md",
-    );
+    expect(zh).toContain("没有原始 adapter-matrix-formal-release.json");
     expect(generator).toContain(
       "Website benchmark results require a clean-source formal artifact",
     );
@@ -206,9 +215,9 @@ describe("benchmark report semantics", () => {
     ];
 
     expect(enHome).toContain(
-      "Understand current results, methodology, and adapter tradeoffs",
+      "Read the historical sample, method, and adapter tradeoffs",
     );
-    expect(zhHome).toContain("理解当前性能、测试口径与 Adapter 取舍");
+    expect(zhHome).toContain("阅读历史样本、测试口径与 Adapter 取舍");
 
     for (const page of relatedPages) {
       for (const stale of [

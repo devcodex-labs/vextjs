@@ -693,18 +693,23 @@ describe("registerDocsEndpoints", () => {
     const zhGuide = readRepoFile("website/docs/zh/guide/configuration.md");
     const enGuide = readRepoFile("website/docs/en/guide/configuration.md");
 
-    expect(zhApi).toContain(
-      "| `scalar`                        | `object`                                  | `undefined`",
-    );
-    expect(enApi).toContain(
-      "| `scalar`                        | `object`                                  | `undefined`",
-    );
-    expect(zhGuide).toContain(
-      "| `openapi.scalar`                        | `object`                 | `undefined`",
-    );
-    expect(enGuide).toContain(
-      "| `openapi.scalar`                        | `object`                 | `undefined`",
-    );
+    for (const [doc, field] of [
+      [zhApi, "`scalar`"],
+      [enApi, "`scalar`"],
+      [zhGuide, "`openapi.scalar`"],
+      [enGuide, "`openapi.scalar`"],
+    ]) {
+      const row = doc!
+        .split(/\r?\n/u)
+        .map((line) =>
+          line
+            .split("|")
+            .slice(1, -1)
+            .map((cell) => cell.trim()),
+        )
+        .find((cells) => cells[0] === field);
+      expect(row?.slice(0, 3)).toEqual([field, "`object`", "`undefined`"]);
+    }
     expect(zhApi).toContain("仅显式配置时触发 warning");
     expect(enApi).toContain(
       "only triggers a warning when explicitly configured",

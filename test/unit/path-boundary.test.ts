@@ -7,6 +7,7 @@ import {
   assertSafeProjectOutputDirectory,
   isPathInside,
   normalizeSafeRelativePath,
+  physicalPath,
   resolvePathInside,
 } from "../../src/lib/path-boundary.js";
 
@@ -94,6 +95,52 @@ describe("path boundary", () => {
         realpath: true,
       }),
     ).toThrow("symbolic links");
+    expect(() =>
+      artifactRelativePath(
+        rootDir,
+        path.join(rootDir, "linked", "secret.txt"),
+        true,
+      ),
+    ).toThrow("symbolic links");
+  });
+
+  it("keeps artifact references relative through a project directory alias", async () => {
+    const rootDir = await tempRoot();
+    const parentDir = await tempRoot();
+    const alias = path.join(parentDir, "project");
+    await mkdir(path.join(rootDir, ".vext", "client"), { recursive: true });
+    await symlink(
+      rootDir,
+      alias,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+
+    expect(
+      artifactRelativePath(alias, path.join(alias, ".vext", "client"), true),
+    ).toBe(".vext/client");
+    expect(
+      artifactRelativePath(alias, path.join(rootDir, ".vext", "client"), true),
+    ).toBe(".vext/client");
+    expect(
+      artifactRelativePath(
+        alias,
+        path.join(alias, ".vext", "generated", "next"),
+        true,
+      ),
+    ).toBe(".vext/generated/next");
+  });
+
+  it("keeps absolute references only for explicit external artifact outputs", async () => {
+    const rootDir = await tempRoot();
+    const outsideDir = await tempRoot();
+    const target = path.join(outsideDir, "generated");
+
+    expect(artifactRelativePath(rootDir, target, true)).toBe(
+      physicalPath(target).replaceAll("\\", "/"),
+    );
+    expect(() => artifactRelativePath(rootDir, target)).toThrow(
+      /path segments/iu,
+    );
   });
 
   it.runIf(process.platform === "win32")(

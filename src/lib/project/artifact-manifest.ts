@@ -103,9 +103,15 @@ export function artifactRelativePath(
   allowExternal = false,
 ): string {
   const resolvedRoot = physicalPath(root);
-  const resolvedTarget = path.resolve(target);
+  const candidate = path.resolve(target);
+  // An internal junction must not become an allowed external output merely
+  // because resolving its target changes the path identity.
+  if (isPathInside(root, candidate, true)) {
+    assertRealPathInside(root, candidate, "artifact path", true);
+  }
+  const resolvedTarget = physicalPath(candidate);
   if (allowExternal && !isPathInside(resolvedRoot, resolvedTarget, true)) {
-    const reference = physicalPath(resolvedTarget).replaceAll("\\", "/");
+    const reference = resolvedTarget.replaceAll("\\", "/");
     artifactPath(resolvedRoot, reference, true);
     return reference;
   }
