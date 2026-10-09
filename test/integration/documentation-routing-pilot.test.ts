@@ -34,7 +34,7 @@ async function example(page: string, file: string): Promise<string> {
   return block[1];
 }
 
-function checkTypeScript(sourceFile: string, label: string) {
+function checkTypeScript(sourceFiles: string[], label: string) {
   const config = ts.readConfigFile(
     path.join(root, "tsconfig.json"),
     ts.sys.readFile,
@@ -43,7 +43,7 @@ function checkTypeScript(sourceFile: string, label: string) {
     config.config.compilerOptions,
     root,
   );
-  const program = ts.createProgram([sourceFile], {
+  const program = ts.createProgram(sourceFiles, {
     ...compilerOptions.options,
     rootDir: root,
     declaration: false,
@@ -64,51 +64,65 @@ function checkTypeScript(sourceFile: string, label: string) {
   ).toBe("");
 }
 
-async function writeExample(project: string, page: string, file: string) {
-  const source = await example(page, file);
+async function writeExamples(project: string, page: string, files: string[]) {
   const sourceRoot = path.join(project, "source-contract");
-  const sourceFile = path.join(sourceRoot, file);
-  await mkdir(path.dirname(sourceFile), { recursive: true });
-  await writeFile(sourceFile, source, "utf8");
-  checkTypeScript(sourceFile, `${page}: ${file}`);
-  if (file.startsWith("src/routes/")) {
-    const routes = await buildRouteIndex(sourceRoot);
-    expect(
-      routes.some(
-        (route) => route.fileRelativePath.replaceAll("\\", "/") === file,
-      ),
-      `${file} must be statically indexable`,
-    ).toBe(true);
+  const sources = [];
+  for (const file of files) {
+    const source = await example(page, file);
+    const sourceFile = path.join(sourceRoot, file);
+    await mkdir(path.dirname(sourceFile), { recursive: true });
+    await writeFile(sourceFile, source, "utf8");
+    sources.push({ file, source, sourceFile });
   }
-  await build({
-    stdin: {
-      contents: source,
-      loader: "ts",
-      resolveDir: root,
-    },
-    outfile: path.join(project, file.replace(/\.ts$/, ".mjs")),
-    bundle: true,
-    platform: "node",
-    format: "esm",
-    packages: "external",
-    plugins: [
-      {
-        name: "current-framework-source",
-        setup(builder) {
-          builder.onResolve({ filter: /^vextjs$/ }, () => ({
-            path: path.join(
-              root,
-              file.includes("/middlewares/")
-                ? "src/lib/define-middleware.ts"
-                : "src/lib/define-routes.ts",
-            ),
-          }));
-        },
+  // Check the complete documented app once, including cross-file imports.
+  // Recreating the framework's type graph for every fragment is expensive
+  // under coverage and can exhaust the integration test's runtime budget.
+  checkTypeScript(
+    sources.map(({ sourceFile }) => sourceFile),
+    page,
+  );
+  const routeFiles = files.filter((file) => file.startsWith("src/routes/"));
+  if (routeFiles.length > 0) {
+    const routes = await buildRouteIndex(sourceRoot);
+    for (const file of routeFiles) {
+      expect(
+        routes.some(
+          (route) => route.fileRelativePath.replaceAll("\\", "/") === file,
+        ),
+        `${file} must be statically indexable`,
+      ).toBe(true);
+    }
+  }
+  for (const { file, source } of sources)
+    await build({
+      stdin: {
+        contents: source,
+        loader: "ts",
+        resolveDir: root,
       },
-    ],
-  });
-  // Runtime loading sees one compiled entry; the TS source already passed indexing.
-  await rm(sourceFile);
+      outfile: path.join(project, file.replace(/\.ts$/, ".mjs")),
+      bundle: true,
+      platform: "node",
+      format: "esm",
+      packages: "external",
+      plugins: [
+        {
+          name: "current-framework-source",
+          setup(builder) {
+            builder.onResolve({ filter: /^vextjs$/ }, () => ({
+              path: path.join(
+                root,
+                file.includes("/middlewares/")
+                  ? "src/lib/define-middleware.ts"
+                  : "src/lib/define-routes.ts",
+              ),
+            }));
+          },
+        },
+      ],
+    });
+  // Runtime loading sees only compiled entries; all TS sources passed indexing.
+  await rm(sourceRoot, { recursive: true, force: true });
 }
 
 describe("Chinese routing documentation executable examples", () => {
@@ -133,7 +147,7 @@ describe("Chinese routing documentation executable examples", () => {
         `import type { RouteOptions } from "vextjs";\n${block}\ndeclare let documented: VextRouteFrontendOptions;\ndeclare let actual: NonNullable<RouteOptions["frontend"]>;\ndocumented = actual;\nactual = documented;\nconst readonlyOptions = { tags: ["public"], staticParams: [{ id: 1 }] } as const;\nconst accepted: VextRouteFrontendOptions = readonlyOptions;\n`,
         "utf8",
       );
-      checkTypeScript(file, "Reference frontend type");
+      checkTypeScript([file], "Reference frontend type");
     } finally {
       await rm(project, { recursive: true, force: true });
     }
@@ -178,11 +192,9 @@ describe("Chinese routing documentation executable examples", () => {
     const project = await mkdtemp(path.join(cache, "docs-errors-"));
     let app: Awaited<ReturnType<typeof createTestApp>> | undefined;
     try {
-      await writeExample(
-        project,
-        "guide/error-handling.md",
+      await writeExamples(project, "guide/error-handling.md", [
         "src/routes/error-demo.ts",
-      );
+      ]);
       app = await createTestApp({
         rootDir: project,
         services: false,
@@ -230,12 +242,10 @@ describe("Chinese routing documentation executable examples", () => {
     const project = await mkdtemp(path.join(cache, "docs-reference-"));
     let app: Awaited<ReturnType<typeof createTestApp>> | undefined;
     try {
-      for (const file of [
+      await writeExamples(project, "api/route-definition.md", [
         "src/routes/binding-demo.ts",
         "src/routes/cache-demo.ts",
-      ]) {
-        await writeExample(project, "api/route-definition.md", file);
-      }
+      ]);
       app = await createTestApp({
         rootDir: project,
         services: false,
@@ -262,14 +272,12 @@ describe("Chinese routing documentation executable examples", () => {
     const project = await mkdtemp(path.join(cache, "docs-middleware-"));
     let app: Awaited<ReturnType<typeof createTestApp>> | undefined;
     try {
-      for (const file of [
+      await writeExamples(project, "guide/middleware.md", [
         "src/middlewares/audit-log.ts",
         "src/middlewares/response-label.ts",
         "src/config/default.ts",
         "src/routes/middleware-demo.ts",
-      ]) {
-        await writeExample(project, "guide/middleware.md", file);
-      }
+      ]);
       const { default: config } = await import(
         pathToFileURL(path.join(project, "src/config/default.mjs")).href
       );
@@ -294,11 +302,9 @@ describe("Chinese routing documentation executable examples", () => {
     const project = await mkdtemp(path.join(cache, "docs-routing-"));
     let app: Awaited<ReturnType<typeof createTestApp>> | undefined;
     try {
-      await writeExample(
-        project,
-        "guide/routing.md",
+      await writeExamples(project, "guide/routing.md", [
         "src/routes/route-demo.ts",
-      );
+      ]);
       app = await createTestApp({
         rootDir: project,
         services: false,
