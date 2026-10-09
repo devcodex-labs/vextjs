@@ -52,6 +52,8 @@ import {
   assertPathInside,
   assertRealPathInside,
   assertExplicitOutputDirectory,
+  isPathInside as isPathInsideBoundary,
+  physicalPath,
 } from "../../lib/path-boundary.js";
 
 export interface BuildFrontendClientOptions {
@@ -800,8 +802,7 @@ function toPublicAssetPath(
   config: ResolvedVextFrontendConfig,
   filePath: string,
 ): string {
-  const absolute = path.resolve(filePath);
-  const relative = path.relative(config.outDir, absolute).replace(/\\/g, "/");
+  const relative = toProjectRelativePath(config.outDir, filePath);
   return joinPublicPath(getAssetBase(config), relative);
 }
 
@@ -848,16 +849,13 @@ function resolveFrontendNodePaths(rootDir: string): string[] {
 }
 
 function toProjectRelativePath(baseDir: string, filePath: string): string {
-  return path.relative(baseDir, filePath).replace(/\\/g, "/");
+  return path
+    .relative(physicalPath(baseDir), physicalPath(filePath))
+    .replace(/\\/g, "/");
 }
 
 function isPathInside(filePath: string, parentDir: string): boolean {
-  const relative = path.relative(parentDir, filePath);
-  return (
-    Boolean(relative) &&
-    !relative.startsWith("..") &&
-    !path.isAbsolute(relative)
-  );
+  return isPathInsideBoundary(physicalPath(parentDir), physicalPath(filePath));
 }
 
 function createBuildId(input: {

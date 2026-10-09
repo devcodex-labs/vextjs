@@ -1010,13 +1010,22 @@ describe("frontend client build", () => {
     ).toThrow(/local font source/u);
   });
 
-  it.each([false, true])(
+  it.each([false, true, "directory alias"] as const)(
     "injects bundled CSS and entry script and binds the public manifest (external=%s)",
     async (external) => {
       const rootDir = await tempRoot();
-      const output = external
+      let output = external
         ? path.join(await tempRoot(), "client")
         : path.join(rootDir, "dist/client");
+      if (external === "directory alias") {
+        const alias = path.join(await tempRoot(), "output-alias");
+        await symlink(
+          path.dirname(output),
+          alias,
+          process.platform === "win32" ? "junction" : "dir",
+        );
+        output = path.join(alias, "client");
+      }
       const identity = await beginBuild(
         rootDir,
         path.join(rootDir, "dist"),
