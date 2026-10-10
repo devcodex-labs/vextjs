@@ -143,11 +143,12 @@ jobs:
 
   # 在进入发布并发组前跳过旧 CI 的迟到构建。
   prepare-deployment:
-    name: Check deployment commit
+    name: Check deployment prerequisites
     runs-on: ubuntu-latest
     needs: build
     outputs:
       current: ${{ steps.current.outputs.publish }}
+      organization_ready: ${{ steps.organization.outputs.ready }}
     steps:
       - name: Check current main commit
         id: current
@@ -161,6 +162,20 @@ jobs:
           else
             echo "Skipping superseded build: $DEPLOY_SHA (main is $CURRENT_SHA)"
             echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check organization deployment setup
+        id: organization
+        if: steps.current.outputs.publish == 'true'
+        env:
+          DOCS_DEPLOY_KEY: ${{ secrets.VEXT_DOCS_DEPLOY_KEY }}
+        shell: bash
+        run: |
+          if [[ -n "$DOCS_DEPLOY_KEY" ]]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping organization Pages publication until VEXT_DOCS_DEPLOY_KEY is configured."
           fi
 
   # 原源码仓库 Pages 保留官方 Actions 发布流程，与组织站点并行。
@@ -206,7 +221,9 @@ jobs:
     name: Publish to vextjs.github.io
     runs-on: ubuntu-latest
     needs: prepare-deployment
-    if: needs.prepare-deployment.outputs.current == 'true'
+    if: >-
+      needs.prepare-deployment.outputs.current == 'true' &&
+      needs.prepare-deployment.outputs.organization_ready == 'true'
 
     # 只串行化已通过构建且仍对应 main 的发布，不中断正在进行的 Git 推送。
     concurrency:
