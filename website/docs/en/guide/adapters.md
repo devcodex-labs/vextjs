@@ -541,6 +541,16 @@ The current Hono Adapter is a Node.js runtime capability: it receives requests t
 | Response still shows old name        | Check environment override, working directory, and old process; rebuild/start                                    | Recheck four requests and actual port                     |
 | EADDRINUSE                           | Stop the instance you started earlier or change port and request URL                                             | Confirm the new instance listens before retrying          |
 
+## Cluster source IP affinity and custom adapters
+
+All five built-in adapters share a Node HTTP receiver for `cluster.sticky: "ip"`, retaining their routing, request, and shutdown lifecycles. Fastify uses its official `serverFactory` and continues through ready/listen/close.
+
+The public `VextAdapterFactory` type is `(app, context?: VextAdapterRuntimeContext) => VextAdapter`. The second argument is per-instance runtime context. Only an actual Cluster Worker with affinity enabled receives `context.socketHandoff`; its host/port describe Master's bound public endpoint. A custom factory must not change runtime mode solely because the project config contains sticky.
+
+Custom adapters keep their original required interface by default. To support this mode, declare `supportsSocketHandoff: true`, consume the factory context, and return a `VextServerHandle` with `receiveSocket(socket)` and synchronous `forceClose()` from `listen()`. The Worker binds neither a public nor a private TCP port in this mode. receiveSocket accepts a committed, paused socket, registers ownership, and then resumes reading. close waits for in-flight connections; forceClose releases every owned socket, including upgrades, within the framework's absolute shutdown deadline. Missing capability fails before listening; claiming support without returning the controls fails startup.
+
+Existing one-argument factories remain valid in ordinary mode. Wrappers around built-in factories must forward context, for example `(app, context) => nativeAdapter()(app, context)`. Injecting `buildHandler()` into an unlistened server does not by itself provide Node timeout, connection-counting, and shutdown contracts.
+
 ## Next step
 
 - Understand the Adapter-related configuration items in [Configuration](/guide/configuration)

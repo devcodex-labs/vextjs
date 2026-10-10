@@ -1,4 +1,8 @@
-import { createServer } from "node:http";
+import {
+  createAdapterHTTPServer,
+  socketHandoffControls,
+} from "../../lib/socket-http-server.js";
+import type { VextAdapterRuntimeContext } from "../../types/adapter.js";
 import type { IncomingMessage, ServerResponse, Server } from "node:http";
 import crypto from "node:crypto";
 import { createRouter } from "route-core";
@@ -218,6 +222,7 @@ const _noop = async (): Promise<void> => {};
 export function createNativeAdapter(
   options: NativeAdapterOptions,
   app: VextApp,
+  context?: VextAdapterRuntimeContext,
 ): VextAdapter {
   // ── 创建 route-core 路由器 ────────────────────────────────
   //
@@ -611,6 +616,7 @@ export function createNativeAdapter(
 
   return {
     name: "native",
+    supportsSocketHandoff: Boolean(context?.socketHandoff),
 
     // ── registerMiddleware ───────────────────────────────────
     //
@@ -716,7 +722,8 @@ export function createNativeAdapter(
       host: string = "0.0.0.0",
       options?: VextAdapterListenOptions,
     ): Promise<VextServerHandle> {
-      const server: Server = createServer(
+      const server: Server = createAdapterHTTPServer(
+        context,
         createNodeServerOptions(options?.server),
         handleRequest,
       );
@@ -737,6 +744,7 @@ export function createNativeAdapter(
               : host;
 
           resolve({
+            ...socketHandoffControls(server),
             port: actualPort,
             host: actualHost,
 

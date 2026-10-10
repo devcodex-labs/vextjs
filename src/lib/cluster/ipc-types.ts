@@ -5,7 +5,7 @@
  * 此文件定义双向消息的类型联合，确保 IPC 消息的类型安全。
  *
  * 消息方向：
- *   - WorkerToMasterMessage: Worker → Master（ready / heartbeat / metrics / request-restart）
+ *   - WorkerToMasterMessage: Worker → Master（ready / heartbeat / stopping / metrics / request-restart）
  *   - MasterToWorkerMessage: Master → Worker（set-title / shutdown / health-check / broadcast）
  *
  * 设计原则：
@@ -18,6 +18,31 @@
  */
 
 // ── Worker → Master 消息 ────────────────────────────────────
+
+export interface SocketPreparedMessage {
+  type: "socket-prepared";
+  transferId: string;
+  generation: string;
+  accepted: boolean;
+}
+
+export interface SocketOfferMessage {
+  type: "socket-offer";
+  transferId: string;
+  generation: string;
+}
+
+export interface SocketCommitMessage {
+  type: "socket-commit";
+  transferId: string;
+  generation: string;
+}
+
+export interface SocketCancelMessage {
+  type: "socket-cancel";
+  transferId: string;
+  generation: string;
+}
 
 /**
  * Worker 就绪通知
@@ -58,6 +83,12 @@ export interface WorkerHeartbeatMessage {
   memory: number;
 }
 
+/** Worker has begun local shutdown; keep automatic recovery after its exit. */
+export interface WorkerStoppingMessage {
+  type: "stopping";
+  workerId: string;
+}
+
 /**
  * Worker 指标上报消息
  *
@@ -85,8 +116,10 @@ export interface WorkerRequestRestartMessage {
  * Worker → Master 消息联合类型
  */
 export type WorkerToMasterMessage =
+  | SocketPreparedMessage
   | WorkerReadyMessage
   | WorkerHeartbeatMessage
+  | WorkerStoppingMessage
   | WorkerMetricsMessage
   | WorkerRequestRestartMessage;
 
@@ -150,6 +183,9 @@ export interface MasterBroadcastMessage {
  * Master → Worker 消息联合类型
  */
 export type MasterToWorkerMessage =
+  | SocketOfferMessage
+  | SocketCommitMessage
+  | SocketCancelMessage
   | MasterSetTitleMessage
   | MasterShutdownMessage
   | MasterHealthCheckMessage
@@ -185,6 +221,9 @@ export interface WorkerMetrics {
  * 存储在 ClusterMaster.workers Map 中。
  */
 export interface WorkerMeta {
+  /** Stable affinity slot; process generations can change within this slot. */
+  slotId?: number;
+  generation?: string;
   /** cluster.Worker.id */
   id: number;
   /** Worker 启动时间戳（Date.now()） */
@@ -204,7 +243,14 @@ export interface WorkerMeta {
  *   starting → ready → draining → dead
  *                ↑                  │
  *                └── auto-restart ──┘
+ *   Local shutdown uses ready → stopping → dead and retains auto-restart.
+ *   draining denotes intentional Master replacement/shutdown without recovery.
  *
  * @see 12c-lifecycle.md §1（状态机）
  */
-export type WorkerState = "starting" | "ready" | "draining" | "dead";
+export type WorkerState =
+  | "starting"
+  | "ready"
+  | "stopping"
+  | "draining"
+  | "dead";

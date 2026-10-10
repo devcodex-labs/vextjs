@@ -1,5 +1,9 @@
 import { createHonoAdapter } from "./adapter.js";
-import type { VextAdapter } from "../../types/adapter.js";
+import type {
+  VextAdapter,
+  VextAdapterFactory,
+  VextAdapterRuntimeContext,
+} from "../../types/adapter.js";
 import type { VextApp } from "../../types/app.js";
 
 /**
@@ -17,8 +21,9 @@ import type { VextApp } from "../../types/app.js";
  *
  * 内置字符串方式仍然可用：`adapter: "hono"`。
  */
-export function honoAdapter(): (app: VextApp) => VextAdapter {
-  return (app: VextApp): VextAdapter => createHonoAdapter(app);
+export function honoAdapter(): VextAdapterFactory {
+  return (app: VextApp, context?: VextAdapterRuntimeContext): VextAdapter =>
+    createHonoAdapter(app, context);
 }
 
 export { createHonoAdapter } from "./adapter.js";

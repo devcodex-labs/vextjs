@@ -1243,7 +1243,7 @@ Cluster 多进程配置。完整接口定义见 `src/types/app.ts` `VextClusterC
 | `memoryThreshold`  | `number`                       | `1073741824`  | Worker heapUsed 阈值（bytes）；周期超限请求 Master 替换，不立即退出                                              |
 | `pidFile`          | `string`                       | `'.vext.pid'` | PID 文件路径（供 `vext stop` / `vext reload` 定位进程）                                                          |
 | `titlePrefix`      | `string`                       | `'vext'`      | Worker 进程标题前缀                                                                                              |
-| `sticky`           | `'none' \| 'ip'`               | `'none'`      | ip 已弃用并诊断，仍为 round-robin；IP 会话亲和性请使用外部负载均衡，计划在下一个破坏性版本移除 ip                |
+| `sticky`           | `'none' \| 'ip'`               | `'none'`      | none 使用普通 Cluster 分发；ip 按 TCP 源 IP 选择稳定 Worker 槽位，代理/NAT 可能产生热点，详见 Cluster 指南       |
 
 ### `healthCheck` — 心跳检测
 

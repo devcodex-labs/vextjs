@@ -1,6 +1,10 @@
 import { createFastifyAdapter } from "./adapter.js";
 import type { FastifyAdapterOptions } from "./adapter.js";
-import type { VextAdapter } from "../../types/adapter.js";
+import type {
+  VextAdapter,
+  VextAdapterFactory,
+  VextAdapterRuntimeContext,
+} from "../../types/adapter.js";
 import type { VextApp } from "../../types/app.js";
 
 /**
@@ -91,11 +95,11 @@ export type { FastifyAdapterOptions } from "./adapter.js";
  */
 export function fastifyAdapter(
   options?: FastifyAdapterOptions,
-): (app: VextApp) => VextAdapter {
+): VextAdapterFactory {
   const opts = options ?? {};
 
-  return (app: VextApp): VextAdapter => {
-    return createFastifyAdapter(opts, app);
+  return (app: VextApp, context?: VextAdapterRuntimeContext): VextAdapter => {
+    return createFastifyAdapter(opts, app, context);
   };
 }
 

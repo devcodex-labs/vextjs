@@ -154,9 +154,9 @@ export default {
     // Worker process title prefix
     titlePrefix: "vext",
 
-    // sticky session mode ('none' | 'ip')
+    // Connection affinity mode ('none' | 'ip')
     // 'none' — not enabled (default)
-    // 'ip' — currently selects a scheduling-policy branch, not IP affinity
+    // 'ip' — assign TCP source IPs to stable Worker slots
     sticky: "none",
   },
 } satisfies VextConfigOverride;
@@ -180,7 +180,27 @@ Each Worker adds an application instance, database pool, cache, and heap. Choose
 
 Workers do not share ordinary variables, Service instances, or in-memory Stores. Use shared storage for data that must be globally consistent. For example, an in-memory rate limit counts separately in each Worker and is not a global quota; see [Rate Limiting](/guide/rate-limit). Sessions and caches likewise depend on their configured Stores.
 
-`sticky: "ip"` is deprecated and emits a startup diagnostic. It still uses round-robin and does not assign Workers by client IP. Use external load-balancer affinity for sessions or reconnection state. The ip option is planned for removal in the next breaking release.
+### Source IP affinity
+
+Set `cluster.sticky: "ip"` when independent connections from the same TCP source IP must reach the same Worker. Master accepts and pauses each connection, chooses a stable logical slot using the source address, then hands the socket to its Worker over IPC. The Worker handles application traffic directly. All five built-in adapters support this through string configuration and official factories.
+
+```ts
+export default {
+  cluster: { enabled: true, workers: 2, sticky: "ip" },
+};
+```
+
+The default `"none"` keeps ordinary Cluster listening: Node SCHED_NONE on Linux, SCHED_RR on other platforms. `"ip"` directly implements affinity, replacing the previous round-robin placeholder; no new configuration or migration switch is required. It activates only during Cluster startup; dev/testing and ordinary single-process startup keep their existing paths.
+
+Routing uses the TCP peer address, without inspecting `X-Forwarded-For`, `Forwarded`, cookies, or SIDs. Application `trustProxy` and `req.ip` parsing cannot change connection routing that has already happened. Proxies and NAT can merge many clients into one source IP and concentrate traffic on one Worker. External load balancers generally choose instances or separate upstreams, rather than Workers behind a shared port.
+
+With stable slots and availability, new connections from one IP select the same slot. When a slot fails, only its traffic falls back; restoration can return it to its preferred slot. Rolling replacement preserves slot IDs, but does not preserve process memory. Old connections remain with the old Worker until completion or the shutdown budget expires. Changing sticky or workers requires a full Master restart; rolling reload rejects candidates whose policy differs from Master.
+
+When a Worker enters application shutdown through SIGTERM/SIGINT or a fatal error, it notifies the Master to withdraw its routing eligibility. New connections can select remaining available slots, while in-flight connections retain the existing shutdown budget. Local exits still follow autoRestart and the restart budget to recover the same slot; Master-initiated replacements or shutdown do not create duplicate Workers.
+
+Handoffs have bounded credits and deadlines: currently at most 1,024 pending globally and 64 per Worker, with a 5-second handoff deadline. These internal safeguards are separate from HTTP request execution timeouts. A saturated target slot rejects new connections rather than spilling them into another Worker. An unconfirmed, timed-out Worker is terminated and handled by the existing auto-restart policy. The framework does not replay requests; clients must consider idempotency when retrying. Runtime snapshot `summary.connections` records pending, committed, rejected, timedOut, sendFailed, and backpressure at Worker metrics intervals and lifecycle events. Committed means that the commit instruction was sent, rather than that an HTTP request succeeded.
+
+IP affinity can serve applications with process-local state across multiple connections, but does not provide highly available sessions or automatically add Socket.IO, TLS, or HTTP/2. Shared storage remains preferable for consistency and recovery. Custom adapters must explicitly support socket handoff; see [Adapters](/guide/adapters).
 
 ## CLI commands
 
@@ -446,6 +466,7 @@ The message types below are the exact string literals of the IPC payload `type` 
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `ready`           | Worker initialization is completed and starts accepting requests                                                                       |
 | `heartbeat`       | Heartbeat response                                                                                                                     |
+| `stopping`        | Worker begins local shutdown; withdraw new connections and retain autoRestart recovery after exit                                      |
 | `metrics`         | Memory and other snapshots every 30 seconds; without a request metrics provider, counts are placeholder zero with `metricsUnavailable` |
 | `request-restart` | Worker requests itself to restart (if a memory leak is detected)                                                                       |
 
@@ -515,7 +536,7 @@ HTTP Cluster Workers do not execute Jobs by default, so multiple HTTP Workers do
 
 ### What should we pay attention to when using WebSocket/SSE in Cluster mode?
 
-An established long connection stays with the Worker holding it and can disconnect when that Worker exits. Design reconnection, cross-request state, broadcast, and shutdown timeouts explicitly. Current `sticky: "ip"` does not implement IP affinity and cannot guarantee that reconnection returns to the old Worker. Protocol support also depends on the adapter and application.
+An established long connection stays with the Worker holding it and can disconnect when that Worker exits. Design reconnection, cross-request state, broadcast, and shutdown timeouts explicitly. `sticky: "ip"` preserves source IP reconnection affinity while slots and availability are stable; replacement, failure, or address changes cannot preserve the original process or its memory. Protocol support also depends on the adapter and application.
 
 ### What is the appropriate number of Workers?
 

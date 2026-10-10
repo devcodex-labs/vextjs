@@ -855,7 +855,7 @@ upstream vext_backend {
 }
 ```
 
-Vext Cluster reload 不更新 Master 自身配置，也不会替你发布镜像、切换数据结构或保证全部长连接无损。`sticky: "ip"` 是弃用的 RR 兼容值，使用时有诊断；IP affinity 交由外部负载均衡。全部 Worker 消失且没有恢复工作时，标准 Master 清理 PID 并以 1 退出，供 PM2/容器监督恢复；外部监督需要退避。继续使用业务健康检查和有效 Worker 容量告警。
+Vext Cluster reload 不更新 Master 自身配置，也不会替你发布镜像、切换数据结构或保证全部长连接无损。`sticky: "ip"` 按 TCP 源地址在实例内选择稳定 Worker 槽位；代理/NAT 可能造成热点，故障和滚动替换不会迁移内存 Session。外部负载均衡的实例亲和性不等于共享端口内的 Worker 亲和性。全部 Worker 消失且没有恢复工作时，标准 Master 清理 PID 并以 1 退出，供 PM2/容器监督恢复；外部监督需要退避。继续使用业务健康检查和有效 Worker 容量告警。
 
 ## 监控告警
 

@@ -196,7 +196,7 @@ it("does not announce readiness after terminal capacity loss during startup", as
   }
 });
 
-it("keeps remaining workers alive and diagnoses sticky=ip before a normal shutdown", async () => {
+it("keeps remaining sticky=ip workers alive before a normal shutdown", async () => {
   const root = await fixture(false, 2, "ip");
   const proc = run(root, "ipc");
   try {
@@ -213,7 +213,7 @@ it("keeps remaining workers alive and diagnoses sticky=ip before a normal shutdo
       }, 20);
     });
     expect(proc.child.exitCode).toBeNull();
-    expect(proc.output()).toContain("does not provide IP affinity");
+    expect(proc.output()).not.toContain("does not provide IP affinity");
     expect(proc.output()).not.toContain("fatal capacity loss");
     const exit = once(proc.child, "exit");
     proc.child.send!({ type: "shutdown" });
