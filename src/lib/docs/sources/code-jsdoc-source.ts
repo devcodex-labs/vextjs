@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import type { VextJobsConfig } from "../../jobs/types.js";
 import { join } from "node:path";
 import type { ResolvedVextDocsConfig, VextCodeDocsDocument } from "../types.js";
 import { loadComponentCodeDocs } from "./component-source.js";
@@ -19,6 +20,7 @@ export interface CodeDocsProviderOptions {
   rootDir?: string;
   srcDir?: string;
   modelsDir?: string;
+  jobsConfig?: VextJobsConfig;
   config: ResolvedVextDocsConfig;
 }
 
@@ -75,6 +77,8 @@ export async function loadCodeDocs(
     })),
     ...(await loadJobCodeDocs({
       srcDir,
+      rootDir: options.rootDir,
+      jobsConfig: options.jobsConfig,
       source: code.jobs,
     })),
     ...(await loadPluginCodeDocs({

@@ -144,7 +144,11 @@ async function fixture(page: string, sourceFiles?: string[], section?: string) {
   }
 }
 
-describe("Chinese guide examples from Markdown", () => {
+// Each Markdown fixture compiles the public framework source graph before
+// real HTTP checks; keep its V8-coverage budget local to this compiler suite.
+const compileBudget = { timeout: 60_000 };
+
+describe("Chinese guide examples from Markdown", compileBudget, () => {
   it("runs the adapters guide on all built-ins and its custom delegate over HTTP", async () => {
     const project = await fixture("guide/adapters.md", [
       "src/config/default.ts",

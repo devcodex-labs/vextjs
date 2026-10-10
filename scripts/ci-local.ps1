@@ -134,7 +134,7 @@ Run-Step "Integration Tests" {
 }
 
 Run-Step "Redis Integration Tests" {
-    npx vitest run test/integration/redis-job-store.test.ts --reporter=verbose
+    npx vitest run test/integration/redis-scheduled-jobs.test.ts --reporter=verbose
 }
 
 # ── 5. MCP Contracts ─────────────────────────────────────────

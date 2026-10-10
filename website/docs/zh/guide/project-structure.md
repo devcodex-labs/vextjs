@@ -57,7 +57,7 @@ my-app/
 │   │   └── payment/
 │   │       └── stripe.ts      # → app.services.payment.stripe
 │   │
-│   ├── jobs/                  # 可选后台任务入口，不随 HTTP 启动自动执行
+│   ├── jobs/                  # 可选定时任务入口，应用就绪后自动调度
 │   │
 │   ├── constants/             # 共享运行时值；有真实消费者时再创建
 │   │   └── services/
@@ -373,7 +373,7 @@ export default class UserService {
 
 ### `src/jobs/` — 任务目录 {#jobs}
 
-后台任务默认放在 `src/jobs/**`。这是默认约定，不是强制规范；服务有自定义结构时可使用 `config.jobs.dir`。Job 由 `vext job ...` 和测试 helper 加载，普通 HTTP 启动不会自动执行 Job。详见 [任务与 Jobs](/zh/guide/jobs)。
+定时任务默认放在 `src/jobs/**`，可用 `config.jobs.dir` 自定义目录。`vext start` / `vext dev` 在应用就绪后自动注册未来触发点；测试 helper 使用显式传入的定义。详见[定时任务 Jobs](/zh/guide/jobs)。
 
 ### `src/utils/` — 公共函数
 

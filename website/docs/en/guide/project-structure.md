@@ -57,7 +57,7 @@ my-app/
 │ │ └── payment/
 │ │ └── stripe.ts # → app.services.payment.stripe
 │ │
-│ ├── jobs/ # Optional background job entry; not run during HTTP startup
+│ ├── jobs/ # Optional scheduled jobs; start after application readiness
 │ │
 │ ├── constants/ # Shared runtime values; create only for real consumers
 │ │ └── services/
@@ -375,7 +375,7 @@ This avoids an initialization timing problem, but does not remove circular depen
 
 ### `src/jobs/` — Background job entry {#jobs}
 
-Background jobs live in `src/jobs/**` by default. This is a convention rather than a required directory; use `config.jobs.dir` for another project layout. `vext job ...` and testing helpers load jobs; ordinary HTTP startup does not run them. See [Jobs](/guide/jobs).
+Scheduled jobs live in `src/jobs/**`, with `config.jobs.dir` supporting custom layouts. `vext start` / `vext dev` registers future points after readiness. Testing helpers use explicitly supplied definitions. See [Jobs](/guide/jobs).
 
 ### `src/utils/` — Shared helper functions
 

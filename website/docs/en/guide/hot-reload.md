@@ -98,7 +98,7 @@ Renaming a file usually appears as deletion plus addition. Editor save behavior 
 
 ### Tier 3 — Cold restart
 
-Changes to config, plugins, preload, root `package.json`/lockfiles/`tsconfig.json`, and `.env*` require Worker reinitialization. The development parent waits for the old Worker to exit and the new one to become ready; service may be temporarily unavailable and requests can be interrupted.
+Changes to config, plugins, preload, scheduled job directories (default `src/jobs`, configurable with `jobs.dir`), root `package.json`/lockfiles/`tsconfig.json`, and `.env*` require Worker reinitialization. Soft reload also upgrades to a cold restart when its loaded dependency graph invalidates a scheduled job. Old tasks stop accepting triggers and drain within the shutdown budget; the new process registers future points. The development parent waits for the old Worker to exit and the new one to become ready; service may be temporarily unavailable and requests can be interrupted.
 
 ```text
 Detect change and run preflight

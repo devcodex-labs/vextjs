@@ -974,22 +974,21 @@ CPU 检测规则、源 IP 亲和性的代理/NAT 限制及滚动重启行为，�
 
 ### Jobs 配置
 
-`config.jobs` 配置 Job runtime 的任务发现、scheduler、worker、Store、租约和默认执行策略，不会让 HTTP 启动自动执行 Job。测试 helper 使用显式传入的 Job 定义；Vext Docs 的 Job source 有自己的目录配置，不能假定修改 jobs.dir 会自动同步所有文档或工具入口。各入口的职责与实际生效字段见下方指南及 API。
+`config.jobs` 配置随应用启动的 cron / interval 定时任务。默认启用，插件、服务及 ready 阶段完成后才调度未来触发点；内置 Cluster 中有启用任务时必须配置 Redis。测试 helper 使用显式传入的定义，不自动扫描和运行任务。Docs 的 Job source 有独立目录配置，自定义 jobs.dir 时也应核对该文档源。
 
 ```ts
 export default {
   jobs: {
     enabled: true,
     dir: "jobs",
-    runner: "inline",
-    store: { type: "file", dir: ".vext/jobs" },
-    scheduler: { enabled: true, mode: "inline" },
-    worker: { enabled: true, concurrency: 4 },
+    timezone: "UTC",
+    // Cluster / 多副本需共享 Redis；namespace 自动生成，无需手填。
+    // redis: { url: process.env.VEXT_REDIS_URL },
   },
 };
 ```
 
-详见 [任务与 Jobs](/zh/guide/jobs) 与 [Jobs API](/zh/api/jobs)。
+详见[定时任务 Jobs](/zh/guide/jobs) 与 [Jobs API](/zh/api/jobs)。
 
 ### Dev 模式配置 (`dev`)
 

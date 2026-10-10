@@ -27,22 +27,13 @@ import {
   inspectImplementationIdentity,
   type ImplementationIdentity,
 } from "./implementation-identity.js";
-import {
-  parseSourceSyntax,
-  walkSourceSyntax,
-  type SyntaxNode,
-} from "../lib/source-syntax.js";
+import { inspectStaticJobs } from "./jobs-inspection.js";
+import { redactRedisUrl } from "../lib/redis/config.js";
 import {
   projectStaticConfig,
   type StaticConfigProjection,
 } from "../tooling/project-index/config-projection.js";
-import {
-  readStaticExpression,
-  staticFact,
-  staticKey,
-  unwrapStaticExpression,
-  type StaticFact,
-} from "../tooling/project-index/static-values.js";
+import type { StaticFact } from "../tooling/project-index/static-values.js";
 import {
   normalizeDevMcpConfig,
   normalizePolicyPatch,
@@ -229,7 +220,10 @@ export async function inspectVextProject(input: {
     input.signal,
   );
   const configProjection = sourceView
-    ? projectStaticConfig(sourceView)
+    ? projectStaticConfig(sourceView, {
+        mode:
+          input.configTarget === "production" ? "production" : "development",
+      })
     : undefined;
   if (configProjection) warnings.push(...configProjection.warnings);
   const assistant = sourceView
@@ -439,64 +433,48 @@ export function resolveMcpProjectRoot(startDir: string): string {
   }
 }
 
+const inspectionJobs = new WeakMap<
+  VextMcpProjectInspection,
+  ReturnType<typeof readVextProjectJobDetails>
+>();
 export function inspectVextProjectJobDetails(
   project: VextMcpProjectInspection,
 ) {
-  const rootDir = project.identity.rootDir;
-  const projection = getInspectionConfig(project);
-  const jobsConfig = readStaticJobsConfig(projection);
-  const jobsDir = readString(jobsConfig.value?.dir) ?? "jobs";
+  let result = inspectionJobs.get(project);
+  if (!result) {
+    result = readVextProjectJobDetails(project);
+    inspectionJobs.set(project, result);
+  }
+  return result;
+}
+
+function readVextProjectJobDetails(project: VextMcpProjectInspection) {
   const view = getInspectionSources(project);
-  const directory = path.posix.join("src", jobsDir);
-  const files =
-    view
-      ?.list({ rootId: ASSISTANT_SOURCE_ROOT })
-      .filter(
-        (file) =>
-          isInRole(file.path, directory) && /\.[cm]?[jt]sx?$/u.test(file.path),
-      ) ?? [];
-  const warnings = [...jobsConfig.warnings];
-  const jobs = files.flatMap((file) => {
-    try {
-      return inspectJobFile(
-        rootDir,
-        view!.read(file.rootId, file.path)!,
-        file.path,
-      );
-    } catch (error) {
-      warnings.push(
-        `${file.path} cannot be inspected: ${errorMessage(error)}.`,
-      );
-      return [];
-    }
-  });
+  const projection = getInspectionConfig(project);
+  if (!view || !projection)
+    return {
+      jobs: [],
+      fileCount: 0,
+      truncated: false,
+      sourceState: "unknown",
+      config: null,
+      operations: ["vext start", "vext dev"],
+      deploymentNotes: createJobDeploymentNotes(),
+      warnings: ["Jobs source/configuration is unavailable."],
+      readiness: {
+        projectState: "unknown" as const,
+        missingPrerequisites: ["Inspect complete project sources."],
+        runtimeVerified: false,
+      },
+    };
+  const result = inspectStaticJobs(view, projection, project.identity.rootDir);
   return {
-    jobs,
-    fileCount: files.length,
+    ...result,
+    jobs: result.jobs.map(({ definition: _definition, ...job }) => job),
     truncated: false,
-    sourceState: view ? "complete" : "unknown",
-    config: {
-      source: jobsConfig.source,
-      dir: jobsDir,
-      enabled: readBoolean(jobsConfig.value?.enabled),
-      runner: readString(jobsConfig.value?.runner),
-      store: summarizeJobStore(jobsConfig.value?.store),
-      scheduler: summarizeRecord(jobsConfig.value?.scheduler),
-      worker: summarizeRecord(jobsConfig.value?.worker),
-      defaults: summarizeRecord(jobsConfig.value?.defaults),
-    },
-    operations: [
-      "vext job list",
-      "vext job inspect <name>",
-      "vext job run <name>",
-      "vext job enqueue <name>",
-      "vext job scheduler",
-      "vext job worker",
-      "vext job runs",
-      "vext job status <runId>",
-    ],
-    deploymentNotes: createJobDeploymentNotes(jobsConfig.value?.store),
-    warnings,
+    config: { ...result.config, redis: summarizeJobRedis(result.config.redis) },
+    operations: ["vext start", "vext dev"],
+    deploymentNotes: createJobDeploymentNotes(),
   };
 }
 
@@ -626,131 +604,22 @@ function readPolicyDefaultsDigest(value: unknown): string | null {
   return normalized.ok ? normalized.value.digest : null;
 }
 
-function readStaticJobsConfig(projection: StaticConfigProjection | undefined): {
-  source: string | null;
-  value: Record<string, unknown> | null;
-  warnings: string[];
-} {
-  if (!projection)
-    return {
-      source: null,
-      value: null,
-      warnings: ["Job configuration source is unavailable."],
-    };
-  const value: Record<string, unknown> = {};
-  const warnings: string[] = [];
-  for (const key of [
-    "dir",
-    "enabled",
-    "runner",
-    "store",
-    "scheduler",
-    "worker",
-    "defaults",
-  ]) {
-    const fact = projection.field("jobs." + key);
-    if (fact.state === "known") value[key] = fact.value;
-    else if (fact.state === "unknown" || fact.state === "invalid")
-      warnings.push(`jobs.${key}: ${fact.state}; ${fact.reason ?? ""}`);
-  }
-  return { source: projection.sourceFiles.at(-1) ?? null, value, warnings };
+function summarizeJobRedis(value: unknown) {
+  const config = summarizeRecord(value);
+  if (!config) return null;
+  for (const key of ["url", "uri"])
+    if (typeof config[key] === "string")
+      config[key] = redactRedisUrl(config[key]);
+  return config;
 }
 
-function inspectJobFile(rootDir: string, source: string, relative: string) {
-  const program = parseSourceSyntax(relative, source);
-  const definitions: Record<string, unknown>[] = [];
-  walkSourceSyntax(program, (node) => {
-    if (node.type !== "CallExpression") return;
-    const callee = node.callee;
-    if (callee.type !== "Identifier" || callee.name !== "defineJob") return;
-    const [argument] = node.arguments;
-    if (!argument || argument.type === "SpreadElement") return;
-    const object = unwrapStaticExpression(argument);
-    if (object.type !== "ObjectExpression") return;
-    definitions.push(readJobObject(object));
-  });
-  return definitions.map((definition, index) =>
-    summarizeJobDefinition(rootDir, relative, definition, index),
-  );
-}
-
-function readJobObject(node: SyntaxNode): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  if (node.type !== "ObjectExpression") return result;
-  for (const property of node.properties) {
-    if (property.type !== "Property" || property.computed || property.method) {
-      continue;
-    }
-    const key = staticKey(property.key);
-    if (key === undefined || key === "handler") continue;
-    const value = staticFact(readStaticExpression(property.value), []);
-    result[key] = value.state === "known" ? value.value : { static: "dynamic" };
-  }
-  return result;
-}
-
-function summarizeJobDefinition(
-  rootDir: string,
-  relative: string,
-  definition: Record<string, unknown>,
-  index: number,
-) {
-  const fromDefaultJobs = relative.replace(/^src\/jobs\//u, "");
-  const inferredName = stripSourceExtension(
-    fromDefaultJobs === relative
-      ? relative.replace(/^src\//u, "")
-      : fromDefaultJobs,
-  );
-  const name = readString(definition.name) ?? inferredName;
-  const schedule = summarizeRecord(definition.schedule);
-  return {
-    name,
-    inferredName,
-    sourceFile: relative,
-    exportName: index === 0 ? "default" : `defineJob#${index + 1}`,
-    description: readString(definition.description),
-    tags: readStringArray(definition.tags),
-    queue: summarizeRecord(definition.queue),
-    schedule,
-    hasSchedule: Boolean(schedule?.cron ?? schedule?.interval),
-    hasPayloadSchema: isRecord(definition.payload),
-    timeout: readNumber(definition.timeout),
-    concurrency: readNumber(definition.concurrency),
-    staticState: hasDynamicJobValue(definition) ? "partial" : "complete",
-    projectRelativeRoot: toPosix(
-      path.relative(rootDir, path.dirname(path.join(rootDir, relative))),
-    ),
-  };
-}
-
-function summarizeJobStore(value: unknown) {
-  if (typeof value === "string") return { type: value };
-  return summarizeRecord(value);
-}
-
-function createJobDeploymentNotes(store: unknown): string[] {
-  const storeType =
-    typeof store === "string"
-      ? store
-      : isRecord(store)
-        ? readString(store.type)
-        : null;
-  const notes = [
-    "HTTP service startup does not run Jobs automatically; hosts start scheduler and worker processes explicitly.",
-    "Multi-process or cluster deployments should use a file/redis/custom/shared store and scheduler lease to avoid duplicate scheduling.",
-    "MCP reads source and static config only; it does not execute Jobs, connect to queues, or read runtime queue state.",
+function createJobDeploymentNotes(): string[] {
+  return [
+    "Scheduled jobs start automatically after application readiness; no separate scheduler or worker process is required.",
+    "Active jobs in built-in Cluster require config.jobs.redis at startup. Multiple hosts must share Redis. Namespace is automatic from package name/profile/runtime mode; matching replicas need no explicit value.",
+    "Redis coordinates each scheduled point and renews running leases; failures pause triggers without a local fallback. No retries, downtime catch-up or immediate startup execution are provided.",
+    "MCP reads source and static configuration only; it never starts timers or executes handlers.",
   ];
-  if (storeType === "redis" || storeType === "auto") {
-    notes.push(
-      "Redis Job Store uses module-level key prefixes for run records, scheduler leases, worker heartbeats, run leases, and owner-checked completion.",
-    );
-  }
-  if (storeType === "auto") {
-    notes.push(
-      "jobs.store auto requires VEXT_REDIS_URL or REDIS_URL at runtime; MCP cannot verify environment-provided Redis targets statically.",
-    );
-  }
-  return notes;
 }
 
 function summarizeRecord(value: unknown): Record<string, unknown> | null {
@@ -772,36 +641,12 @@ function summarizeRecord(value: unknown): Record<string, unknown> | null {
   return result;
 }
 
-function hasDynamicJobValue(value: unknown): boolean {
-  if (isRecord(value)) {
-    if (value.static === "dynamic") return true;
-    return Object.values(value).some((item) => hasDynamicJobValue(item));
-  }
-  return Array.isArray(value) && value.some((item) => hasDynamicJobValue(item));
-}
-
-function readBoolean(value: unknown): boolean | null {
-  return typeof value === "boolean" ? value : null;
-}
-
-function readNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
 function readStringArray(value: unknown): string[] | null {
   if (!Array.isArray(value)) return null;
   const items = value.filter(
     (item): item is string => typeof item === "string",
   );
   return items.length === value.length ? items : null;
-}
-
-function stripSourceExtension(value: string): string {
-  return value.replace(/\.(?:ts|tsx|js|jsx|mjs|cjs|mts|cts)$/u, "");
-}
-
-function toPosix(value: string): string {
-  return value.split(path.sep).join("/");
 }
 
 function detectLanguage(
@@ -867,7 +712,9 @@ function roleNotes(role: string, exists: boolean): string[] {
       "Locales may be grouped by feature module and nested subdirectory.",
     ];
   if (role === "jobs")
-    return ["Job definitions are discovered without querying queue state."];
+    return [
+      "Scheduled job definitions are discovered without starting timers.",
+    ];
   if (role === "docs")
     return [
       "Docs/OpenAPI source is inspected statically; runtime endpoints are not requested.",

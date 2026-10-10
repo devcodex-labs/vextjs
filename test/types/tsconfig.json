@@ -16,6 +16,7 @@
     "./config-override.ts",
     "./testing-config-override.ts",
     "./frontend-head-response.ts",
-    "./locale-loader.ts"
+    "./locale-loader.ts",
+    "./scheduled-jobs.ts"
   ]
 }

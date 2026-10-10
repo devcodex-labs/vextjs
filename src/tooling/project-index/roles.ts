@@ -89,7 +89,7 @@ export const ASSISTANT_ROLES: readonly AssistantRole[] = Object.freeze([
     "jobs",
     "src/jobs",
     "loader",
-    "Job definitions; schedules and stores are configured separately.",
+    "Scheduled job definitions discovered and started with the ready application.",
   ),
   role(
     "schemas",
@@ -143,7 +143,7 @@ export const ASSISTANT_ROLES: readonly AssistantRole[] = Object.freeze([
     "job-types",
     "src/types/server/jobs",
     "import",
-    "Reusable Job payload contracts inferred from their runtime schemas.",
+    "Reusable business contracts consumed by scheduled job handlers.",
   ),
   role(
     "frontend",

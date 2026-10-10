@@ -98,7 +98,7 @@ soft 文件出现 `add` / `delete`，或按 `h` 请求全量源码重载时，�
 
 ### Tier 3 — 冷重启
 
-配置、插件、preload、根目录 package.json/lockfile/tsconfig.json 和 `.env*` 等变化需要重新初始化 worker。开发父进程等待旧 worker 退出，再等待新 worker ready，期间服务可能不可用，请求也可能中断。
+配置、插件、preload、定时任务目录（默认 `src/jobs`，可通过 `jobs.dir` 修改）、根目录 package.json/lockfile/tsconfig.json 和 `.env*` 等变化需要重新初始化 worker。软重载若沿已加载的依赖图失效到定时任务模块，也会升级为冷重启；旧任务先停止触发并按关闭预算等待，然后新进程注册未来触发点。开发父进程等待旧 worker 退出，再等待新 worker ready，期间服务可能不可用，请求也可能中断。
 
 ```text
 变更检测与 preflight

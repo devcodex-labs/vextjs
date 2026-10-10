@@ -1,6 +1,6 @@
 # Test tools
 
-This page documents `createTestApp`, `TestApp`, `TestRequest`, `TestRequestBuilder`, `TestResponse`, and `createTestJobRunner`. See the [Testing guide](/guide/testing) for a complete business fixture and execution steps; use this page for signatures, defaults, and execution boundaries.
+This page documents `createTestApp`, `TestApp`, `TestRequest`, `TestRequestBuilder`, `TestResponse`, and `createTestJobScheduler`. See the [Testing guide](/guide/testing) for a complete business fixture and execution steps; use this page for signatures, defaults, and execution boundaries.
 
 ## Overview
 
@@ -9,15 +9,15 @@ Import runtime values and types through `vextjs/testing`:
 ```typescript
 import {
   createTestApp,
-  createTestJobRunner,
+  createTestJobScheduler,
   type CreateTestAppOptions,
   type TestApp,
   type TestRequest,
   type TestRequestBuilder,
   type TestResponse,
   type TestResponseHeaderValue,
-  type CreateTestJobRunnerOptions,
-  type TestJobRunner,
+  type CreateTestJobSchedulerOptions,
+  type TestJobScheduler,
 } from "vextjs/testing";
 ```
 
@@ -781,64 +781,37 @@ expect(res2.text).toBe("OK");
 
 ---
 
-## createTestJobRunner
+## createTestJobScheduler
 
 ```typescript
-function createTestJobRunner(
-  options: CreateTestJobRunnerOptions,
-): Promise<TestJobRunner>;
+import { createTestJobScheduler } from "vextjs/testing";
+import type {
+  CreateTestJobSchedulerOptions,
+  TestJobScheduler,
+} from "vextjs/testing";
 
-interface CreateTestJobRunnerOptions extends Omit<
+function createTestJobScheduler(
+  options: CreateTestJobSchedulerOptions,
+): Promise<TestJobScheduler>;
+interface CreateTestJobSchedulerOptions extends Omit<
   CreateTestAppOptions,
   "routes"
 > {
   jobs: Record<string, VextJobDefinition> | VextJobDefinition[];
+  now?: Date;
 }
-
-interface TestJobRunner {
+interface TestJobScheduler {
   app: VextApp;
-  registry: VextJobRegistry;
-  run(jobName: string, options?: VextJobRunOptions): Promise<VextJobRunResult>;
+  tick(now: Date): Promise<void>;
   close(): Promise<void>;
 }
 ```
 
-| Member/rule        | Behavior                                                                                               |
-| ------------------ | ------------------------------------------------------------------------------------------------------ |
-| `jobs`             | Required input definitions; does not scan `src/jobs`                                                   |
-| Names              | Object uses `definition.name` first, then object key; unnamed array jobs use `job1`, `job2`, and so on |
-| Duplicates         | Registry creation throws for duplicate names                                                           |
-| Other options      | Follow `CreateTestAppOptions` but force `routes: false`; Services/plugins can still have side effects  |
-| `app` / `registry` | Test app and jobs; registry supports `list/get/has/toJSON`                                             |
-| `run()`            | Executes a job, validates payload, applies retry/timeout; does not start scheduler or worker           |
-| `close()`          | Closes the test app; await in-flight runs and handle cancellation first                                |
+Definitions are explicitly supplied rather than scanned from src/jobs. Object names prefer definition.name then the key; arrays fall back to job1/job2. Duplicates fail. Other `CreateTestAppOptions` apply, with `routes: false`; plugins and services retain their initialization side effects.
 
-`run` options include payload, signal, runId, trigger, scheduledAt, and idempotencyKey. Results include jobName, runId, status, attempts, durationMs, and optional result/error. Status is success, failed, cancelled, or timeout. Check result status; unknown jobs may still reject directly. Cancellation and timeout cooperate through AbortSignal rather than forcibly interrupting a handler that ignores it. `close()` does not cancel every running job. See [Jobs API](/api/jobs#runjobapp-registry-name-options).
+`now` defaults to the current time and registers strictly future points. `tick(Date)` waits for handlers admitted at that point; repeated ticks do not duplicate execution. Missed periods are not replayed and same-job overlap is skipped. Retain a long first tick's Promise while advancing another tick to test overlap. Handler failures are logged; use business assertions to verify outcomes.
 
-Save this separately as `test/job-api.mjs` and run it with Node:
-
-```javascript
-// test/job-api.mjs
-import assert from "node:assert/strict";
-import { defineJob } from "vextjs";
-import { createTestJobRunner } from "vextjs/testing";
-
-const runner = await createTestJobRunner({
-  services: false,
-  middlewares: false,
-  config: { adapter: "native" },
-  jobs: { ping: defineJob({ handler: () => ({ ok: true }) }) },
-});
-try {
-  const result = await runner.run("ping");
-  assert.equal(result.status, "success");
-  assert.deepEqual(result.result, { ok: true });
-} finally {
-  await runner.close();
-}
-```
-
-This helper does not create a real scheduler process, write persistent run records, or verify Store leases. Test scheduling, distributed claiming, and recovery separately using the [Jobs guide](/guide/jobs).
+`close()` stops triggers, requests cancellation and waits within the total app shutdown budget before dependency cleanup. The helper starts no real timers, but configured Redis is connected, validated and used. Redis test points must match the server's current period. Ordinary `createTestApp()` does not schedule jobs. See the [Jobs example](/guide/jobs#testing-and-acceptance).
 
 ## Usage mode
 
@@ -886,7 +859,7 @@ Runnable CRUD, middleware, mock, and Service unit tests are in [Testing examples
 
 ```typescript
 // Runtime values.
-import { createTestApp, createTestJobRunner } from "vextjs/testing";
+import { createTestApp, createTestJobScheduler } from "vextjs/testing";
 
 // Type (imported from main entrance)
 import type {
@@ -899,5 +872,5 @@ import type {
 ```
 
 :::tip
-Import runtime testing values through `vextjs/testing`. The five HTTP types above may come from the main `vextjs` entry. Import `TestResponseHeaderValue`, `CreateTestJobRunnerOptions`, and `TestJobRunner` from `vextjs/testing`; do not import the `createTestApp` or `createTestJobRunner` runtime values from the root entry.
+Import runtime testing values through `vextjs/testing`. The five HTTP types above may come from the main `vextjs` entry. Import `TestResponseHeaderValue`, `CreateTestJobSchedulerOptions`, and `TestJobScheduler` from `vextjs/testing`; do not import the `createTestApp` or `createTestJobScheduler` runtime values from the root entry.
 :::

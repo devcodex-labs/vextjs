@@ -31,6 +31,7 @@ import {
 } from "../assistant/contracts.js";
 import {
   inspectVextProject,
+  inspectVextProjectJobDetails,
   resolveMcpProjectRoot,
   type VextMcpProjectInspection,
 } from "../assistant/project-inspector.js";
@@ -210,15 +211,27 @@ function registerTools(
           frameworkSupport:
             item.status === "available" ? "supported" : item.status,
           mcpCoverage: item.status,
-          projectState: projectStateForCapability(project, item),
+          projectState:
+            item.id === "C34"
+              ? inspectVextProjectJobDetails(project).readiness.projectState
+              : projectStateForCapability(project, item),
           knownIssueIds: [],
           missingPrerequisites:
-            item.status !== "available"
-              ? [
-                  "This capability is not fully available in the current framework/MCP catalog. Do not treat partial, planned, unknown or unverified surfaces as supported.",
-                ]
-              : [],
+            item.id === "C34"
+              ? inspectVextProjectJobDetails(project).readiness
+                  .missingPrerequisites
+              : item.status !== "available"
+                ? [
+                    "This capability is not fully available in the current framework/MCP catalog. Do not treat partial, planned, unknown or unverified surfaces as supported.",
+                  ]
+                : [],
           evidence: item.sourceRefs,
+          ...(item.id === "C34"
+            ? {
+                jobsEvidence: inspectVextProjectJobDetails(project).readiness,
+                runtimeVerified: false,
+              }
+            : {}),
           requiredOperations: requiredOperationsForCapability(item.id),
         },
       });
@@ -887,7 +900,7 @@ function verifyExpectedIdentity(
 function requiredOperationsForCapability(capabilityId: string): string[] {
   if (capabilityId === "C34") {
     return [
-      "Use vext job list/inspect/run/enqueue/scheduler/worker through the host when runtime evidence is required.",
+      "Use vext start/dev and createTestJobScheduler through the host to verify scheduling; use real Redis to verify multi-instance coordination.",
     ];
   }
   if (capabilityId === "C18") {
@@ -923,6 +936,8 @@ function projectStateForCapability(
   item: (typeof VEXT_MCP_CAPABILITIES)[number],
 ): "enabled" | "partial" | "unknown" {
   const capabilityId = item.id;
+  if (capabilityId === "C34")
+    return inspectVextProjectJobDetails(project).readiness.projectState;
   if (capabilityId === "C23") {
     return project.assistant.workspace?.config.services?.length
       ? "enabled"

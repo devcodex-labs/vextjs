@@ -145,7 +145,7 @@ export const MONSQLIZE_KNOWLEDGE: DependencyKnowledgeEntry = {
       "config.database.options 仅接受 Vext 明确允许的高级键（如 transaction、sync、findMaxLimit、requireCursorSecret）；type/database/cache/logger/pools/models/cursorSecret 等生命周期或顶层配置键受保护，不能在 options 中覆盖。",
       "单条读写使用数据库过滤条件、ObjectId 验证和原子更新；唯一性由数据库唯一索引兜底，先查后写不能保证并发安全。PATCH 区分未提供、null 和空值，采用 $set/$unset；不能用 create 全量必填 schema 代替 PATCH。",
       "需要事务时使用原生 withTransaction，并把 tx.session 显式传给事务内操作。MongoDB 事务需支持事务的部署；跨 Redis 缓存失效不是数据库事务的一部分。提交后缓存失败应记录/重试，不能声称数据库写入已回滚。",
-      "查询 cache、数据库 cache.memory.ttl/cache.redis.ttl 为毫秒。内存缓存和本地锁不能证明跨进程一致性；不要把响应缓存、Job store、限流 store 与数据库缓存混为一个 owner。",
+      "查询 cache、数据库 cache.memory.ttl/cache.redis.ttl 为毫秒。内存缓存和本地锁不能证明跨进程一致性；不要把响应缓存、Jobs Redis coordination、限流 store 与数据库缓存混为一个 owner。",
       "mock 数据放 mocks/data 与 mocks/scenarios；种子通过显式 seed 脚本执行。数据库读取失败不能悄悄返回 mock，也不能在 GET 请求初始化数据。",
     ],
     limitations: [

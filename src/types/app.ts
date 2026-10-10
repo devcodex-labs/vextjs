@@ -1232,10 +1232,9 @@ export interface VextConfig {
   cluster?: Partial<VextClusterConfig>;
 
   /**
-   * Job 后台任务配置。
-   *
-   * HTTP 启动默认不会执行 Job；该配置只影响 `vext job ...`、测试 helper
-   * 和机器可读文档对 `src/jobs/**` 的发现方式。
+   * 随应用启动的定时任务配置。
+   * 插件、服务和 onReady 完成后自动调度 src/jobs；Cluster 中存在启用的任务时必须配置 Redis。
+   * 不提供任务队列、重试、停机补跑或启动立即执行。
    */
   jobs?: VextJobsConfig;
 

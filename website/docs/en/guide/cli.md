@@ -4,7 +4,7 @@
 Published stable package: `v2.0.0`. This page also describes changes in the current repository source that may not yet be published. Check the installed package version before using a version-specific command; general installation commands do not pin a version.
 :::
 
-The `vext` CLI covers project creation, development, builds, production startup, and operations. This page starts with a verifiable lifecycle, then documents individual commands. Job and MCP extensions follow the core lifecycle.
+The `vext` CLI covers project creation, development, builds, production startup, and operations. This page starts with a verifiable lifecycle, then documents individual commands. MCP extensions follow the core lifecycle.
 
 Prerequisites: Node.js satisfying the installed package's `^20.19.0 || >=22.12.0` range and npm. Run `create` from the intended parent directory; run other commands from the directory containing the application's `package.json`. Only subcommands that declare `--root` accept it. Check the actual installed version with `npx vextjs --version`; sample output illustrates format, not a required pinned version.
 
@@ -32,20 +32,19 @@ npm run build  # → vext build
 
 ## Command overview
 
-| Command                       | Purpose                                                 | Long-running process or file writes                               |
-| ----------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------- |
-| `vext create <name>`          | Create a project                                        | Writes project files and installs dependencies by default         |
-| `vext dev`                    | Develop and reload                                      | Starts a service and creates development outputs                  |
-| `vext build`                  | Build production artifacts                              | Writes declarations, manifests, and build outputs                 |
-| `vext start`                  | Start production                                        | Starts an application or Cluster                                  |
-| `vext stop`                   | Stop Cluster                                            | Signals the process recorded in a PID file                        |
-| `vext reload`                 | Request rolling Cluster replacement                     | Signals a process; unsupported on Windows                         |
-| `vext status`                 | Query Cluster PID and health endpoint                   | Reads PID information and makes HTTP requests                     |
-| `vext typegen`                | Generate types and diagnose dependencies (experimental) | Writes outputs by default; `--check` is read-only                 |
-| `vext doctor routes / all`    | Static diagnostics (experimental)                       | Read-only by default; writes require explicit options             |
-| `vext deploy assets`          | Upload frontend assets                                  | Uploads by default; `--dry-run` only produces a plan              |
-| `vext job ...`                | Inspect or run background jobs                          | Depends on subcommand: inspect, enqueue, execute, or stay running |
-| `vext mcp` / `sync` / `skill` | MCP server, host sync, Skill export                     | stdio server stays running; sync and skill write can write files  |
+| Command                       | Purpose                                                 | Long-running process or file writes                              |
+| ----------------------------- | ------------------------------------------------------- | ---------------------------------------------------------------- |
+| `vext create <name>`          | Create a project                                        | Writes project files and installs dependencies by default        |
+| `vext dev`                    | Develop and reload                                      | Starts a service and creates development outputs                 |
+| `vext build`                  | Build production artifacts                              | Writes declarations, manifests, and build outputs                |
+| `vext start`                  | Start production                                        | Starts an application or Cluster                                 |
+| `vext stop`                   | Stop Cluster                                            | Signals the process recorded in a PID file                       |
+| `vext reload`                 | Request rolling Cluster replacement                     | Signals a process; unsupported on Windows                        |
+| `vext status`                 | Query Cluster PID and health endpoint                   | Reads PID information and makes HTTP requests                    |
+| `vext typegen`                | Generate types and diagnose dependencies (experimental) | Writes outputs by default; `--check` is read-only                |
+| `vext doctor routes / all`    | Static diagnostics (experimental)                       | Read-only by default; writes require explicit options            |
+| `vext deploy assets`          | Upload frontend assets                                  | Uploads by default; `--dry-run` only produces a plan             |
+| `vext mcp` / `sync` / `skill` | MCP server, host sync, Skill export                     | stdio server stays running; sync and skill write can write files |
 
 ## From project creation to production startup
 
@@ -822,18 +821,9 @@ vext doctor routes --write-inspect --write-manifest --json
 - When `docs.operationId` is missing, the doctor will give an `auto-operation-id` information prompt according to the runtime behavior instead of false warning;
 - The routing side is still in charge of `doctor routes --write-manifest`; the service side is in charge of `typegen --write-manifest`.
 
-## Job commands
+## Scheduled jobs
 
-Background jobs use `vext job list`, `vext job inspect <name>`, `vext job run <name>`, `vext job enqueue <name>`, `vext job scheduler`, `vext job worker`, `vext job runs`, and `vext job status <runId>`. These commands load the headless Job runtime without starting an HTTP server. See [Jobs](/guide/jobs).
-
-```bash
-vext job --help
-vext job list --json
-vext job inspect <name> --json
-vext job runs --limit 10 --json
-```
-
-Replace `<name>` and `<runId>` with actual project Job names or run records. Common options include `--config <profile>`, `--outdir <dir>`, `--source`, and `--json`. Run and enqueue accept `--payload <json>` or `--payload-file <path>`; `runs --limit` requires a positive integer. Scheduler and worker stay running, while run and enqueue can have business side effects. Configure payloads, stores, workers/schedulers, and shutdown handling as described in Jobs before using them. Even list and inspect load the headless runtime; they are not purely static analysis that avoids evaluating project modules.
+Scheduled jobs automatically start after readiness under `vext start` / `vext dev`. No separate CLI command is required. See [Jobs](/guide/jobs) for definitions, Redis coordination and shutdown.
 
 ## MCP commands
 
@@ -860,7 +850,7 @@ Replace `<name>` and `<runId>` with actual project Job names or run records. Com
 
 `vext_project_check` runs bounded static diagnostics for missing directories, missing route response schemas, deprecated `docs.tags`, incomplete service dependency analysis, database `cursorSecret` choices, missing Redis stores or environment variables, SVG upload review, frontend form/API boundaries, and placeholder tests. It returns `diagnostics`, `totalBySeverity`, `affectedConsumers`, and `generatedState`; suggested commands remain host-executed. `vext_runtime_inspect` reads the framework-managed `.vext/runtime/snapshots/<instanceId>.json` snapshot. MCP does not start services, execute Jobs, or read raw logs; `vext mcp sync` owns host configuration writes.
 
-The `jobs` section of `vext_project_inspect` statically reads `config.jobs` and Job sources and returns names, source files, queue and schedule information, payload schema presence, scheduler/worker/store summaries, host-run commands, and multi-process deployment notes. It does not execute Jobs, connect to queues, or read live queue state.
+The `jobs` section of `vext_project_inspect` reads names, cron / interval, enabled state, timezone and Redis configuration statically. It returns startup and deployment guidance without running handlers or timers.
 
 In monorepos, source ownership is checked against actual workspace members, shared package declarations, package exports/sourceExports, and consumer dependencies. Adjacent services are not read automatically. Explicit external models, locales, and frontend source directories are read-only when their paths can be proven. Names or shared declarations alone grant no cross-root write permission.
 

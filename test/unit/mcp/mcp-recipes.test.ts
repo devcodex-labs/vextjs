@@ -75,9 +75,8 @@ describe("shared Recipe generation", () => {
           returnType: "string",
         },
         "job-handler": {
-          queue: { enabled: true, priority: 2 },
-          schedule: { interval: 60000, timezone: "Asia/Shanghai" },
-          retry: { attempts: 3, delay: 1000, backoff: "exponential" },
+          cron: "0 * * * *",
+          timezone: "Asia/Shanghai",
         },
       };
       for (const recipe of VEXT_RECIPE_DEFINITIONS) {
@@ -423,7 +422,7 @@ describe("shared Recipe generation", () => {
       { recipeId: "job-handler", options: { queue: "default" } },
       {
         recipeId: "job-handler",
-        options: { schedule: { cron: "* * * * *", interval: 1000 } },
+        options: { cron: "* * * * *", interval: 1000 },
       },
       { recipeId: "locale", options: { locale: "../../escape" } },
       { recipeId: "api-route", options: { method: "erase" } },
@@ -432,7 +431,7 @@ describe("shared Recipe generation", () => {
       { recipeId: "api-module", options: { service: "other" } },
       {
         recipeId: "job-handler",
-        options: { schedule: { cron: "not a cron" } },
+        options: { cron: "not a cron" },
       },
     ])
       expect(
@@ -456,12 +455,12 @@ describe("shared Recipe generation", () => {
           name: "sample",
           options: {
             payload: { id: "string!" },
-            schedule: { interval: 1000 },
+            interval: 1000,
           },
         },
         inspected,
       ).status,
-    ).toBe("incomplete");
+    ).toBe("invalid");
   });
 
   it("renders children and makes the page actually request its API", async () => {

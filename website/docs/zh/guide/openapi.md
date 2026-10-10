@@ -281,7 +281,7 @@ export default definePlugin({
 
 ## Job 文档源
 
-启用 `openapi.docs.code.jobs` 后，Vext Docs 可以包含 Job 条目。Job 不是 HTTP 端点，因此这些条目与 OpenAPI operations 分开展示。详见 [任务与 Jobs](/zh/guide/jobs)。
+启用 `openapi.docs.code.jobs` 后，Vext Docs 可以包含 Job 条目。Job 不是 HTTP 端点，因此这些条目与 OpenAPI operations 分开展示。默认继承 `jobs.dir/include/exclude`，显式文档字段可分别覆盖；关闭的定义仍可展示。详情包含调度单位、时区、开关与静态解析状态，未知字段不会被当成默认值。文档列表不证明任务正在运行。配置与 JSDoc 示例详见[定时任务 Jobs](/zh/guide/jobs#文档与-mcp)。
 
 ## 文档配置
 

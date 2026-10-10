@@ -1671,6 +1671,7 @@ export const VEXT_DOCS_APP_JS: string = `
     ["component", "Components"],
     ["plugin", "Plugins"],
     ["middleware", "Middlewares"],
+    ["job", "Jobs"],
   ];
   const PROJECT_SCRIPT_GROUPS = [
     ["development", "Development"],
@@ -2551,6 +2552,26 @@ export const VEXT_DOCS_APP_JS: string = `
       ["Global middleware", plugin.globalMiddlewares ? "yes" : ""],
     ].filter((row) => row[1]);
     appendTableSection(parent, "Plugin", ["Property", "Value"], rows);
+  };
+
+  const appendJobDetails = (parent, doc) => {
+    const job = doc && doc.job;
+    if (!job) return;
+    const fields = job.fieldStates || {};
+    const declared = (key, value) => fields[key] === "unknown" ? "unknown (static evidence unavailable)" : value == null ? "not declared" : String(value);
+    appendTableSection(parent, "Scheduled job (static declaration)", ["Property", "Value"], [
+      ["Name", job.name == null ? "unknown; inferred path label: " + (job.inferredName || doc.sourceFile || "") : job.name],
+      ["Cron", declared("cron", job.cron)],
+      ["Interval (milliseconds)", declared("interval", job.interval)],
+      ["Declared timezone", declared("timezone", job.timezone)],
+      ["Effective cron timezone (task > config > UTC)", job.effectiveTimezone || "unknown / not applicable"],
+      ["Task enabled", declared("enabled", job.enabled)],
+      ["Global/task switches", job.schedulingEnabled == null ? "unknown" : String(job.schedulingEnabled)],
+      ["Parse state", job.parseState || "unknown"],
+    ]);
+    const note = document.createElement("p");
+    note.textContent = "These are static declarations; this page does not prove task discovery or runtime execution. " + (Array.isArray(job.parseNotes) ? job.parseNotes.join("; ") : "");
+    parent.appendChild(note);
   };
 
   const appendMiddlewareDetails = (parent, doc) => {
@@ -4386,6 +4407,7 @@ export const VEXT_DOCS_APP_JS: string = `
     appendModelDetails(item, doc);
     appendPluginDetails(item, doc);
     appendMiddlewareDetails(item, doc);
+    appendJobDetails(item, doc);
 
     const usage = createUsageSnippet(doc);
     if (usage) {
@@ -4451,6 +4473,9 @@ export const VEXT_DOCS_APP_JS: string = `
 
   const createUsageSnippet = (doc) => {
     const args = Array.isArray(doc.params) ? doc.params.map((param) => param.name).join(", ") : "";
+    if (doc.kind === "job") {
+      return "// Keep a defineJob export in the configured jobs directory.\\n// Vext starts scheduling after app readiness; no manual handler invocation.\\n// Validate discovery/configuration with a real application startup.";
+    }
     if (doc.kind === "service") {
       const title = text(doc.title || "");
       if (title.startsWith("services.")) {
@@ -4570,6 +4595,7 @@ export const VEXT_DOCS_APP_JS: string = `
       item.plugin && Array.isArray(item.plugin.extensions) ? item.plugin.extensions.join(" ") : "",
       item.middleware && item.middleware.name,
       item.middleware && item.middleware.type,
+      item.job && [item.job.name, item.job.inferredName, item.job.cron, item.job.interval, item.job.timezone, item.job.effectiveTimezone, item.job.enabled, item.job.parseState, (item.job.parseNotes || []).join(" ")].join(" "),
       Array.isArray(item.tags) ? item.tags.join(" ") : "",
     ], state.query));
   };
@@ -4824,7 +4850,7 @@ export const VEXT_DOCS_APP_JS: string = `
       const parts = source ? source.split("/").filter(Boolean) : [];
       return {
         segments: parts.slice(0, -1),
-        leaf: parts[parts.length - 1] || parsed.scope || text(item.title || item.id),
+        leaf: codeLeafLabel(item, parts[parts.length - 1] || parsed.scope || text(item.title || item.id)),
       };
     }
     if (item.kind === "locale") {

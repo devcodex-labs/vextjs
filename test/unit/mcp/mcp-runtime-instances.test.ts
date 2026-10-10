@@ -54,10 +54,10 @@ async function fixture(
   }
 }
 
-it("keeps web/worker/scheduler instances separate even in the same process and merges concurrent patches", async () =>
+it("keeps application instances separate even in the same process and merges concurrent patches", async () =>
   fixture(async (rootDir, inspect) => {
     const identities = (
-      ["development", "job-worker", "job-scheduler", "cluster"] as const
+      ["development", "production", "production", "cluster"] as const
     ).map((mode) => createRuntimeSnapshotIdentity(rootDir, mode));
     await Promise.all(
       identities.map((runtimeIdentity) =>
@@ -137,7 +137,7 @@ it("binds cursors to project, snapshot contents, selected instance and section",
 it("rejects foreign ownership and invalid UTF-8, and retains valid instances as partial evidence", async () =>
   fixture(async (rootDir, inspect) => {
     const own = createRuntimeSnapshotIdentity(rootDir, "production");
-    const foreign = createRuntimeSnapshotIdentity(rootDir, "job-worker");
+    const foreign = createRuntimeSnapshotIdentity(rootDir, "production");
     await writeRuntimeSnapshot({ rootDir, runtimeIdentity: own });
     await writeRuntimeSnapshot({ rootDir, runtimeIdentity: foreign });
     const file = path.join(
@@ -166,7 +166,7 @@ it("rejects foreign ownership and invalid UTF-8, and retains valid instances as 
     await patchRuntimeSnapshot({
       rootDir,
       runtimeIdentity: foreign,
-      event: { type: "recovered-queue" },
+      event: { type: "recovered-dependency" },
     });
     expect((await inspect()).data.availability).toBe("available");
   }));

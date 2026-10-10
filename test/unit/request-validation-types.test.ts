@@ -62,7 +62,10 @@ function formatDiagnostic(diagnostic: ts.Diagnostic): string {
   return `${diagnostic.file.fileName}:${line + 1}:${character + 1} ${message}`;
 }
 
-describe("route validation public types", () => {
+// Source compilation has a separate budget from runtime behavior tests.
+const compileBudget = { timeout: 60_000 };
+
+describe("route validation public types", compileBudget, () => {
   it("infers req.valid() from the route schema and preserves explicit overrides", () => {
     const diagnostics = compileTypeProbe(`
 import {

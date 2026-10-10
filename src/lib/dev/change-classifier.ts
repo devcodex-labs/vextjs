@@ -98,6 +98,7 @@ const COLD_PATTERNS: RegExp[] = [
   /^(package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?|bun\.lock)$/,
   /^\.env(\..+)?$/,
   /^src\/plugins\//,
+  /^src\/jobs\//,
   /^tsconfig\.json$/,
 ];
 

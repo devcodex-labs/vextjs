@@ -320,7 +320,7 @@ export async function runBackgroundTask(app: VextApp) {
 }
 ```
 
-`run()` returns the callback result, so await its Promise for an async callback. Manual run creates a store scope only; it does not run HTTP middleware, add auth, capture inbound headers, or schedule a task. [Jobs](/guide/jobs) covers discovery, execution, and queues.
+`run()` returns the callback result, so await its Promise for an async callback. Manual run creates a store scope only; it does not run HTTP middleware, add auth, capture inbound headers, or schedule a task. [Jobs](/guide/jobs) covers discovery and scheduled execution.
 
 ## Relationship with the built-in functions of the framework
 

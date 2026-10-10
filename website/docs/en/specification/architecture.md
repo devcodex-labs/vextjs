@@ -15,7 +15,7 @@ If you are creating a project for the first time, read [Project Structure](/guid
 | Business validation function | Business decisions such as payment eligibility and state transitions                                       | Business code calls it explicitly; there is no separately injected Domain Validator system                   |
 | Middleware                   | Cross-cutting request lifecycle handling                                                                   | A plugin registers global middleware, or a Route references declared middleware                              |
 | Plugin                       | Initialize extensions and resources and manage their lifecycle                                             | `definePlugin()`; `setup()` runs in dependency order                                                         |
-| Job                          | A non-HTTP task entry point and execution contract                                                         | `defineJob()`; loaded through the job CLI or job testing entry point                                         |
+| Job                          | A non-HTTP task entry point and execution contract                                                         | `defineJob()`; loaded at ordinary application startup, scheduled after readiness                             |
 | Frontend                     | Pages, layouts, interactions, and browser assets                                                           | Frontend build and renderer; Route plus `res.render()` owns the page URL                                     |
 | Config                       | Startup options, resources, and environment-specific settings                                              | Startup configuration merging, provider evaluation, and final configuration validation                       |
 
@@ -90,7 +90,7 @@ Expose extensions with `app.extend()` without occupying existing framework prope
 
 ### VEXT-ARCH-006 [MUST] Job execution and page rendering use their own explicit entry points
 
-Creating a file in `src/jobs` does not cause ordinary HTTP startup to run or schedule it automatically. Choose and configure job execution, scheduling, queue workers, and storage as described in the [Jobs Guide](/guide/jobs). A Job handler's context is not an HTTP `req` / `res`.
+Enabled definitions in `src/jobs` automatically schedule after application readiness and share its app and services. See [Jobs](/guide/jobs) for configuration, Redis coordination and shutdown. Handlers have no HTTP req/res context.
 
 Frontend page files are discovered and built by the renderer; they do not independently register backend URLs. A handler in `src/routes` calls `res.render()` to serve a page. Special SPA fallback behavior depends on explicit configuration. SSR, browser hydration, and API requests follow their respective lifecycles; see [Routing and Pages](/frontend/routing-and-pages) and [Rendering Modes](/frontend/rendering-modes).
 

@@ -1,3 +1,4 @@
+import { validateJobTimezone } from "./jobs/define-job.js";
 /**
  * config-loader.ts — 配置加载器
  *
@@ -2041,103 +2042,55 @@ function validateFetchConfig(value: unknown, path: string): void {
   });
 }
 
-function validateJobsConfig(value: unknown, path: string): void {
-  if (value === undefined) {
-    return;
-  }
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+export function validateJobsConfig(value: unknown, path: string): void {
+  if (value === undefined) return;
+  if (typeof value !== "object" || value === null || Array.isArray(value))
     throw new Error(`[vextjs] ${path} must be an object.`);
-  }
-
   const jobs = value as Record<string, unknown>;
+  const allowed = new Set([
+    "enabled",
+    "dir",
+    "include",
+    "exclude",
+    "timezone",
+    "redis",
+  ]);
+  for (const key of Object.keys(jobs))
+    if (!allowed.has(key))
+      throw new Error(
+        `[vextjs] ${path}.${key} is not supported. Jobs only supports application-started scheduled tasks.`,
+      );
   validateOptionalBoolean(jobs.enabled, `${path}.enabled`);
   validateOptionalRelativeProjectPath(jobs.dir, `${path}.dir`);
   validateOptionalStringArray(jobs.include, `${path}.include`);
   validateOptionalStringArray(jobs.exclude, `${path}.exclude`);
-  validateOptionalString(jobs.runner, `${path}.runner`);
-  if (
-    jobs.runner !== undefined &&
-    !["inline", "memory", "file"].includes(String(jobs.runner)) &&
-    !String(jobs.runner).trim()
-  ) {
-    throw new Error(
-      `[vextjs] ${path}.runner must be "inline", "memory", "file", or a non-empty custom runner name.`,
-    );
-  }
-  validateJobStoreConfig(jobs.store, `${path}.store`);
-  validateJobSchedulerConfig(jobs.scheduler, `${path}.scheduler`);
-  if (jobs.worker !== undefined) {
+  validateJobTimezone(jobs.timezone, `${path}.timezone`);
+  if (jobs.redis !== undefined) {
     if (
-      typeof jobs.worker !== "object" ||
-      jobs.worker === null ||
-      Array.isArray(jobs.worker)
-    ) {
-      throw new Error(`[vextjs] ${path}.worker must be an object.`);
+      !jobs.redis ||
+      typeof jobs.redis !== "object" ||
+      Array.isArray(jobs.redis)
+    )
+      throw new Error(`[vextjs] ${path}.redis must be an object.`);
+    const redis = jobs.redis as Record<string, unknown>;
+    const fields = new Set([
+      "url",
+      "uri",
+      "keyPrefix",
+      "namespace",
+      "client",
+      "leaseTtl",
+    ]);
+    for (const key of Object.keys(redis))
+      if (!fields.has(key))
+        throw new Error(`[vextjs] ${path}.redis.${key} is not supported.`);
+    validateRedisStoreFields(redis, `${path}.redis`);
+    if (redis.leaseTtl !== undefined) {
+      validatePositiveInteger(redis.leaseTtl, `${path}.redis.leaseTtl`);
+      if ((redis.leaseTtl as number) < 1000)
+        throw new Error(`[vextjs] ${path}.redis.leaseTtl must be >= 1000 ms.`);
     }
-    const worker = jobs.worker as Record<string, unknown>;
-    validateOptionalBoolean(worker.enabled, `${path}.worker.enabled`);
-    if (worker.concurrency !== undefined) {
-      validatePositiveInteger(worker.concurrency, `${path}.worker.concurrency`);
-    }
-    if (worker.shutdownTimeout !== undefined) {
-      validatePositiveInteger(
-        worker.shutdownTimeout,
-        `${path}.worker.shutdownTimeout`,
-      );
-    }
-    if (worker.pollInterval !== undefined) {
-      validatePositiveInteger(
-        worker.pollInterval,
-        `${path}.worker.pollInterval`,
-      );
-    }
-    if (worker.heartbeatInterval !== undefined) {
-      validatePositiveInteger(
-        worker.heartbeatInterval,
-        `${path}.worker.heartbeatInterval`,
-      );
-    }
-    validateJobLeaseConfig(worker.lease, `${path}.worker.lease`, false);
   }
-  if (jobs.defaults !== undefined) {
-    if (
-      typeof jobs.defaults !== "object" ||
-      jobs.defaults === null ||
-      Array.isArray(jobs.defaults)
-    ) {
-      throw new Error(`[vextjs] ${path}.defaults must be an object.`);
-    }
-    const defaults = jobs.defaults as Record<string, unknown>;
-    if (defaults.timeout !== undefined) {
-      validatePositiveInteger(defaults.timeout, `${path}.defaults.timeout`);
-    }
-    if (defaults.concurrency !== undefined) {
-      validatePositiveInteger(
-        defaults.concurrency,
-        `${path}.defaults.concurrency`,
-      );
-    }
-    validateJobRetryConfig(defaults.retry, `${path}.defaults.retry`);
-  }
-}
-
-function validateJobStoreConfig(value: unknown, path: string): void {
-  if (value === undefined) return;
-  if (typeof value === "string") {
-    if (!["memory", "file", "redis", "auto"].includes(value) && !value.trim()) {
-      throw new Error(
-        `[vextjs] ${path} must be "memory", "file", "redis", "auto", or a non-empty custom store name.`,
-      );
-    }
-    return;
-  }
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`[vextjs] ${path} must be a string or object.`);
-  }
-  const store = value as Record<string, unknown>;
-  validateOptionalString(store.type, `${path}.type`);
-  validateOptionalRelativeProjectPath(store.dir, `${path}.dir`);
-  validateRedisStoreFields(store, path);
 }
 
 function validateRateLimitStoreConfig(value: unknown, path: string): void {
@@ -2177,87 +2130,6 @@ function validateRedisStoreFields(
     throw new Error(`[vextjs] ${path}.client must be an object.`);
   }
 }
-function validateJobSchedulerConfig(value: unknown, path: string): void {
-  if (value === undefined) return;
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`[vextjs] ${path} must be an object.`);
-  }
-  const scheduler = value as Record<string, unknown>;
-  validateOptionalBoolean(scheduler.enabled, `${path}.enabled`);
-  if (
-    scheduler.mode !== undefined &&
-    scheduler.mode !== "inline" &&
-    scheduler.mode !== "enqueue"
-  ) {
-    throw new Error(`[vextjs] ${path}.mode must be "inline" or "enqueue".`);
-  }
-  if (scheduler.tickInterval !== undefined) {
-    validatePositiveInteger(scheduler.tickInterval, `${path}.tickInterval`);
-  }
-  validateOptionalString(scheduler.timezone, `${path}.timezone`);
-  validateJobMisfirePolicy(scheduler.misfirePolicy, `${path}.misfirePolicy`);
-  if (scheduler.maxCatchUp !== undefined) {
-    validatePositiveInteger(scheduler.maxCatchUp, `${path}.maxCatchUp`);
-  }
-  if (scheduler.jitter !== undefined) {
-    validateNonNegativeInteger(scheduler.jitter, `${path}.jitter`);
-  }
-  validateJobLeaseConfig(scheduler.lease, `${path}.lease`, true);
-}
-
-function validateJobLeaseConfig(
-  value: unknown,
-  path: string,
-  allowEnabled: boolean,
-): void {
-  if (value === undefined) return;
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`[vextjs] ${path} must be an object.`);
-  }
-  const lease = value as Record<string, unknown>;
-  if (allowEnabled) validateOptionalBoolean(lease.enabled, `${path}.enabled`);
-  if (lease.ttl !== undefined)
-    validatePositiveInteger(lease.ttl, `${path}.ttl`);
-  if (lease.renewInterval !== undefined) {
-    validatePositiveInteger(lease.renewInterval, `${path}.renewInterval`);
-  }
-}
-
-function validateJobRetryConfig(value: unknown, path: string): void {
-  if (value === undefined || value === false) return;
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`[vextjs] ${path} must be false or an object.`);
-  }
-  const retry = value as Record<string, unknown>;
-  if (retry.attempts !== undefined) {
-    validatePositiveInteger(retry.attempts, `${path}.attempts`);
-  }
-  if (retry.delay !== undefined && typeof retry.delay !== "number") {
-    throw new Error(`[vextjs] ${path}.delay must be a number.`);
-  }
-  if (typeof retry.delay === "number" && retry.delay < 0) {
-    throw new Error(`[vextjs] ${path}.delay must be >= 0.`);
-  }
-  if (
-    retry.backoff !== undefined &&
-    retry.backoff !== "fixed" &&
-    retry.backoff !== "exponential"
-  ) {
-    throw new Error(
-      `[vextjs] ${path}.backoff must be "fixed" or "exponential".`,
-    );
-  }
-}
-
-function validateJobMisfirePolicy(value: unknown, path: string): void {
-  if (value === undefined) return;
-  if (value !== "skip" && value !== "fire-once" && value !== "catch-up") {
-    throw new Error(
-      `[vextjs] ${path} must be "skip", "fire-once", or "catch-up".`,
-    );
-  }
-}
-
 function validateSessionConfig(value: unknown, path: string): void {
   if (value === undefined) {
     return;

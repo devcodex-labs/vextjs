@@ -1,4 +1,5 @@
 import { inspectSourceQuality } from "../tooling/diagnostics/code-quality.js";
+import { inspectStaticJobs } from "./jobs-inspection.js";
 import { existsSync } from "node:fs";
 import { readProjectFile } from "../lib/project/read-project-file.js";
 import {
@@ -63,6 +64,22 @@ export function collectVextProjectDiagnostics(
   );
   collectServiceDiagnostics(context, diagnostics);
   collectConfigDiagnostics(context, diagnostics, options.configTarget);
+  for (const mode of selectedConfigModes(options.configTarget)) {
+    const jobs = inspectStaticJobs(
+      view,
+      projectStaticConfig(view, { mode }),
+      rootDir,
+    );
+    diagnostics.push(
+      ...jobs.issues.map((issue) =>
+        projectDiagnostic({
+          ...issue,
+          message: `[${mode}] ${issue.message}`,
+          affectedCapabilityIds: ["C34"],
+        }),
+      ),
+    );
+  }
   collectFrontendDiagnostics(context, diagnostics);
   collectTestDiagnostics(context, diagnostics);
   if (options.includeGenerated !== false)

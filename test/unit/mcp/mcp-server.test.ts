@@ -228,22 +228,20 @@ describe("Vext MCP server", () => {
         section: "jobs",
         details: {
           config: {
-            scheduler: { mode: "enqueue", tickInterval: 1000 },
-            worker: { concurrency: 2 },
+            timezone: "UTC",
+            redis: { namespace: "billing-test" },
           },
           jobs: [
             {
               name: "billing.closeInvoice",
               sourceFile: "src/jobs/billing/close.ts",
-              hasSchedule: true,
-              queue: { priority: 5 },
+              cron: "0 * * * *",
+              timezone: "UTC",
             },
           ],
         },
       });
-      expect(JSON.stringify(jobs.structuredContent)).toContain(
-        "vext job scheduler",
-      );
+      expect(JSON.stringify(jobs.structuredContent)).toContain("vext start");
       const knowledge = await client.callTool({
         name: "vext_knowledge_search",
         arguments: { query: "job", limit: 5 },
@@ -727,7 +725,7 @@ async function createFixtureProject(): Promise<string> {
   );
   await writeFile(
     join(dir, "src", "config", "default.ts"),
-    'export default { server: { port: 3000 }, jobs: { scheduler: { mode: "enqueue", tickInterval: 1000 }, worker: { concurrency: 2 }, store: { type: "file", dir: ".vext/jobs" } }, dev: { mcp: { enabled: true, hosts: ["codex"], sync: "check" } } };\n',
+    'export default { server: { port: 3000 }, jobs: { timezone: "UTC", redis: { namespace: "billing-test" } }, dev: { mcp: { enabled: true, hosts: ["codex"], sync: "check" } } };\n',
   );
   await mkdir(join(dir, "packages/models/src"), { recursive: true });
   await writeFile(
@@ -769,7 +767,57 @@ async function createFixtureProject(): Promise<string> {
   );
   await writeFile(
     join(dir, "src", "jobs", "billing", "close.ts"),
-    'import { defineJob } from "vextjs";\n\nexport default defineJob({\n  name: "billing.closeInvoice",\n  description: "Close overdue invoices.",\n  tags: ["billing"],\n  queue: { priority: 5 },\n  schedule: { cron: "0 * * * *", timezone: "UTC", singleton: true },\n  concurrency: 1,\n  async handler() {}\n});\n',
+    'import { defineJob } from "vextjs";\n\nexport default defineJob({\n  name: "billing.closeInvoice",\n  description: "Close overdue invoices.",\n  tags: ["billing"],\n  cron: "0 * * * *",\n  timezone: "UTC",\n  async handler() {}\n});\n',
   );
   return dir;
 }
+
+it("exposes C34 Jobs prerequisites and production errors through real MCP calls", async () => {
+  rootDir = await createFixtureProject();
+  await writeFile(
+    join(rootDir, "src/config/default.ts"),
+    "export default {cluster:{enabled:true},jobs:{}};",
+  );
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  const server = createVextMcpServer({ rootDir, version: "2.0.0" });
+  const client = new Client(
+    { name: "jobs-proof", version: "1.0.0" },
+    { versionNegotiation: { mode: "legacy" } },
+  );
+  try {
+    await Promise.all([
+      server.connect(serverTransport),
+      client.connect(clientTransport),
+    ]);
+    const capability = await client.callTool({
+      name: "vext_capability_check",
+      arguments: { capability: "C34" },
+    });
+    expect(capability.structuredContent).toMatchObject({
+      status: "ok",
+      data: {
+        frameworkSupport: "supported",
+        projectState: "partial",
+        runtimeVerified: false,
+      },
+    });
+    expect(JSON.stringify(capability.structuredContent)).toContain(
+      "require config.jobs.redis",
+    );
+    const check = await client.callTool({
+      name: "vext_project_check",
+      arguments: { profile: "standard", configTarget: "production" },
+    });
+    expect(check.structuredContent).toMatchObject({
+      status: "ok",
+      data: { staticVerdict: "invalid", runtimeVerified: false },
+    });
+    expect(JSON.stringify(check.structuredContent)).toContain(
+      "VEXT_MCP_JOBS_CLUSTER_REDIS_REQUIRED",
+    );
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});

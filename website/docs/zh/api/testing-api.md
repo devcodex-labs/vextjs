@@ -1,6 +1,6 @@
 # 测试工具
 
-本页详细介绍 VextJS 的测试工具 API，包括 `createTestApp`、`TestApp`、`TestRequest`、`TestRequestBuilder`、`TestResponse` 和 `createTestJobRunner`。完整业务夹具与执行步骤见[测试指南](/zh/guide/testing)，本页用于查询签名、默认值和执行边界。
+本页详细介绍 VextJS 的测试工具 API，包括 `createTestApp`、`TestApp`、`TestRequest`、`TestRequestBuilder`、`TestResponse` 和 `createTestJobScheduler`。完整业务夹具与执行步骤见[测试指南](/zh/guide/testing)，本页用于查询签名、默认值和执行边界。
 
 ## 概述
 
@@ -9,15 +9,15 @@
 ```typescript
 import {
   createTestApp,
-  createTestJobRunner,
+  createTestJobScheduler,
   type CreateTestAppOptions,
   type TestApp,
   type TestRequest,
   type TestRequestBuilder,
   type TestResponse,
   type TestResponseHeaderValue,
-  type CreateTestJobRunnerOptions,
-  type TestJobRunner,
+  type CreateTestJobSchedulerOptions,
+  type TestJobScheduler,
 } from "vextjs/testing";
 ```
 
@@ -778,64 +778,37 @@ expect(res2.text).toBe("OK");
 
 ---
 
-## createTestJobRunner
+## createTestJobScheduler
 
 ```typescript
-function createTestJobRunner(
-  options: CreateTestJobRunnerOptions,
-): Promise<TestJobRunner>;
+import { createTestJobScheduler } from "vextjs/testing";
+import type {
+  CreateTestJobSchedulerOptions,
+  TestJobScheduler,
+} from "vextjs/testing";
 
-interface CreateTestJobRunnerOptions extends Omit<
+function createTestJobScheduler(
+  options: CreateTestJobSchedulerOptions,
+): Promise<TestJobScheduler>;
+interface CreateTestJobSchedulerOptions extends Omit<
   CreateTestAppOptions,
   "routes"
 > {
   jobs: Record<string, VextJobDefinition> | VextJobDefinition[];
+  now?: Date;
 }
-
-interface TestJobRunner {
+interface TestJobScheduler {
   app: VextApp;
-  registry: VextJobRegistry;
-  run(jobName: string, options?: VextJobRunOptions): Promise<VextJobRunResult>;
+  tick(now: Date): Promise<void>;
   close(): Promise<void>;
 }
 ```
 
-| 成员/规则          | 行为                                                                       |
-| ------------------ | -------------------------------------------------------------------------- |
-| `jobs`             | 必填，使用传入定义；不扫描 src/jobs                                        |
-| 名称               | 对象优先 definition.name，再用对象 key；数组无 name 时用 job1/job2…        |
-| 重名               | 创建 registry 时抛出重复名称错误                                           |
-| 其他选项           | 沿用 CreateTestAppOptions，但强制 routes=false；Service/插件仍有相同副作用 |
-| `app` / `registry` | 测试 app 和所注册任务；registry 提供 list/get/has/toJSON                   |
-| `run()`            | 执行任务、校验 payload、应用重试和超时；不是启动 scheduler/worker          |
-| `close()`          | 关闭测试 app；调用者应先等待在途 run 结束并处理取消                        |
+`jobs` 使用显式传入定义，不扫描 src/jobs。对象名称优先 definition.name，再用 key；数组依次回退为 job1/job2。名称重复时报错。其他选项沿用 `CreateTestAppOptions`，强制 `routes: false`；插件和服务仍有其实际初始化副作用。
 
-`run` options 包含 payload、signal、runId、trigger、scheduledAt、idempotencyKey；结果包含 jobName、runId、status、attempts、durationMs 及可选 result/error。status 为 success/failed/cancelled/timeout。应检查结果状态；未知任务等错误仍可能直接 reject。取消/超时通过 AbortSignal 协作，不强行中断忽略 signal 的 handler；close 也不是取消所有在途任务的快捷方式。具体签名与边界见 [Jobs API](/zh/api/jobs#runjobapp-registry-name-options)。
+`now` 默认为当前时间，注册严格未来的触发点。`tick(Date)` 等待本次符合触发条件的处理器结束，重复 tick 不重复执行；错过多个周期不补跑，同任务重叠跳过。长任务可保留第一次 tick 的 Promise，再推进下一次 tick 验证重叠。处理器失败被日志记录；通过业务断言判断执行结果。
 
-下面可另存为 `test/job-api.mjs` 后用 Node 执行：
-
-```javascript
-// test/job-api.mjs
-import assert from "node:assert/strict";
-import { defineJob } from "vextjs";
-import { createTestJobRunner } from "vextjs/testing";
-
-const runner = await createTestJobRunner({
-  services: false,
-  middlewares: false,
-  config: { adapter: "native" },
-  jobs: { ping: defineJob({ handler: () => ({ ok: true }) }) },
-});
-try {
-  const result = await runner.run("ping");
-  assert.equal(result.status, "success");
-  assert.deepEqual(result.result, { ok: true });
-} finally {
-  await runner.close();
-}
-```
-
-此 helper 不创建真实调度进程、不写持久运行记录、不验证 Store 租约。调度、分布式领取和故障恢复按 [Jobs 指南](/zh/guide/jobs)运行独立验证。
+`close()` 停止触发、请求取消，在应用总关闭预算内等待任务，再清理测试应用的依赖。helper 不创建真实定时器，但配置了 Redis 时会实际连接、验证和使用它；Redis 测试时间必须与服务器当前周期一致。普通 `createTestApp()` 不自动运行任务。例子见[定时任务指南](/zh/guide/jobs#测试与验收)。
 
 ## 使用模式
 
@@ -894,5 +867,5 @@ import type {
 ```
 
 :::tip
-测试工具通过 `vextjs/testing` 子路径导入（运行时值），类型可从 `vextjs` 主入口导入。`TestResponseHeaderValue`、`CreateTestJobRunnerOptions`、`TestJobRunner` 则从 `vextjs/testing` 导入。不要从根入口导入 createTestApp/createTestJobRunner 运行时值。
+测试工具通过 `vextjs/testing` 子路径导入（运行时值），类型可从 `vextjs` 主入口导入。`TestResponseHeaderValue`、`CreateTestJobSchedulerOptions`、`TestJobScheduler` 则从 `vextjs/testing` 导入。不要从根入口导入 createTestApp/createTestJobScheduler 运行时值。
 :::

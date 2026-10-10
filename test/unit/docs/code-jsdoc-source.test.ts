@@ -112,19 +112,16 @@ export function AppShell(props: { children?: unknown }) {
     await writeFile(
       join(srcDir, "jobs", "billing", "close-invoice.ts"),
       `
+import { defineJob } from "vextjs";
 /**
  * Close overdue invoices.
  */
 export default defineJob({
   name: "billing.closeInvoice",
   tags: ["billing"],
-  schedule: {
-    cron: "0 */5 * * * *",
-    timezone: "Asia/Shanghai",
-    singleton: true,
-  },
-  queue: { priority: 10 },
-  timeout: 30000,
+  cron: "0 */5 * * * *",
+  timezone: "Asia/Shanghai",
+  enabled: true,
   handler() {
     throw new Error("should not execute")
   }
@@ -292,16 +289,9 @@ export const dashboardRoot = "dashboard-root"
       summary: "Close overdue invoices.",
       job: {
         name: "billing.closeInvoice",
-        timeout: 30000,
-        schedule: {
-          cron: "0 */5 * * * *",
-          timezone: "Asia/Shanghai",
-          singleton: true,
-        },
-        queue: {
-          priority: 10,
-        },
-        usage: "vext job run billing.closeInvoice",
+        cron: "0 */5 * * * *",
+        timezone: "Asia/Shanghai",
+        enabled: true,
       },
     });
     expect(

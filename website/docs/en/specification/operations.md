@@ -54,9 +54,9 @@ Verification should check real pages, asset requests, SSR/hydration, API request
 
 ### VEXT-OPS-005 [SHOULD] Design multi-worker deployment around state ownership
 
-Every Cluster worker owns its process-local state. Whether Sessions, rate limits, caches, and Job Stores are shared depends on their actual storage and namespaces. Enabling cluster does not convert in-memory state to shared state automatically.
+Every Cluster worker owns its process-local state. Whether Sessions, rate limits, caches, and scheduled Jobs Redis are shared depends on their actual storage and namespaces. Enabling cluster does not convert in-memory state to shared state automatically.
 
-Before scaling, check database connection pools, external request quotas, Job concurrency, and resource capacity. HTTP, scheduler, and Job workers use their own runtime entry points; adding HTTP workers does not start or manage Jobs. See [Cluster](/guide/cluster) and [Jobs Specifications](/specification/jobs).
+Before scaling, check connection pools, external quotas, job duration and resource capacity. Scheduled timers start after each app worker is ready; active tasks must share Redis coordination. See [Cluster](/guide/cluster) and [Jobs Specifications](/specification/jobs).
 
 <a id="vext-ops-006"></a>
 
@@ -66,7 +66,7 @@ A listening port, completed ready callbacks, available critical dependencies, an
 
 HTTP shutdown stops accepting connections and waits for requests, calls close callbacks in reverse order, and releases framework resources within an overall deadline. Exceeding the deadline does not mean all cleanup finished. Make application close callbacks terminable and check the deployment platform's termination grace period.
 
-Test helpers need their own `close` call; programmatically started Job runtimes must also close. Test mode and real processes handle signals differently. An in-memory test cannot establish that production SIGTERM behavior passes. See [Security and Resources](/specification/security-and-resources#vext-resource-001) for resource responsibility.
+Test helpers need their own `close` call; scheduled job test helpers must also close. Test mode and real processes handle signals differently. An in-memory test cannot establish that production SIGTERM behavior passes. See [Security and Resources](/specification/security-and-resources#vext-resource-001) for resource responsibility.
 
 ## Delivery verification record
 

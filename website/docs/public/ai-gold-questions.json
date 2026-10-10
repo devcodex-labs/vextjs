@@ -335,6 +335,262 @@
         "可在创建后的 app 实例上直接注册业务 HTTP 路由",
         "异步路由 factory 是受支持的静态路由定义形式"
       ]
+    },
+    {
+      "id": "jobs-setup",
+      "locale": "en",
+      "question": "How do I add a scheduled task and configure automatic Redis namespace? Cite VEXT-JOB-001 and VEXT-JOB-004.",
+      "requiredRoutes": ["/guide/jobs", "/api/jobs", "/specification/jobs"],
+      "mustNotClaim": [
+        "Exactly-once business effects are guaranteed",
+        "Jobs provides automatic retry, downtime catch-up or immediate startup execution",
+        "MCP executed the handler",
+        "A static source scan proves live execution",
+        "Namespace must be set manually for every replica"
+      ],
+      "requiredDocIds": ["guide.jobs", "api.jobs", "specification.jobs"]
+    },
+    {
+      "id": "jobs-setup-zh",
+      "locale": "zh",
+      "question": "如何添加定时任务并使用自动 Redis namespace？引用 VEXT-JOB-001 与 VEXT-JOB-004。",
+      "requiredRoutes": [
+        "/zh/guide/jobs",
+        "/zh/api/jobs",
+        "/zh/specification/jobs"
+      ],
+      "mustNotClaim": [
+        "保证业务副作用恰好一次",
+        "Jobs 提供自动重试、停机补跑或启动立即执行",
+        "MCP 已执行 handler",
+        "静态源码扫描证明正在运行",
+        "每个副本都必须手动填写 namespace"
+      ],
+      "requiredDocIds": ["guide.jobs", "api.jobs", "specification.jobs"]
+    },
+    {
+      "id": "jobs-schedule",
+      "locale": "en",
+      "question": "How do cron, interval and timezone precedence determine strictly future execution? Cite VEXT-JOB-002.",
+      "requiredRoutes": ["/guide/jobs", "/api/jobs", "/specification/jobs"],
+      "mustNotClaim": [
+        "Exactly-once business effects are guaranteed",
+        "Jobs provides automatic retry, downtime catch-up or immediate startup execution",
+        "MCP executed the handler",
+        "A static source scan proves live execution",
+        "Intervals start counting from process startup"
+      ],
+      "requiredDocIds": ["guide.jobs", "api.jobs", "specification.jobs"]
+    },
+    {
+      "id": "jobs-schedule-zh",
+      "locale": "zh",
+      "question": "cron、interval 与时区优先级如何决定严格未来触发点？引用 VEXT-JOB-002。",
+      "requiredRoutes": [
+        "/zh/guide/jobs",
+        "/zh/api/jobs",
+        "/zh/specification/jobs"
+      ],
+      "mustNotClaim": [
+        "保证业务副作用恰好一次",
+        "Jobs 提供自动重试、停机补跑或启动立即执行",
+        "MCP 已执行 handler",
+        "静态源码扫描证明正在运行",
+        "interval 从进程启动时间开始计时"
+      ],
+      "requiredDocIds": ["guide.jobs", "api.jobs", "specification.jobs"]
+    },
+    {
+      "id": "jobs-cluster",
+      "locale": "en",
+      "question": "What happens when built-in Cluster has active tasks without jobs.redis? Cite VEXT-JOB-004.",
+      "requiredRoutes": ["/guide/jobs", "/api/jobs", "/specification/jobs"],
+      "mustNotClaim": [
+        "Exactly-once business effects are guaranteed",
+        "Jobs provides automatic retry, downtime catch-up or immediate startup execution",
+        "MCP executed the handler",
+        "A static source scan proves live execution",
+        "Cluster safely falls back to per-process scheduling"
+      ],
+      "requiredDocIds": ["guide.jobs", "api.jobs", "specification.jobs"]
+    },
+    {
+      "id": "jobs-cluster-zh",
+      "locale": "zh",
+      "question": "内置 Cluster 有启用任务但未配置 jobs.redis 时会怎样？引用 VEXT-JOB-004。",
+      "requiredRoutes": [
+        "/zh/guide/jobs",
+        "/zh/api/jobs",
+        "/zh/specification/jobs"
+      ],
+      "mustNotClaim": [
+        "保证业务副作用恰好一次",
+        "Jobs 提供自动重试、停机补跑或启动立即执行",
+        "MCP 已执行 handler",
+        "静态源码扫描证明正在运行",
+        "Cluster 会安全降级为每进程独立调度"
+      ],
+      "requiredDocIds": ["guide.jobs", "api.jobs", "specification.jobs"]
+    },
+    {
+      "id": "jobs-overlap-failure",
+      "locale": "en",
+      "question": "What happens on overlap or handler failure, and when is the next attempt? Cite VEXT-JOB-003.",
+      "requiredRoutes": ["/guide/jobs", "/api/jobs", "/specification/jobs"],
+      "mustNotClaim": [
+        "Exactly-once business effects are guaranteed",
+        "Jobs provides automatic retry, downtime catch-up or immediate startup execution",
+        "MCP executed the handler",
+        "A static source scan proves live execution",
+        "Overlapping points wait in a built-in queue"
+      ],
+      "requiredDocIds": ["guide.jobs", "api.jobs", "specification.jobs"]
+    },
+    {
+      "id": "jobs-overlap-failure-zh",
+      "locale": "zh",
+      "question": "任务重叠或 handler 失败后如何处理，下次何时执行？引用 VEXT-JOB-003。",
+      "requiredRoutes": [
+        "/zh/guide/jobs",
+        "/zh/api/jobs",
+        "/zh/specification/jobs"
+      ],
+      "mustNotClaim": [
+        "保证业务副作用恰好一次",
+        "Jobs 提供自动重试、停机补跑或启动立即执行",
+        "MCP 已执行 handler",
+        "静态源码扫描证明正在运行",
+        "重叠触发点在内置队列排队"
+      ],
+      "requiredDocIds": ["guide.jobs", "api.jobs", "specification.jobs"]
+    },
+    {
+      "id": "jobs-cancellation",
+      "locale": "en",
+      "question": "How should long handlers cooperate with cancellation and dependency shutdown? Cite VEXT-JOB-009.",
+      "requiredRoutes": ["/guide/jobs", "/api/jobs", "/specification/jobs"],
+      "mustNotClaim": [
+        "Exactly-once business effects are guaranteed",
+        "Jobs provides automatic retry, downtime catch-up or immediate startup execution",
+        "MCP executed the handler",
+        "A static source scan proves live execution",
+        "An entry-only signal check guarantees cancellation"
+      ],
+      "requiredDocIds": ["guide.jobs", "api.jobs", "specification.jobs"]
+    },
+    {
+      "id": "jobs-cancellation-zh",
+      "locale": "zh",
+      "question": "长任务如何配合取消与依赖关闭？引用 VEXT-JOB-009。",
+      "requiredRoutes": [
+        "/zh/guide/jobs",
+        "/zh/api/jobs",
+        "/zh/specification/jobs"
+      ],
+      "mustNotClaim": [
+        "保证业务副作用恰好一次",
+        "Jobs 提供自动重试、停机补跑或启动立即执行",
+        "MCP 已执行 handler",
+        "静态源码扫描证明正在运行",
+        "仅在入口检查 signal 就保证取消"
+      ],
+      "requiredDocIds": ["guide.jobs", "api.jobs", "specification.jobs"]
+    },
+    {
+      "id": "jobs-scope",
+      "locale": "en",
+      "question": "Does Jobs support retry, downtime catch-up or immediate startup execution? Cite VEXT-JOB-008.",
+      "requiredRoutes": ["/guide/jobs", "/api/jobs", "/specification/jobs"],
+      "mustNotClaim": [
+        "Exactly-once business effects are guaranteed",
+        "Jobs provides automatic retry, downtime catch-up or immediate startup execution",
+        "MCP executed the handler",
+        "A static source scan proves live execution",
+        "Jobs is a reliable-delivery task queue"
+      ],
+      "requiredDocIds": ["guide.jobs", "api.jobs", "specification.jobs"]
+    },
+    {
+      "id": "jobs-scope-zh",
+      "locale": "zh",
+      "question": "Jobs 是否支持重试、停机补跑或启动立即执行？引用 VEXT-JOB-008。",
+      "requiredRoutes": [
+        "/zh/guide/jobs",
+        "/zh/api/jobs",
+        "/zh/specification/jobs"
+      ],
+      "mustNotClaim": [
+        "保证业务副作用恰好一次",
+        "Jobs 提供自动重试、停机补跑或启动立即执行",
+        "MCP 已执行 handler",
+        "静态源码扫描证明正在运行",
+        "Jobs 是可靠投递任务队列"
+      ],
+      "requiredDocIds": ["guide.jobs", "api.jobs", "specification.jobs"]
+    },
+    {
+      "id": "jobs-static-evidence",
+      "locale": "en",
+      "question": "How should dynamic names, unresolved re-exports and C34 project state be interpreted? Cite VEXT-JOB-012.",
+      "requiredRoutes": ["/guide/jobs", "/api/jobs", "/specification/jobs"],
+      "mustNotClaim": [
+        "Exactly-once business effects are guaranteed",
+        "Jobs provides automatic retry, downtime catch-up or immediate startup execution",
+        "MCP executed the handler",
+        "A static source scan proves live execution",
+        "An inferred path name proves a dynamic task identity"
+      ],
+      "requiredDocIds": ["guide.jobs", "api.jobs", "specification.jobs"]
+    },
+    {
+      "id": "jobs-static-evidence-zh",
+      "locale": "zh",
+      "question": "应如何解读动态任务名、未解析转导出与 C34 项目状态？引用 VEXT-JOB-012。",
+      "requiredRoutes": [
+        "/zh/guide/jobs",
+        "/zh/api/jobs",
+        "/zh/specification/jobs"
+      ],
+      "mustNotClaim": [
+        "保证业务副作用恰好一次",
+        "Jobs 提供自动重试、停机补跑或启动立即执行",
+        "MCP 已执行 handler",
+        "静态源码扫描证明正在运行",
+        "路径推导名证明动态任务的真实身份"
+      ],
+      "requiredDocIds": ["guide.jobs", "api.jobs", "specification.jobs"]
+    },
+    {
+      "id": "jobs-docs-selection",
+      "locale": "en",
+      "question": "How do Jobs Docs inherit runtime filters and allow independent documentation overrides? Cite VEXT-JOB-011.",
+      "requiredRoutes": ["/guide/jobs", "/api/jobs", "/specification/jobs"],
+      "mustNotClaim": [
+        "Exactly-once business effects are guaranteed",
+        "Jobs provides automatic retry, downtime catch-up or immediate startup execution",
+        "MCP executed the handler",
+        "A static source scan proves live execution",
+        "Docs overrides change runtime scheduling selection"
+      ],
+      "requiredDocIds": ["guide.jobs", "api.jobs", "specification.jobs"]
+    },
+    {
+      "id": "jobs-docs-selection-zh",
+      "locale": "zh",
+      "question": "Jobs Docs 如何继承运行时筛选并允许独立文档覆盖？引用 VEXT-JOB-011。",
+      "requiredRoutes": [
+        "/zh/guide/jobs",
+        "/zh/api/jobs",
+        "/zh/specification/jobs"
+      ],
+      "mustNotClaim": [
+        "保证业务副作用恰好一次",
+        "Jobs 提供自动重试、停机补跑或启动立即执行",
+        "MCP 已执行 handler",
+        "静态源码扫描证明正在运行",
+        "Docs 覆盖会改变运行时任务选取"
+      ],
+      "requiredDocIds": ["guide.jobs", "api.jobs", "specification.jobs"]
     }
   ]
 }

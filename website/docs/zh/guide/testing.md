@@ -680,7 +680,7 @@ npx vextjs start --port 3000
 
 ## 测试 Jobs
 
-`vextjs/testing` 还导出 `createTestJobRunner()`，传入 Job 定义，通过 `run()` 执行，并在 finally / teardown 中 `close()`。它不自动证明独立 scheduler / worker 的持久化、领取、心跳和跨进程调度正确；完整示例及边界见 [Jobs API](/zh/api/jobs)。
+普通 `createTestApp()` 不自动调度 `src/jobs`。使用 `createTestJobScheduler()` 提供任务定义和初始 `now`，通过 `tick(Date)` 验证未来触发、重叠跳过与失败行为，并在 finally / teardown 中 `close()`。它不启用真实定时器；多副本协调还需真实 Redis 集成测试。示例见 [Jobs API](/zh/api/jobs)。
 
 ## 下一步
 

@@ -679,7 +679,7 @@ For external MongoDB integration, prepare an isolated database and verification 
 
 ## Testing Jobs
 
-`vextjs/testing` also exports `createTestJobRunner()`. Supply Job definitions, call `run()`, and `close()` in a finally block or teardown. This alone does not verify a separate scheduler or Worker's persistence, claiming, heartbeat, or cross-process scheduling. See [Jobs API](/api/jobs) for the complete example and boundaries.
+Ordinary `createTestApp()` does not schedule `src/jobs`. Supply definitions and an initial `now` to `createTestJobScheduler()`, advance with `tick(Date)`, and close in teardown. It verifies future points, overlap skipping and failure behavior without real timers. Multi-replica coordination also needs real Redis integration tests. See [Jobs API](/api/jobs).
 
 ## Next step
 

@@ -73,8 +73,7 @@ beforeAll(async () => {
           : {}),
         ...(recipe.name === "job-handler"
           ? {
-              queue: { enabled: true, priority: 2 },
-              schedule: { interval: 1000 },
+              interval: 1000,
             }
           : {}),
       };
@@ -140,12 +139,12 @@ beforeAll(async () => {
       },
       {
         recipeId: "job-handler",
-        name: "typed-payload",
+        name: "scheduled",
         options: {
           language,
-          payload: { amount: "number!", label: "string!" },
+          interval: 1000,
           handler:
-            "return { amount: ctx.payload.amount * 2, label: ctx.payload.label.toUpperCase() };",
+            "ctx.signal.throwIfAborted(); return ctx.scheduledAt.toISOString();",
         },
       },
       {
@@ -260,7 +259,7 @@ export default defineRoutes(app => {
       new Map([
         [
           file,
-          'import { defineJob } from "vextjs"; export default defineJob({queue: "default", handler() {}});',
+          'import { defineJob } from "vextjs"; export default defineJob({interval: 1000, queue: "default", handler() {}});',
         ],
         [
           normalize(path.join(root, "negative/package.json")),
@@ -268,9 +267,7 @@ export default defineRoutes(app => {
         ],
       ]),
     );
-    expect(
-      diagnostics.some((item) => item.code === 2559 || item.code === 2322),
-    ).toBe(true);
+    expect(diagnostics.some((item) => item.code === 2353)).toBe(true);
   }, 60000);
 
   it.each(["ts", "js"] as const)(
@@ -307,8 +304,7 @@ export default defineRoutes(app => {
       const definition = (await evaluate(job.content)) as ReturnType<
         typeof defineJob
       >;
-      expect(definition.queue).toEqual({ enabled: true, priority: 2 });
-      expect(definition.schedule?.interval).toBe(1000);
+      expect(definition.interval).toBe(1000);
       expect(Object.isFrozen(definition)).toBe(true);
     },
   );

@@ -380,7 +380,11 @@ export class StaticModuleGraph {
         )
       )
         return;
-      if (frameworkCall(node, "defineRoutes") || registration(node, ancestors))
+      if (
+        frameworkCall(node, "defineRoutes") ||
+        frameworkCall(node, "defineJob") ||
+        registration(node, ancestors)
+      )
         return;
       if (
         frameworkCall(node, "schemaAdapter") &&

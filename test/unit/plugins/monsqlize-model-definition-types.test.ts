@@ -67,7 +67,10 @@ function formatDiagnostic(diagnostic: ts.Diagnostic): string {
   return `${diagnostic.file.fileName}:${line + 1}:${character + 1} ${message}`;
 }
 
-describe("VextModelDefinition public type", () => {
+// Source compilation has a separate budget from runtime behavior tests.
+const compileBudget = { timeout: 60_000 };
+
+describe("VextModelDefinition public type", compileBudget, () => {
   it("accepts documented monSQLize schema, hooks and options shapes", () => {
     const diagnostics = compileTypeProbe(`
 import type { VextModelDefinition } from "../../../src/lib/plugins/monsqlize/types.js";
@@ -140,7 +143,7 @@ void invalidOptionsModel;
   });
 });
 
-describe("MonSQLizeDatabaseConfig public type", () => {
+describe("MonSQLizeDatabaseConfig public type", compileBudget, () => {
   it("accepts documented Redis cache uri and rejects misspelled connection fields", () => {
     const diagnostics = compileTypeProbe(`
 import type { MonSQLizeDatabaseConfig } from "../../../src/lib/plugins/monsqlize/types.js";

@@ -107,7 +107,7 @@ requireOrderedTokens("Bash local CI", bashLocalCi, [
   "npm run build",
   "npm run verify:public-surface",
   "npm run verify:ci-contract",
-  "test/integration/redis-job-store.test.ts",
+  "test/integration/redis-scheduled-jobs.test.ts",
   "test/unit/mcp/mcp-server.test.ts",
   "npm run verify:mcp",
   "npm run format:check",
@@ -119,7 +119,7 @@ requireOrderedTokens("PowerShell local CI", powershellLocalCi, [
   "npm run build",
   "npm run verify:public-surface",
   "npm run verify:ci-contract",
-  "test/integration/redis-job-store.test.ts",
+  "test/integration/redis-scheduled-jobs.test.ts",
   "test/unit/mcp/mcp-server.test.ts",
   "npm run verify:mcp",
   "npm run format:check",
@@ -169,7 +169,7 @@ requireTokens("redis-integration", jobBlock("redis-integration"), [
   "redis:7-alpine",
   "redis-cli ping",
   "VEXT_TEST_REDIS_URL: redis://127.0.0.1:6379",
-  "test/integration/redis-job-store.test.ts",
+  "test/integration/redis-scheduled-jobs.test.ts",
 ]);
 
 requireTokens("coverage", jobBlock("coverage"), [
@@ -203,8 +203,17 @@ requireTokens(
   ],
 );
 
+requireTokens("Node 24 scheduled Jobs", jobBlock("jobs-node24"), [
+  "node-version: 24",
+  "npm ci",
+  "npm run build",
+  "vitest run --no-cache test/unit/jobs/job-loader.test.ts",
+]);
+
 requireTokens("CI aggregate", jobBlock("ci-ok"), [
   "name: CI ✅",
+  "jobs-node24,",
+  "needs.jobs-node24.result",
   "redis-integration,",
   "package-contracts,",
   "mcp-contracts,",

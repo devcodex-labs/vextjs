@@ -89,25 +89,25 @@ Backend locale files describe error keys with code, message, and HTTP status sem
 
 All 17 Recipes have independent options schemas in `vext://catalog/recipes`. Unknown fields and conflicting options are rejected.
 
-| Recipe                    | Main inputs                                                         | Output and integration                                                                                                                |
-| ------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| RCP-01 api-route          | method/path, RouteOptions, validate/responses, handler or service   | Route; custom results require responses                                                                                               |
-| RCP-02 api-module         | serviceMethod, input/output, body, RouteOptions, validate/responses | Route calls generated service; default input comes from `req.valid("body")`                                                           |
-| RCP-03 page-route         | page/path, props, RouteOptions                                      | Render route and matching page; serialize only authorized data                                                                        |
-| RCP-04 page-and-api       | page/path, props, apiPath, routeOptions/apiRouteOptions             | Real API request with loading/error/cancellation                                                                                      |
-| RCP-05 service            | body, input/output or parameters/imports                            | Use case and necessary contracts; declared input requires a body                                                                      |
-| RCP-06 model              | collection/key, schema/document, indexes/connection                 | Native model definition; application-owned database setup                                                                             |
-| RCP-07 middleware         | body, factory/options                                               | Handler or factory; explicitly register it                                                                                            |
-| RCP-08 plugin             | setup/onReady/onClose, dependencies                                 | Lifecycle; close only owned resources                                                                                                 |
-| RCP-09 locale             | target, module/submodule, locale/messages                           | Module messages; verify loader use and missing locale keys                                                                            |
-| RCP-10 test               | target/exportName, kind, cases                                      | Unit/integration tests calling the real export, with at least two distinct expected outcomes or boundaries                            |
-| RCP-11 type-contract      | target, fields                                                      | Consumer-owned fields, reuse complex existing contracts                                                                               |
-| RCP-12 utility            | description/body, parameters/returnType, target                     | Actual pure operation, no invented identity wrapper                                                                                   |
-| RCP-13 frontend-component | title                                                               | Presentation scaffold; integrate real interaction, styles, and i18n                                                                   |
-| RCP-14 frontend-layout    | page, reusable                                                      | Render children and connect reusable layouts to page entries                                                                          |
-| RCP-15 reusable-schema    | fields, usage/consumer                                              | Valid DSL/schema fields; attach to the real validation boundary                                                                       |
-| RCP-16 mock-scenario      | data, scenarios, target                                             | Separate data/scenarios and select an existing adapter                                                                                |
-| RCP-17 job-handler        | payload, handler, queue/schedule, retry/timeout                     | Object queue; cron validation creates no timer; scheduler passes no business payload; configure real worker/scheduler/store processes |
+| Recipe                    | Main inputs                                                         | Output and integration                                                                                     |
+| ------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| RCP-01 api-route          | method/path, RouteOptions, validate/responses, handler or service   | Route; custom results require responses                                                                    |
+| RCP-02 api-module         | serviceMethod, input/output, body, RouteOptions, validate/responses | Route calls generated service; default input comes from `req.valid("body")`                                |
+| RCP-03 page-route         | page/path, props, RouteOptions                                      | Render route and matching page; serialize only authorized data                                             |
+| RCP-04 page-and-api       | page/path, props, apiPath, routeOptions/apiRouteOptions             | Real API request with loading/error/cancellation                                                           |
+| RCP-05 service            | body, input/output or parameters/imports                            | Use case and necessary contracts; declared input requires a body                                           |
+| RCP-06 model              | collection/key, schema/document, indexes/connection                 | Native model definition; application-owned database setup                                                  |
+| RCP-07 middleware         | body, factory/options                                               | Handler or factory; explicitly register it                                                                 |
+| RCP-08 plugin             | setup/onReady/onClose, dependencies                                 | Lifecycle; close only owned resources                                                                      |
+| RCP-09 locale             | target, module/submodule, locale/messages                           | Module messages; verify loader use and missing locale keys                                                 |
+| RCP-10 test               | target/exportName, kind, cases                                      | Unit/integration tests calling the real export, with at least two distinct expected outcomes or boundaries |
+| RCP-11 type-contract      | target, fields                                                      | Consumer-owned fields, reuse complex existing contracts                                                    |
+| RCP-12 utility            | description/body, parameters/returnType, target                     | Actual pure operation, no invented identity wrapper                                                        |
+| RCP-13 frontend-component | title                                                               | Presentation scaffold; integrate real interaction, styles, and i18n                                        |
+| RCP-14 frontend-layout    | page, reusable                                                      | Render children and connect reusable layouts to page entries                                               |
+| RCP-15 reusable-schema    | fields, usage/consumer                                              | Valid DSL/schema fields; attach to the real validation boundary                                            |
+| RCP-16 mock-scenario      | data, scenarios, target                                             | Separate data/scenarios and select an existing adapter                                                     |
+| RCP-17 job-handler        | cron, interval, timezone, enabled, handler                          | Schedules after readiness; replicas explicitly share Redis; no queue, retries or catch-up                  |
 
 api-module always calls its newly generated service; use api-route for an existing service or custom handler. Free-form parameters require serviceArgs. Explicit input requires validate.body unless serviceArgs selects another validated boundary. Standalone serviceArgs/serviceMethod require a target service.
 
@@ -150,7 +150,7 @@ CLI sourceBuild checks source/build inputs only when framework sources exist. Ch
 
 ## Multiple runtime instances
 
-Each owner (development process, web, cluster master, independent Job worker/scheduler) records schemaVersion=2 under `.vext/runtime/snapshots/<instanceId>.json`. A random startup UUID separates instances even when a PID is reused. Real service roots/projectId separate services. Development child restarts append events to their owner's history; each cluster master aggregates its own workers.
+Each owner (development process, web, cluster master) records schemaVersion=2 under `.vext/runtime/snapshots/<instanceId>.json`. A random startup UUID separates instances even when a PID is reused. Real service roots/projectId separate services. Development child restarts append events to their owner's history; each cluster master aggregates its own workers.
 
 Use vext_runtime_inspect with section summary to page through instances, then select the returned instanceId for summary/workers/reloads/events. Aggregate detail items carry instanceId. Cursors bind project, section, instance selection and snapshot contents; restart at the first page after a stale cursor.
 
@@ -168,8 +168,8 @@ MCP asks for corrected inputs or explicit integration when it detects this root-
 
 ## Additional boundaries verified by business consumers
 
-- A Job payload field map produces one runtime schema and an inferred contract, by default in `src/schemas/<name>-payload.ts` and `src/types/server/jobs/<name>.ts`. The Job imports both. JavaScript uses JSDoc; user policy can override `job-types` or its parent. Jobs without payloads do not receive empty type files.
-- Built-in scheduler-created runs do not carry business payload. Jobs with required payloads should be run/enqueued explicitly, or the scheduled handler should derive work from application data. Built-in stores allow `completeRun()` only for the current running owner and clear the lease; stale or repeated completion attempts do not overwrite terminal state.
+- Scheduled job recipes generate cron / interval definitions. Handlers derive business input; no queue or payload schema is generated. Verify scheduling with createTestJobScheduler and real Redis.
+- Scheduled Jobs derives business input in the handler. Redis trigger markers survive lease release; no queues, retries or execution records are generated.
 - Field-level `{ type: "boolean" }` and `{ enum: ["draft", "published"] }` must retain the runtime meaning, rather than becoming objects with type/enum subfields. Each request location still receives a DSL field map, not a whole-object JSON Schema.
 - For generated login, editing, or image pages, the host must verify business behavior: logout or 401 clears token, legacy storage, data, and editing state; distinguish a committed save from a failed refresh. SSR images can fail before hydration, so check the mounted native image's `complete`/`naturalWidth` as well as `onError`. These are consumer acceptance responsibilities, not automatic Recipe behavior.
 - Consume the actual generated API client after it exists; do not invent a source import into absent output. Consumer evidence covers TS/JS, HTTP, OpenAPI, client types and browsers independently of static candidate acceptance.

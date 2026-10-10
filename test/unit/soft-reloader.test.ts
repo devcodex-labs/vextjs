@@ -748,6 +748,52 @@ describe("SoftReloader", () => {
   // ════════════════════════════════════════════════════════════
 
   describe("级联检测与降级", () => {
+    it.each(["jobs", "tasks"])(
+      "Jobs 的传递依赖变化时冷重启（目录 %s）",
+      async (dir) => {
+        vi.mocked(invalidateAndEvict).mockReturnValue({
+          invalidated: new Set([
+            "/project/.vext/dev/utils/cleanup.js",
+            `/project/.vext/dev/${dir}/daily.js`,
+          ]),
+          cascadeDetected: false,
+          evicted: 2,
+          skipped: 0,
+        });
+        const originalSend = process.send;
+        process.send = undefined;
+        try {
+          const options = createDefaultOptions({ config: { jobs: { dir } } });
+          const result = await new SoftReloader(options).reload([
+            { path: "src/utils/cleanup.ts", type: "modify" },
+          ]);
+          expect(result.requestedColdRestart).toBe(true);
+          expect(reloadServices).not.toHaveBeenCalled();
+          expect(reloadRoutes).not.toHaveBeenCalled();
+          expect(options.hotHandler.swap).not.toHaveBeenCalled();
+        } finally {
+          process.send = originalSend;
+        }
+      },
+    );
+
+    it("Jobs 全局关闭时其依赖不强制定时任务冷重启", async () => {
+      vi.mocked(invalidateAndEvict).mockReturnValue({
+        invalidated: new Set(["/project/.vext/dev/jobs/daily.js"]),
+        cascadeDetected: false,
+        evicted: 1,
+        skipped: 0,
+      });
+      const options = createDefaultOptions({
+        config: { jobs: { enabled: false } },
+      });
+      const result = await new SoftReloader(options).reload([
+        { path: "src/utils/cleanup.ts", type: "modify" },
+      ]);
+      expect(result.success).toBe(true);
+      expect(result.requestedColdRestart).toBe(false);
+    });
+
     it("级联爆炸时应返回 requestedColdRestart=true", async () => {
       vi.mocked(invalidateAndEvict).mockReturnValue({
         invalidated: new Set(

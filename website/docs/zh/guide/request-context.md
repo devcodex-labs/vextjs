@@ -320,7 +320,7 @@ export async function runBackgroundTask(app: VextApp) {
 }
 ```
 
-`run()` 返回回调的返回值，异步回调返回 Promise，因此调用方应 `await`。手动 run 只建立存储作用域，不执行 HTTP 中间件，不自动补充 auth、捕获请求头或调度任务；[Jobs 指南](/zh/guide/jobs)负责任务的发现、执行与队列。
+`run()` 返回回调的返回值，异步回调返回 Promise，因此调用方应 `await`。手动 run 只建立存储作用域，不执行 HTTP 中间件，不自动补充 auth、捕获请求头或调度任务；[Jobs 指南](/zh/guide/jobs)负责任务的发现与定时执行。
 
 ## 与框架内置功能的关系
 

@@ -54,9 +54,9 @@ TypeScript 后端生产启动要求有效构建产物；缺失或失效时应重
 
 ### VEXT-OPS-005 [SHOULD] 根据状态归属设计多 worker 部署
 
-Cluster 的每个 worker 拥有自己的进程内状态。Session、限流、缓存和 Job Store 是否共享，取决于其具体存储与命名空间；开启 cluster 不会自动把内存状态转换成共享状态。
+Cluster 的每个 worker 拥有自己的进程内状态。Session、限流、缓存和 定时任务 Redis 是否共享，取决于其具体存储与命名空间；开启 cluster 不会自动把内存状态转换成共享状态。
 
-扩容前核对数据库连接池、外部请求额度、任务并发和资源容量。HTTP、scheduler 和任务 worker 使用各自运行入口，不能通过增加 HTTP worker 数量来启动或管理 Job。见 [Cluster](/zh/guide/cluster)及[任务规范](/zh/specification/jobs)。
+扩容前核对数据库连接池、外部请求额度、任务运行耗时和资源容量。定时任务随各应用 Worker 就绪后注册，启用的任务必须共享 Redis 协调触发。见 [Cluster](/zh/guide/cluster)及[任务规范](/zh/specification/jobs)。
 
 <a id="vext-ops-006"></a>
 
@@ -66,7 +66,7 @@ Cluster 的每个 worker 拥有自己的进程内状态。Session、限流、缓
 
 HTTP 关闭流程包括停止接收连接/等待请求、按逆序调用关闭回调和释放框架资源，并受总关闭期限约束。超过期限不表示所有清理工作已经完成；应用应使关闭回调可结束，并核对部署平台的终止宽限时间。
 
-测试 helper 需要调用自己的 close；程序启动的任务 runtime 也需要关闭。测试模式和真实进程的信号行为有差异，不能用一次内存测试推导生产 SIGTERM 行为已经通过。资源职责见[安全与资源规范](/zh/specification/security-and-resources#vext-resource-001)。
+测试 helper 需要调用自己的 close；定时任务测试 helper 也需要关闭。测试模式和真实进程的信号行为有差异，不能用一次内存测试推导生产 SIGTERM 行为已经通过。资源职责见[安全与资源规范](/zh/specification/security-and-resources#vext-resource-001)。
 
 ## 交付验证记录
 

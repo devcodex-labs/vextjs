@@ -159,7 +159,7 @@ else
 fi
 
 step_start "Redis Integration Tests"
-if npx vitest run test/integration/redis-job-store.test.ts --reporter=verbose; then
+if npx vitest run test/integration/redis-scheduled-jobs.test.ts --reporter=verbose; then
   step_pass
 else
   step_fail

@@ -57,7 +57,10 @@ function formatDiagnostic(diagnostic: ts.Diagnostic): string {
   return `${diagnostic.file.fileName}:${line + 1}:${character + 1} ${message}`;
 }
 
-describe("VextAdapter public type", () => {
+// Source compilation has a separate budget from runtime behavior tests.
+const compileBudget = { timeout: 60_000 };
+
+describe("VextAdapter public type", compileBudget, () => {
   it("accepts the documented custom adapter shape and rejects the stale shape", () => {
     const diagnostics = compileTypeProbe(`
 import type { VextAdapter, VextApp } from "../../src/index.js";
@@ -128,7 +131,7 @@ void staleAdapter;
   });
 });
 
-describe("VextRequest and VextResponse public types", () => {
+describe("VextRequest and VextResponse public types", compileBudget, () => {
   it("accepts documented request/response fields and rejects Web ReadableStream responses", () => {
     const diagnostics = compileTypeProbe(`
 import { Readable } from "node:stream";

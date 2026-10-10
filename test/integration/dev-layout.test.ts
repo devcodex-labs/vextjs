@@ -416,4 +416,123 @@ describe("built dev worker with dynamic directory configuration", () => {
       });
     }
   }, 35_000);
+
+  it("runs custom-directory jobs in dev and reloads their imported dependencies through a cold restart", async () => {
+    const repository = process.cwd();
+    const entry = path.join(repository, "dist/lib/dev/dev-entry.js");
+    const root = await mkdtemp(path.join(tmpdir(), "vext-dev-jobs-"));
+    const port = await availablePort();
+    let child: ChildProcess | undefined;
+    let output = "";
+    const messages: Record<string, unknown>[] = [];
+    const write = async (file: string, source: string) => {
+      const target = path.join(root, file);
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, source);
+    };
+    const start = async () => {
+      child = fork(entry, [], {
+        cwd: root,
+        execArgv: [],
+        env: {
+          ...process.env,
+          NODE_ENV: "development",
+          VEXT_CONFIG: "development",
+          VEXT_ROOT: root,
+          VEXT_PORT: String(port),
+          VEXT_HOST: "127.0.0.1",
+          VEXT_DEV_MODE: "1",
+        },
+        stdio: ["ignore", "pipe", "pipe", "ipc"],
+      });
+      child.stdout?.on("data", (data) => {
+        output = (output + String(data)).slice(-20000);
+      });
+      child.stderr?.on("data", (data) => {
+        output = (output + String(data)).slice(-20000);
+      });
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error(`Jobs worker readiness timeout: ${output}`)),
+          15000,
+        );
+        child!.once("error", (error) => {
+          clearTimeout(timer);
+          reject(error);
+        });
+        child!.once("exit", (code) => {
+          clearTimeout(timer);
+          reject(new Error(`Jobs worker exited ${code}: ${output}`));
+        });
+        child!.on("message", (value) => {
+          if (!value || typeof value !== "object") return;
+          const message = value as Record<string, unknown>;
+          messages.push(message);
+          if (message.type === "ready") {
+            clearTimeout(timer);
+            resolve();
+          }
+        });
+      });
+      return child!;
+    };
+    try {
+      await mkdir(path.join(root, "node_modules"));
+      await symlink(
+        repository,
+        path.join(root, "node_modules/vextjs"),
+        process.platform === "win32" ? "junction" : "dir",
+      );
+      await write(
+        "package.json",
+        JSON.stringify({
+          name: `dev-jobs-${randomUUID()}`,
+          type: "module",
+          dependencies: { vextjs: "2.0.0" },
+        }),
+      );
+      await write(
+        "src/config/default.js",
+        `export default { server: { host: "127.0.0.1", port: ${port} }, adapter: "native", frontend: false, openapi: { enabled: false }, logger: { level: "error" }, jobs: { dir: "tasks" } };`,
+      );
+      await write(
+        "src/routes/index.js",
+        `import { defineRoutes } from "vextjs"; export default defineRoutes(app => { app.get("/job-value", {}, (_req, res) => res.text(process.env.VEXT_SCHEDULED_PROBE || "waiting")); });`,
+      );
+      await write("src/utils/job-value.js", `export const value = "v1";`);
+      await write(
+        "src/tasks/heartbeat.js",
+        `import { defineJob } from "vextjs"; import { value } from "../utils/job-value.js"; export default defineJob({ interval: 100, handler() { process.env.VEXT_SCHEDULED_PROBE = value; } });`,
+      );
+      const first = await start();
+      await waitForText(`http://127.0.0.1:${port}/job-value`, "v1");
+      await write("src/utils/job-value.js", `export const value = "v2";`);
+      expect(
+        await operation(first, "reload", [
+          { path: "src/utils/job-value.js", type: "modify" },
+        ]),
+      ).toMatchObject({ success: false, requestedColdRestart: true });
+      expect(messages).toContainEqual(
+        expect.objectContaining({
+          type: "request-cold-restart",
+          reason: "scheduled job dependency changed",
+        }),
+      );
+      await stopWorker(first);
+      const second = await start();
+      expect(second.pid).not.toBe(first.pid);
+      await waitForText(`http://127.0.0.1:${port}/job-value`, "v2");
+    } catch (error) {
+      throw new Error(`${String(error)}\n${output}`, { cause: error });
+    } finally {
+      if (child) await stopWorker(child);
+      await assertPortReleased(port);
+      await rm(root, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      });
+    }
+  }, 35_000);
 });

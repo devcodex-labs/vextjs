@@ -168,7 +168,7 @@ export default config;
 | `database`        | `MonSQLizeDatabaseConfig`                               | `undefined`          | 内置 MonSQLize 插件的类型增强；见[数据库指南](../guide/database) |
 | `frontend`        | `boolean \| VextFrontendConfig`                         | `{ enabled: false }` | 内置前端构建与静态服务配置                                       |
 | `cluster`         | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined`          | Cluster 多进程配置                                               |
-| `jobs`            | [`VextJobsConfig`](./jobs#配置)                         | 见 Jobs API          | 后台 Job 发现与 worker 配置                                      |
+| `jobs`            | [`VextJobsConfig`](./jobs#vextjobsconfig)               | 见 Jobs API          | 定时任务发现与 Redis 协调配置                                    |
 | `cache`           | [`VextCacheConfig`](#vextcacheconfig)                   | 见下方               | 路由级响应缓存配置                                               |
 | `dev`             | [`VextDevConfig`](#vextdevconfig)                       | 见下方               | 仅开发模式使用的工具配置                                         |
 
@@ -1553,45 +1553,7 @@ const documentedDefaults = {
   jobs: {
     enabled: true,
     dir: "jobs",
-    runner: "inline",
-    store: {
-      type: "file",
-      dir: ".vext/jobs",
-    },
-    scheduler: {
-      enabled: true,
-      mode: "inline",
-      tickInterval: 1000,
-      timezone: "UTC",
-      misfirePolicy: "skip",
-      maxCatchUp: 10,
-      jitter: 0,
-      lease: {
-        enabled: true,
-        ttl: 30000,
-        renewInterval: 10000,
-      },
-    },
-    worker: {
-      enabled: true,
-      concurrency: 4,
-      shutdownTimeout: 10000,
-      pollInterval: 1000,
-      heartbeatInterval: 10000,
-      lease: {
-        ttl: 30000,
-        renewInterval: 10000,
-      },
-    },
-    defaults: {
-      timeout: 30000,
-      retry: {
-        attempts: 1,
-        delay: 0,
-        backoff: "fixed",
-      },
-      concurrency: 1,
-    },
+    timezone: "UTC",
   },
 };
 ```

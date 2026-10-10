@@ -1068,22 +1068,16 @@ See the [Cluster guide](/guide/cluster) for CPU detection, proxy/NAT limits of s
 
 ### Jobs configuration
 
-`config.jobs` controls job discovery, scheduler, worker, store, leases, and
-default execution policies for the Job runtime. It does not make HTTP startup
-run Jobs automatically. Test helpers use explicitly supplied Job definitions.
-Vext Docs has its own Job source directory configuration; changing
-`jobs.dir` does not automatically update every documentation or tooling
-entry point. See the guides and API below for each entry point's scope.
+`config.jobs` configures application-started cron / interval jobs. Enabled by default, timers register future points only after plugins, services and readiness complete. Active jobs in built-in Cluster require Redis. Test helpers use supplied definitions without automatically scheduling files. Docs has a separate Job source directory configuration; verify it when customizing jobs.dir.
 
 ```ts
 export default {
   jobs: {
     enabled: true,
     dir: "jobs",
-    runner: "inline",
-    store: { type: "file", dir: ".vext/jobs" },
-    scheduler: { enabled: true, mode: "inline" },
-    worker: { enabled: true, concurrency: 4 },
+    timezone: "UTC",
+    // Cluster / replicas require shared Redis; namespace is automatic.
+    // redis: { url: process.env.VEXT_REDIS_URL },
   },
 };
 ```

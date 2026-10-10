@@ -617,7 +617,7 @@ export default definePlugin({
 
 ### Scheduled task plug-in
 
-This `setInterval` is a per-process illustration. Runs can overlap, multiple Workers execute duplicates, and clearing a timer does not cancel work already started. Use [Jobs](/guide/jobs) for durable scheduling, leases and concurrency limits.
+This `setInterval` is a per-process illustration. Runs can overlap, multiple Workers execute duplicates, and clearing a timer does not cancel work already started. Use [Jobs](/guide/jobs) for application-started scheduling, overlap skipping and Redis coordination across replicas. Jobs has no queue, persistent execution records or downtime catch-up.
 
 ```typescript
 // src/plugins/scheduler.ts

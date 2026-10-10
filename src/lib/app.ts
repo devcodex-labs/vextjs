@@ -1,3 +1,4 @@
+import type { ScheduledJobs } from "./jobs/runtime.js";
 import {
   createLogger,
   getLoggerLifecycle,
@@ -79,6 +80,9 @@ export interface AppInternals {
    * 执行完毕后清空 hooks 数组，释放闭包引用。
    */
   runReady(): Promise<void>;
+
+  /** @internal Prepared before listening; starts only after readiness. */
+  setScheduledJobs(jobs: ScheduledJobs): void;
 
   /**
    * 获取全局中间件列表
@@ -202,6 +206,7 @@ export function createApp(config: VextConfig): {
   let _readyPromise: Promise<void> | null = null;
   let _closeState: "open" | "running" | "closed" = "open";
   let _shutdownPromise: Promise<void> | null = null;
+  let _scheduledJobs: ScheduledJobs | undefined;
 
   // ── 创建 logger（内置结构化 logger，Phase 1 升级）────────────
   //
@@ -493,6 +498,10 @@ export function createApp(config: VextConfig): {
       _pluginSetupDepth = Math.max(0, _pluginSetupDepth - 1);
     },
 
+    setScheduledJobs(jobs) {
+      _scheduledJobs = jobs;
+    },
+
     runReady() {
       if (_readyPromise) return _readyPromise;
       _readyState = "running";
@@ -522,6 +531,7 @@ export function createApp(config: VextConfig): {
           source: lifecycleSource,
         });
         _readyState = "completed";
+        if (_closeState === "open") _scheduledJobs?.start();
       })();
       return _readyPromise;
     },
@@ -550,6 +560,20 @@ export function createApp(config: VextConfig): {
         const deadline = createShutdownDeadline(shutdownTimeout, app.logger);
         app.logger.info("[vextjs] starting graceful shutdown...");
         let shutdownError: unknown = null;
+
+        // Stop triggers and drain jobs before user hooks release their dependencies.
+        if (_scheduledJobs) {
+          await deadline.run(
+            "scheduled jobs close",
+            () => _scheduledJobs!.close(),
+            (error) => {
+              app.logger.error(
+                { error: shutdownErrorMessage(error) },
+                "[vextjs] scheduled jobs close failed after shutdown deadline",
+              );
+            },
+          );
+        }
 
         const beforeResult = await deadline.run(
           "app:close before",
@@ -1142,44 +1166,6 @@ export const DEFAULT_CONFIG: VextConfig = {
   jobs: {
     enabled: true,
     dir: "jobs",
-    runner: "inline",
-    store: {
-      type: "file",
-      dir: ".vext/jobs",
-    },
-    scheduler: {
-      enabled: true,
-      mode: "inline",
-      tickInterval: 1000,
-      timezone: "UTC",
-      misfirePolicy: "skip",
-      maxCatchUp: 10,
-      jitter: 0,
-      lease: {
-        enabled: true,
-        ttl: 30000,
-        renewInterval: 10000,
-      },
-    },
-    worker: {
-      enabled: true,
-      concurrency: 4,
-      shutdownTimeout: 10000,
-      pollInterval: 1000,
-      heartbeatInterval: 10000,
-      lease: {
-        ttl: 30000,
-        renewInterval: 10000,
-      },
-    },
-    defaults: {
-      timeout: 30000,
-      retry: {
-        attempts: 1,
-        delay: 0,
-        backoff: "fixed",
-      },
-      concurrency: 1,
-    },
+    timezone: "UTC",
   },
 };

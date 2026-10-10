@@ -74,6 +74,7 @@ const curatedLlmsSections = [
     routes: [
       "/guide/routing",
       "/guide/services",
+      "/guide/jobs",
       "/guide/build",
       "/guide/deployment",
       "/guide/openapi",

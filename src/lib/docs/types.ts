@@ -135,22 +135,17 @@ export interface VextMiddlewareDetails {
 }
 
 export interface VextJobDetails {
-  name: string;
-  timeout?: number;
-  retry?: unknown;
-  concurrency?: number;
-  schedule?: {
-    cron?: string;
-    interval?: number;
-    timezone?: string;
-    singleton?: boolean;
-  };
-  queue?: {
-    enabled?: boolean;
-    priority?: number;
-  };
-  hasPayloadSchema?: boolean;
-  usage?: string;
+  name: string | null;
+  inferredName?: string;
+  parseState?: "complete" | "partial";
+  parseNotes?: string[];
+  fieldStates?: Record<string, "known" | "absent" | "unknown">;
+  effectiveTimezone?: string;
+  schedulingEnabled?: boolean;
+  enabled?: boolean;
+  cron?: string;
+  interval?: number;
+  timezone?: string;
 }
 
 export interface VextCodeDocItem {

@@ -81,6 +81,7 @@ export function createProjectWatchLayout(
     frontend?: FrontendLayoutInput;
     localeDirectory?: string;
     modelsDirectory?: string;
+    jobsDirectory?: string;
   },
 ): ProjectWatchLayout {
   const src = path.resolve(projectRoot, "src");
@@ -93,6 +94,16 @@ export function createProjectWatchLayout(
       ? ("soft" as const)
       : ("cold" as const),
   }));
+  backendDirectories.push({
+    path: resolveProjectRolePath(
+      projectRoot,
+      src,
+      input.jobsDirectory ?? "jobs",
+      "jobs.dir",
+      true,
+    ),
+    action: "cold",
+  });
   return {
     ...createFrontendWatchLayout(projectRoot, input.frontend),
     backendDirectories,

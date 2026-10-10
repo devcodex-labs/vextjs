@@ -609,7 +609,7 @@ function planHostValidationSteps(
       normalized.includes("/src/types/server/jobs/")
     ) {
       steps.add(
-        "Run focused job unit tests and scheduler/worker integration checks for affected jobs.",
+        "Run scheduled job tests with createTestJobScheduler and Redis multi-instance checks for affected jobs.",
       );
     }
     if (role === "tests" || normalized.startsWith("test/")) {

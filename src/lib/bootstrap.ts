@@ -1,3 +1,4 @@
+import { prepareScheduledJobs } from "./jobs/runtime.js";
 import type {
   SocketWorkerContext,
   ClusterWorkerPolicy,
@@ -440,6 +441,10 @@ export async function bootstrap(
       "start.services",
       () => loadServices(app, join(srcDir, "services"), { rootDir }),
       { phase: "services" },
+    );
+
+    internals!.setScheduledJobs(
+      await prepareScheduledJobs(app, rootDir, srcDir),
     );
 
     // ── 步骤 ⑤: router-loader ────────────────────────────

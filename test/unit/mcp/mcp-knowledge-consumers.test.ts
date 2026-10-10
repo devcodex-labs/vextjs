@@ -181,7 +181,7 @@ describe("versioned dependency knowledge consumers", () => {
     });
   });
 
-  it("keeps Job scheduling, payload, Redis and terminal ownership guidance together", () => {
+  it("keeps scheduled Jobs, Redis admission and cancellation guidance together", () => {
     const text = searchMcpCatalog({
       ids: ["K07", "K08"],
       kinds: ["knowledge"],
@@ -189,9 +189,9 @@ describe("versioned dependency knowledge consumers", () => {
     })
       .matches.map((item) => `${item.summary}\n${item.body}`)
       .join("\n");
-    expect(text).toContain("scheduled run 时不提供业务 payload");
-    expect(text).toContain("jobs.worker.concurrency");
-    expect(text).toContain("迟到或重复 completion 返回 false");
+    expect(text).toContain("启动只注册未来触发点");
+    expect(text).toContain("上次未完成则跳过本次");
+    expect(text).toContain("触发标记在运行租约释放后仍保留");
     expect(text).toContain("Lua 原子脚本");
   });
 });

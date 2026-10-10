@@ -1,402 +1,594 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
-import { defineJob } from "../../../src/lib/jobs/define-job.js";
-import { loadJobs } from "../../../src/lib/jobs/job-loader.js";
-import { createJobRegistry } from "../../../src/lib/jobs/job-registry.js";
-import { VextJobDuplicateNameError } from "../../../src/lib/jobs/job-errors.js";
-import { resolveJobDueTimes } from "../../../src/lib/jobs/schedule.js";
-import { tickJobScheduler } from "../../../src/lib/jobs/scheduler.js";
-import { createMemoryJobStore } from "../../../src/lib/jobs/stores/index.js";
-import { startJobWorker } from "../../../src/lib/jobs/worker.js";
-import type { VextJobRuntime } from "../../../src/lib/jobs/job-runtime.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  defineJob,
+  isVextJobDefinition,
+} from "../../../src/lib/jobs/define-job.js";
+import { createScheduledJobs } from "../../../src/lib/jobs/runtime.js";
+import { nextJobTime } from "../../../src/lib/jobs/schedule.js";
+import { createApp, DEFAULT_CONFIG } from "../../../src/lib/app.js";
+import { _validateConfig } from "../../../src/lib/config-loader.js";
+import { createTestJobScheduler } from "../../../src/testing/index.js";
 import type {
-  VextJobRunOptions,
-  VextJobRunResult,
-  VextJobStore,
+  VextJobDefinition,
+  VextJobDefinitionInput,
+  VextLoadedJob,
 } from "../../../src/lib/jobs/types.js";
-import { createTestJobRunner } from "../../../src/testing/index.js";
 
-let rootDir: string | undefined;
+const loaded = (
+  definition: VextJobDefinition,
+  name = definition.name ?? "sample",
+): VextLoadedJob => ({
+  name,
+  definition,
+  sourceFile: `${name}.ts`,
+  sourcePath: `${name}.ts`,
+  exportName: "default",
+});
+const at = (ms: number) => new Date(ms);
+const options = {
+  services: false,
+  middlewares: false,
+  config: { logger: { level: "silent" as const } },
+};
+afterEach(() => vi.useRealTimers());
 
-afterEach(async () => {
-  if (rootDir) await rm(rootDir, { recursive: true, force: true });
-  rootDir = undefined;
+describe("scheduled job definition", () => {
+  it("requires a handler and exactly one schedule", () => {
+    expect(() => defineJob({ handler() {} })).toThrow("exactly one");
+    expect(() =>
+      defineJob({ cron: "* * * * *", interval: 1000, handler() {} }),
+    ).toThrow("exactly one");
+    expect(() =>
+      defineJob({ interval: 1000 } as VextJobDefinitionInput),
+    ).toThrow("handler");
+    expect(
+      isVextJobDefinition(defineJob({ interval: 1000, handler() {} })),
+    ).toBe(true);
+    expect(isVextJobDefinition({ handler() {} })).toBe(false);
+  });
+  it.each([
+    "payload",
+    "queue",
+    "schedule",
+    "retry",
+    "timeout",
+    "concurrency",
+    "idempotencyKey",
+  ])("rejects obsolete %s options", (key) => {
+    expect(() =>
+      defineJob({
+        interval: 1000,
+        handler() {},
+        [key]: {},
+      } as VextJobDefinitionInput),
+    ).toThrow(`does not support "${key}"`);
+  });
+  it.each([0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])(
+    "rejects interval %s",
+    (interval) => {
+      expect(() => defineJob({ interval, handler() {} })).toThrow(
+        "positive safe integer",
+      );
+    },
+  );
+  it("validates cron and timezone before startup", () => {
+    expect(() => defineJob({ cron: "bad cron", handler() {} })).toThrow(
+      "invalid cron",
+    );
+    expect(() =>
+      defineJob({ cron: "* * * * *", timezone: "Invalid/Zone", handler() {} }),
+    ).toThrow("timezone");
+    expect(() =>
+      defineJob({ interval: 1000, timezone: "UTC", handler() {} }),
+    ).toThrow("only supported with cron");
+  });
+  it.each(["runner", "store", "scheduler", "worker", "defaults"])(
+    "rejects obsolete config.jobs.%s",
+    (key) => {
+      expect(() => _validateConfig({ jobs: { [key]: {} } })).toThrow(
+        "not supported",
+      );
+    },
+  );
+  it("validates Redis lease and global timezone", () => {
+    expect(() =>
+      _validateConfig({ jobs: { redis: { leaseTtl: 999 } } }),
+    ).toThrow("1000");
+    expect(() =>
+      _validateConfig({ jobs: { timezone: "Invalid/Zone" } }),
+    ).toThrow("timezone");
+    expect(() =>
+      _validateConfig({
+        jobs: { redis: { url: "redis://localhost", leaseTtl: 1000 } },
+      }),
+    ).not.toThrow();
+  });
 });
 
-describe("Job framework", () => {
-  it("runs a defined job through the testing helper", async () => {
-    const runner = await createTestJobRunner({
-      services: false,
-      jobs: {
-        "math.add": defineJob<{ a: number; b: number }, number>({
-          handler: ({ payload }) => payload.a + payload.b,
-        }),
-      },
-    });
-
-    try {
-      const result = await runner.run("math.add", { payload: { a: 2, b: 3 } });
-      expect(result.status).toBe("success");
-      expect(result.result).toBe(5);
-    } finally {
-      await runner.close();
-    }
+describe("time calculation", () => {
+  it("aligns intervals across replicas and never executes immediately", () => {
+    expect(nextJobTime({ interval: 5000 }, at(1001))).toEqual(at(5000));
+    expect(nextJobTime({ interval: 5000 }, at(4999))).toEqual(at(5000));
+    expect(nextJobTime({ interval: 5000 }, at(5000))).toEqual(at(10000));
   });
-
-  it("loads job files without affecting HTTP bootstrap", async () => {
-    rootDir = await mkdtemp(join(tmpdir(), "vext-jobs-"));
-    const srcDir = join(rootDir, "src");
-    await mkdir(join(srcDir, "jobs", "billing"), { recursive: true });
-    const defineJobImport = pathToFileURL(
-      join(process.cwd(), "src", "lib", "jobs", "define-job.ts"),
-    ).href;
-    await writeFile(
-      join(srcDir, "jobs", "billing", "close.ts"),
-      `import { defineJob } from ${JSON.stringify(defineJobImport)}; export default defineJob({ description: "Close invoices", handler: async () => "ok" });`,
+  it("rejects schedules without a representable future point", async () => {
+    expect(
+      nextJobTime({ interval: Number.MAX_SAFE_INTEGER }, at(0)),
+    ).toBeNull();
+    await expect(
+      createTestJobScheduler({
+        ...options,
+        jobs: [defineJob({ interval: Number.MAX_SAFE_INTEGER, handler() {} })],
+      }),
+    ).rejects.toThrow("no representable future");
+  });
+  it("uses future cron boundaries and IANA timezone", () => {
+    expect(nextJobTime({ cron: "* * * * * *" }, at(1000))).toEqual(at(2000));
+    expect(
+      nextJobTime(
+        { cron: "0 9 * * *", timezone: "Asia/Shanghai" },
+        new Date("2026-01-01T00:00:00Z"),
+      ),
+    ).toEqual(new Date("2026-01-01T01:00:00Z"));
+    expect(
+      nextJobTime(
+        { cron: "0 9 * * *" },
+        new Date("2026-01-01T00:00:00Z"),
+        "Asia/Shanghai",
+      ),
+    ).toEqual(new Date("2026-01-01T01:00:00Z"));
+  });
+  it("handles the spring DST gap with the cron parser", () => {
+    const next = nextJobTime(
+      { cron: "30 2 * * *", timezone: "America/New_York" },
+      new Date("2026-03-08T06:59:59Z"),
     );
-
-    const jobs = await loadJobs({ rootDir, srcDir });
-    expect(jobs).toHaveLength(1);
-    expect(jobs[0]).toMatchObject({
-      name: "billing.close",
-      sourcePath: "billing/close.ts",
-      exportName: "default",
-    });
+    expect(next).toEqual(new Date("2026-03-08T07:30:00Z"));
   });
+});
 
-  it("fails fast on duplicate job names", () => {
-    const job = defineJob({ name: "dup", handler: () => undefined });
-    expect(() =>
-      createJobRegistry([
-        {
-          name: "dup",
-          definition: job,
-          sourceFile: "a.ts",
-          sourcePath: "a.ts",
-          exportName: "default",
-        },
-        {
-          name: "dup",
-          definition: job,
-          sourceFile: "b.ts",
-          sourcePath: "b.ts",
-          exportName: "default",
-        },
-      ]),
-    ).toThrow(VextJobDuplicateNameError);
-  });
-
-  it("exposes schedule and queue metadata in the registry", () => {
-    const job = defineJob({
-      name: "billing.closeOverdue",
-      schedule: {
-        cron: "0 */5 * * * *",
-        timezone: "Asia/Shanghai",
-        singleton: true,
-      },
-      queue: { priority: 10 },
-      handler: () => undefined,
-    });
-    const registry = createJobRegistry([
-      {
-        name: "billing.closeOverdue",
-        definition: job,
-        sourceFile: "billing.ts",
-        sourcePath: "billing.ts",
-        exportName: "default",
-      },
-    ]);
-
-    expect(registry.toJSON()[0]).toMatchObject({
-      schedule: {
-        cron: "0 */5 * * * *",
-        timezone: "Asia/Shanghai",
-        singleton: true,
-      },
-      queue: { priority: 10 },
-    });
-  });
-
-  it("calculates interval due times inside the scheduler tick window", () => {
-    const due = resolveJobDueTimes({
-      schedule: { interval: 1000, misfirePolicy: "catch-up" },
-      previousTick: new Date("2026-09-13T00:00:00.000Z"),
-      now: new Date("2026-09-13T00:00:03.000Z"),
-    });
-
-    expect(due.map((item) => item.toISOString())).toEqual([
-      "2026-09-13T00:00:01.000Z",
-      "2026-09-13T00:00:02.000Z",
-      "2026-09-13T00:00:03.000Z",
-    ]);
-  });
-
-  it("uses store leases so only one scheduler owner can create due runs", async () => {
-    const store = createMemoryJobStore();
-    expect(await store.acquireSchedulerLease("a", 30_000)).toBe(true);
-    expect(await store.acquireSchedulerLease("b", 30_000)).toBe(false);
-    await store.releaseSchedulerLease("a");
-    expect(await store.acquireSchedulerLease("b", 30_000)).toBe(true);
-  });
-
-  it("ticks scheduled jobs into the shared store", async () => {
-    const job = defineJob({
-      name: "billing.closeOverdue",
-      schedule: { interval: 1000, misfirePolicy: "catch-up" },
-      handler: () => "ok",
-    });
-    const runtime = await createRuntime({
-      jobs: { "billing.closeOverdue": job },
-      schedulerMode: "enqueue",
-    });
-
-    try {
-      const created = await tickJobScheduler(runtime, {
-        ownerId: "scheduler-a",
-        previousTick: new Date("2026-09-13T00:00:00.000Z"),
-        now: new Date("2026-09-13T00:00:01.000Z"),
-      });
-      const runs = await runtime.listRuns();
-      expect(created).toBe(1);
-      expect(runs[0]).toMatchObject({
-        jobName: "billing.closeOverdue",
-        status: "queued",
-        trigger: "schedule",
-      });
-    } finally {
-      await runtime.close();
-    }
-  });
-
-  it("lets a worker claim and complete one queued run", async () => {
-    const runtime = await createRuntime({
+describe("controlled scheduler", () => {
+  it("runs only at future points, passes the ready app, and deduplicates repeated ticks", async () => {
+    const calls: number[] = [];
+    const test = await createTestJobScheduler({
+      ...options,
+      now: at(0),
       jobs: {
-        "math.add": defineJob<{ a: number; b: number }, number>({
-          handler: ({ payload }) => payload.a + payload.b,
-        }),
-      },
-    });
-
-    try {
-      const run = await runtime.enqueue("math.add", {
-        payload: { a: 4, b: 6 },
-      });
-      await startJobWorker(runtime, { ownerId: "worker-a", once: true });
-      await expect(runtime.getRun(run.id)).resolves.toMatchObject({
-        status: "success",
-        result: 10,
-      });
-    } finally {
-      await runtime.close();
-    }
-  });
-
-  it("honors per-job concurrency while claiming queued runs", async () => {
-    let active = 0;
-    let maxActive = 0;
-    const releases: Array<() => void> = [];
-    const runtime = await createRuntime({
-      workerConcurrency: 2,
-      jobs: {
-        "billing.sync": defineJob({
-          concurrency: 1,
-          handler: async () => {
-            active += 1;
-            maxActive = Math.max(maxActive, active);
-            await new Promise<void>((resolve) => releases.push(resolve));
-            active -= 1;
-            return "ok";
+        sample: defineJob({
+          interval: 1000,
+          handler(ctx) {
+            expect(ctx.app).toBe(test.app);
+            expect(ctx.name).toBe("sample");
+            calls.push(ctx.scheduledAt.getTime());
           },
         }),
       },
     });
-
     try {
-      const first = await runtime.enqueue("billing.sync");
-      const second = await runtime.enqueue("billing.sync");
-      const worker = startJobWorker(runtime, {
-        ownerId: "worker-a",
-        once: true,
-      });
-      await waitUntil(() => releases.length === 1);
-      await expect(runtime.getRun(first.id)).resolves.toMatchObject({
-        status: "running",
-      });
-      await expect(runtime.getRun(second.id)).resolves.toMatchObject({
-        status: "queued",
-      });
-      releases[0]?.();
-      await worker;
-      expect(maxActive).toBe(1);
-      await expect(runtime.getRun(first.id)).resolves.toMatchObject({
-        status: "success",
-      });
-      await expect(runtime.getRun(second.id)).resolves.toMatchObject({
-        status: "queued",
-      });
+      await test.tick(at(0));
+      await test.tick(at(999));
+      expect(calls).toEqual([]);
+      await test.tick(at(1000));
+      await test.tick(at(1000));
+      await test.tick(at(2000));
+      expect(calls).toEqual([1000, 2000]);
     } finally {
-      releases.splice(0).forEach((release) => release());
-      await runtime.close();
+      await test.close();
+    }
+    await test.tick(at(3000));
+    expect(calls).toEqual([1000, 2000]);
+  });
+  it("skips missed periods and continues with future points", async () => {
+    const calls: number[] = [];
+    const test = await createTestJobScheduler({
+      ...options,
+      now: at(0),
+      jobs: [
+        defineJob({
+          interval: 1000,
+          handler(ctx) {
+            calls.push(ctx.scheduledAt.getTime());
+          },
+        }),
+      ],
+    });
+    try {
+      await test.tick(at(5000));
+      expect(calls).toEqual([]);
+      await test.tick(at(6000));
+      expect(calls).toEqual([6000]);
+    } finally {
+      await test.close();
     }
   });
-
-  it("protects claimed runs from completion by a different owner", async () => {
-    const store = createMemoryJobStore();
-    const run = await store.enqueueRun({
-      jobName: "billing.sync",
-      trigger: "enqueue",
-      runAt: new Date("2026-09-13T00:00:00.000Z"),
+  it("does not retry failures and runs the next period", async () => {
+    let calls = 0;
+    const test = await createTestJobScheduler({
+      ...options,
+      now: at(0),
+      jobs: [
+        defineJob({
+          interval: 1000,
+          handler() {
+            calls++;
+            throw new Error("business failure");
+          },
+        }),
+      ],
     });
-    const claimed = await store.claimRun(run.id, {
-      ownerId: "worker-a",
-      leaseTtl: 30_000,
-      now: new Date("2026-09-13T00:00:00.000Z"),
-    });
-
-    expect(claimed).toMatchObject({
-      status: "running",
-      leaseOwner: "worker-a",
-    });
-    await expect(
-      store.completeRun(
-        run.id,
-        { status: "success", attempts: 1, durationMs: 1 },
-        { ownerId: "worker-b" },
-      ),
-    ).resolves.toBe(false);
-    await expect(store.getRun(run.id)).resolves.toMatchObject({
-      status: "running",
-      leaseOwner: "worker-a",
-    });
-    await expect(
-      store.completeRun(
-        run.id,
-        { status: "success", attempts: 1, durationMs: 1 },
-        { ownerId: "worker-a" },
-      ),
-    ).resolves.toBe(true);
-    const completed = await store.getRun(run.id);
-    expect(completed).toMatchObject({ status: "success" });
-    expect(completed).not.toHaveProperty("leaseOwner");
+    try {
+      await test.tick(at(1000));
+      expect(calls).toBe(1);
+      await test.tick(at(2000));
+      expect(calls).toBe(2);
+    } finally {
+      await test.close();
+    }
   });
-
-  it("renews a claimed run lease before it expires", async () => {
-    const store = createMemoryJobStore();
-    const run = await store.enqueueRun({
-      jobName: "billing.sync",
-      trigger: "enqueue",
-      runAt: new Date("2026-09-13T00:00:00.000Z"),
+  it("skips overlaps of the same job while other jobs run", async () => {
+    let finish!: () => void;
+    let slow = 0;
+    let fast = 0;
+    const test = await createTestJobScheduler({
+      ...options,
+      now: at(0),
+      jobs: {
+        slow: defineJob({
+          interval: 1000,
+          handler: () => {
+            slow++;
+            return new Promise<void>((resolve) => {
+              finish = resolve;
+            });
+          },
+        }),
+        fast: defineJob({
+          interval: 1000,
+          handler() {
+            fast++;
+          },
+        }),
+      },
     });
-    await store.claimRun(run.id, {
-      ownerId: "worker-a",
-      leaseTtl: 1_000,
-      now: new Date("2026-09-13T00:00:00.000Z"),
+    const first = test.tick(at(1000));
+    await new Promise((resolve) => setImmediate(resolve));
+    await test.tick(at(2000));
+    expect(slow).toBe(1);
+    expect(fast).toBe(2);
+    finish();
+    await first;
+    await test.close();
+  });
+  it("supports global and per-job disabling", async () => {
+    const handler = vi.fn();
+    for (const globallyDisabled of [false, true]) {
+      const test = await createTestJobScheduler({
+        ...options,
+        config: { ...options.config, jobs: { enabled: !globallyDisabled } },
+        now: at(0),
+        jobs: [defineJob({ enabled: false, interval: 1000, handler })],
+      });
+      await test.tick(at(1000));
+      await test.close();
+    }
+    expect(handler).not.toHaveBeenCalled();
+  });
+  it("fails startup for active Cluster jobs without Redis, but allows empty/disabled jobs", async () => {
+    const { app } = createApp({
+      ...DEFAULT_CONFIG,
+      logger: { level: "silent" },
+      cluster: { enabled: true },
     });
-
+    const definition = defineJob({ interval: 1000, handler() {} });
     await expect(
-      store.renewRunLease(
-        run.id,
-        "worker-a",
-        2_000,
-        new Date("2026-09-13T00:00:00.500Z"),
-      ),
-    ).resolves.toBe(true);
-    await expect(store.getRun(run.id)).resolves.toMatchObject({
-      leaseOwner: "worker-a",
-      leaseUntil: "2026-09-13T00:00:02.500Z",
+      createScheduledJobs(app, [loaded(definition)], {
+        rootDir: process.cwd(),
+        timers: false,
+      }),
+    ).rejects.toThrow("require config.jobs.redis");
+    const empty = await createScheduledJobs(app, [], {
+      rootDir: process.cwd(),
+      timers: false,
     });
+    await empty.close();
+    const disabled = await createScheduledJobs(
+      app,
+      [loaded(defineJob({ interval: 1000, enabled: false, handler() {} }))],
+      { rootDir: process.cwd(), timers: false },
+    );
+    await disabled.close();
+  });
+  it("rejects duplicate names and invalid clocks", async () => {
+    const definition = defineJob({
+      name: "same",
+      interval: 1000,
+      handler() {},
+    });
+    await expect(
+      createTestJobScheduler({ ...options, jobs: [definition, definition] }),
+    ).rejects.toThrow("Duplicate job name");
+    const test = await createTestJobScheduler({
+      ...options,
+      now: at(0),
+      jobs: [definition],
+    });
+    await expect(test.tick(at(NaN))).rejects.toThrow("valid Date");
+    await test.close();
   });
 });
 
-async function createRuntime(options: {
-  jobs: Parameters<typeof createTestJobRunner>[0]["jobs"];
-  schedulerMode?: "inline" | "enqueue";
-  workerConcurrency?: number;
-}): Promise<VextJobRuntime> {
-  const runner = await createTestJobRunner({
-    services: false,
-    config: {
-      jobs: {
-        store: "memory",
-        scheduler: { mode: options.schedulerMode ?? "inline" },
-        worker:
-          options.workerConcurrency === undefined
-            ? undefined
-            : { concurrency: options.workerConcurrency },
+describe("application lifecycle", () => {
+  it("rearms long intervals beyond Node's maximum timer delay", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const { app, internals } = createApp({
+      ...DEFAULT_CONFIG,
+      logger: { level: "silent" },
+    });
+    const handler = vi.fn();
+    const interval = 2147483647 + 1000;
+    internals.setScheduledJobs(
+      await createScheduledJobs(
+        app,
+        [loaded(defineJob({ interval, handler }))],
+        { rootDir: process.cwd(), timers: true },
+      ),
+    );
+    await internals.runReady();
+    await vi.advanceTimersByTimeAsync(2147483647);
+    expect(handler).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(handler).toHaveBeenCalledOnce();
+    expect(handler.mock.calls[0]![0].scheduledAt).toEqual(at(interval));
+    await internals.shutdown(undefined, { skipExit: true });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("does not start a handler if shutdown occurs while Redis admission is pending", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    let grant!: (value: number) => void;
+    let released = false;
+    const client = {
+      ping: async () => "PONG",
+      eval(script: string) {
+        if (script.includes("local clock"))
+          return new Promise<number>((resolve) => {
+            grant = resolve;
+          });
+        if (script.includes("DEL")) released = true;
+        return Promise.resolve(1);
       },
-    },
-    jobs: options.jobs,
+    };
+    const handler = vi.fn();
+    const scheduler = await createTestJobScheduler({
+      ...options,
+      config: {
+        ...options.config,
+        jobs: { redis: { client, leaseTtl: 1000 } },
+      },
+      now: at(0),
+      jobs: [defineJob({ interval: 100, handler })],
+    });
+    vi.setSystemTime(100);
+    const work = scheduler.tick(at(100));
+    const close = scheduler.close();
+    grant(1);
+    await Promise.all([work, close]);
+    expect(handler).not.toHaveBeenCalled();
+    expect(released).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
   });
-  const store = createMemoryJobStore();
-  return {
-    app: runner.app,
-    config: runner.app.config,
-    registry: runner.registry,
-    store,
-    enqueue: async (jobName, runOptions = {}) =>
-      store.enqueueRun({
-        id: runOptions.runId,
-        jobName,
-        payload: runOptions.payload,
-        trigger: runOptions.trigger ?? "enqueue",
-      }),
-    run: async (jobName, runOptions = {}) =>
-      runAndRecord(runner.run, store, jobName, runOptions),
-    listRuns: (filter) => store.listRuns(filter),
-    getRun: (runId) => store.getRun(runId),
-    close: runner.close,
-  };
-}
 
-async function runAndRecord(
-  run: (
-    jobName: string,
-    options?: VextJobRunOptions,
-  ) => Promise<VextJobRunResult>,
-  store: VextJobStore,
-  jobName: string,
-  options: VextJobRunOptions,
-): Promise<VextJobRunResult> {
-  const record =
-    (options.runId ? await store.getRun(options.runId) : undefined) ??
-    (await store.enqueueRun({
-      id: options.runId,
-      jobName,
-      payload: options.payload,
-      trigger: options.trigger ?? "manual",
-    }));
-  const ownerId = options.ownerId ?? "test-runtime";
-  await store.claimRun(record.id, { ownerId, leaseTtl: 30_000 });
-  const result = await run(jobName, {
-    ...options,
-    ownerId,
-    runId: record.id,
-    payload: options.payload ?? record.payload,
-  });
-  await store.completeRun(
-    record.id,
-    {
-      status: result.status,
-      attempts: result.attempts,
-      durationMs: result.durationMs,
-      finishedAt: new Date().toISOString(),
-      result: result.result,
-      error: result.error ? String(result.error) : undefined,
-    },
-    { ownerId },
-  );
-  return result;
-}
-
-async function waitUntil(predicate: () => boolean): Promise<void> {
-  const startedAt = Date.now();
-  while (!predicate()) {
-    if (Date.now() - startedAt > 1000) {
-      throw new Error("Timed out waiting for condition.");
+  it("skips a trigger when Redis responds after its next scheduled point", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    let grant!: (value: number) => void;
+    let delayed = true;
+    const client = {
+      ping: async () => "PONG",
+      eval(script: string) {
+        if (script.includes("local clock") && delayed) {
+          delayed = false;
+          return new Promise<number>((resolve) => {
+            grant = resolve;
+          });
+        }
+        return Promise.resolve(1);
+      },
+    };
+    const handler = vi.fn();
+    const scheduler = await createTestJobScheduler({
+      ...options,
+      config: {
+        ...options.config,
+        jobs: { redis: { client, leaseTtl: 1000 } },
+      },
+      now: at(0),
+      jobs: [defineJob({ interval: 100, handler })],
+    });
+    try {
+      vi.setSystemTime(100);
+      const work = scheduler.tick(at(100));
+      await vi.advanceTimersByTimeAsync(100);
+      grant(1);
+      await work;
+      expect(handler).not.toHaveBeenCalled();
+      await scheduler.tick(at(200));
+      expect(handler).toHaveBeenCalledOnce();
+      expect(handler.mock.calls[0]![0].scheduledAt).toEqual(at(200));
+    } finally {
+      await scheduler.close();
     }
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-}
+  });
+
+  it("starts timers after readiness and closes tasks before plugin dependencies", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const { app, internals } = createApp({
+      ...DEFAULT_CONFIG,
+      logger: { level: "silent" },
+    });
+    const events: string[] = [];
+    let signal: AbortSignal | undefined;
+    app.onReady(async () => {
+      events.push("ready");
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    app.onClose(() => {
+      events.push("dependency closed");
+    });
+    const scheduler = await createScheduledJobs(
+      app,
+      [
+        loaded(
+          defineJob({
+            interval: 1000,
+            async handler(ctx) {
+              events.push("task");
+              signal = ctx.signal;
+              await new Promise<void>((resolve) =>
+                ctx.signal.addEventListener(
+                  "abort",
+                  () => {
+                    events.push("task drained");
+                    resolve();
+                  },
+                  { once: true },
+                ),
+              );
+            },
+          }),
+        ),
+      ],
+      { rootDir: process.cwd(), timers: true },
+    );
+    internals.setScheduledJobs(scheduler);
+    await internals.runReady();
+    expect(events).toEqual(["ready"]);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(events).toEqual(["ready", "task"]);
+    await internals.shutdown(undefined, { skipExit: true });
+    expect(signal!.aborted).toBe(true);
+    expect(events).toEqual([
+      "ready",
+      "task",
+      "task drained",
+      "dependency closed",
+    ]);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(events.filter((event) => event === "task")).toHaveLength(1);
+  });
+  it("requests cancellation when a running Redis lease is lost", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const client = {
+      ping: async () => "PONG",
+      eval: async (script: string) => (script.includes("PEXPIRE") ? 0 : 1),
+    };
+    const { app, internals } = createApp({
+      ...DEFAULT_CONFIG,
+      logger: { level: "silent" },
+      jobs: { redis: { client, leaseTtl: 1000 } },
+    });
+    let signal: AbortSignal | undefined;
+    internals.setScheduledJobs(
+      await createScheduledJobs(
+        app,
+        [
+          loaded(
+            defineJob({
+              interval: 1000,
+              async handler(ctx) {
+                signal = ctx.signal;
+                await new Promise<void>((resolve) =>
+                  ctx.signal.addEventListener("abort", () => resolve(), {
+                    once: true,
+                  }),
+                );
+              },
+            }),
+          ),
+        ],
+        { rootDir: process.cwd(), timers: true },
+      ),
+    );
+    await internals.runReady();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(signal?.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(334);
+    expect(signal?.aborted).toBe(true);
+    await internals.shutdown(undefined, { skipExit: true });
+  });
+  it("bounds shutdown when a handler ignores cancellation", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const { app, internals } = createApp({
+      ...DEFAULT_CONFIG,
+      logger: { level: "silent" },
+      shutdown: { timeout: 0.02 },
+    });
+    let finish!: () => void;
+    let signal: AbortSignal | undefined;
+    const dependencyClosed = vi.fn();
+    app.onClose(dependencyClosed);
+    internals.setScheduledJobs(
+      await createScheduledJobs(
+        app,
+        [
+          loaded(
+            defineJob({
+              interval: 1000,
+              handler(ctx) {
+                signal = ctx.signal;
+                return new Promise<void>((resolve) => {
+                  finish = resolve;
+                });
+              },
+            }),
+          ),
+        ],
+        { rootDir: process.cwd(), timers: true },
+      ),
+    );
+    await internals.runReady();
+    await vi.advanceTimersByTimeAsync(1000);
+    const close = internals.shutdown(undefined, { skipExit: true });
+    expect(signal?.aborted).toBe(true);
+    await vi.advanceTimersByTimeAsync(20);
+    await close;
+    expect(dependencyClosed).toHaveBeenCalledOnce();
+    finish();
+  });
+  it("does not leave timers when shutdown wins the readiness race", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const { app, internals } = createApp({
+      ...DEFAULT_CONFIG,
+      logger: { level: "silent" },
+    });
+    const handler = vi.fn();
+    let ready!: () => void;
+    app.onReady(
+      () =>
+        new Promise<void>((resolve) => {
+          ready = resolve;
+        }),
+    );
+    internals.setScheduledJobs(
+      await createScheduledJobs(
+        app,
+        [loaded(defineJob({ interval: 1000, handler }))],
+        { rootDir: process.cwd(), timers: true },
+      ),
+    );
+    const starting = internals.runReady();
+    await Promise.resolve();
+    await Promise.resolve();
+    await internals.shutdown(undefined, { skipExit: true });
+    ready();
+    await starting;
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(handler).not.toHaveBeenCalled();
+  });
+});

@@ -881,9 +881,9 @@ Response caching, MonSQLize query caching, Session and rate limiting are differe
 
 Model registrations in multiple apps within one process have owners: equivalent definitions can share a key; conflicting definitions fail before registration; closing one app releases only its references. Registry keys and databases/pools are distinct; see [Database](/guide/database). Separate processes have separate registries but may still share external stores.
 
-## Deploy Job schedulers and workers
+## Deploy scheduled jobs
 
-Run Job schedulers and workers as processes separate from HTTP. `npx vextjs job scheduler` creates scheduled runs, while `npx vextjs job worker` claims and executes pending runs. Configure cwd, profile, persistent storage, logs and shutdown for each process. An HTTP rolling restart does not restart them. See [Jobs](/guide/jobs).
+Scheduled jobs automatically start after HTTP application readiness, sharing its services and shutdown lifecycle. Active jobs in built-in Cluster require `jobs.redis`; other replicas also need shared Redis and matching schedule definitions. Namespace is automatic from package name, profile and runtime mode; ordinary deployments need no override. Redis failures skip triggers without fallback. Restart registers only future points. See [Jobs](/guide/jobs).
 
 ## Publish the documentation site
 

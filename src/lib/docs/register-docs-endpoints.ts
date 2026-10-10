@@ -56,6 +56,7 @@ export function registerDocsEndpoints(
     rootDir: config.rootDir,
     srcDir: config.srcDir,
     modelsDir: config.modelsDir,
+    jobsConfig: app.config?.jobs,
     config: docsConfig,
   });
   warnScalarMigration(app, config);

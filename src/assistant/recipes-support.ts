@@ -238,7 +238,7 @@ export function renderSupportRecipe(
     return [
       ctx.file(
         ctx.filePath("schemas"),
-        `import { schemaAdapter } from ${ctx.quote("vextjs")};\n\n${ctx.comment("复用运行时 schema；必须在实际 validate/responses/Job payload 入口引用。", "Reusable runtime schema; consume it at an actual validate/responses/Job payload boundary.")}export const ${schemaName} = {\n${entries}\n};\n`,
+        `import { schemaAdapter } from ${ctx.quote("vextjs")};\n\n${ctx.comment("复用运行时 schema；必须在实际 validate/responses/domain validation 入口引用。", "Reusable runtime schema; consume it at an actual validate/responses/domain validation boundary.")}export const ${schemaName} = {\n${entries}\n};\n`,
         "Create reusable schema fields for explicit consumer imports.",
       ),
     ];

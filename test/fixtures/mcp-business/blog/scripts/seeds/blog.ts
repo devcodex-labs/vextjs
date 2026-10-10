@@ -1,25 +1,40 @@
-import { bootstrapJobRuntime } from "vextjs";
+import { createApp, createMonSQLizePlugin, loadConfig } from "vextjs";
+import path from "node:path";
 import { blogData as blogSamples } from "../../mocks/data/blog.js";
 import type { BlogPostDocument } from "../../src/types/server/models/blog-post.js";
 import { isDuplicateBlogSlug } from "../../src/utils/server/blog.js";
 
-// Reuse the public headless lifecycle/config/model loader. No HTTP listener or scheduled job is started.
-const runtime = await bootstrapJobRuntime({
-  rootDir: process.cwd(),
-  built: true,
+// An explicit seed initializes only the database plugin: no listener or scheduled tasks.
+const rootDir = process.cwd();
+const srcDir = path.join(rootDir, "dist");
+const config = await loadConfig(path.join(srcDir, "config"), {
+  rootDir,
+  command: "start",
+  isBuilt: true,
+  mode: "production",
   configProfile: process.argv[2],
 });
+const { app, internals } = createApp(config);
 try {
-  if (!runtime.app.db)
+  internals.enterPluginSetup();
+  try {
+    await createMonSQLizePlugin(srcDir, rootDir).setup(app, {
+      signal: new AbortController().signal,
+    });
+  } finally {
+    internals.exitPluginSetup();
+  }
+  await internals.runReady();
+  if (!app.db)
     throw new Error("Configure the blog database before running seed");
   console.log(
     JSON.stringify({
       operation: "explicit-blog-seed",
-      database: runtime.config.database?.config,
+      database: config.database?.config,
       collection: "blog_posts",
     }),
   );
-  const posts = runtime.app.db.model<BlogPostDocument>("BlogPost");
+  const posts = app.db.model<BlogPostDocument>("BlogPost");
   for (const post of blogSamples) {
     try {
       // Existing posts and user edits stay untouched, including when seeds run concurrently.
@@ -34,5 +49,5 @@ try {
   }
   console.log(JSON.stringify({ seeded: blogSamples.length }));
 } finally {
-  await runtime.close();
+  await internals.shutdown(undefined, { skipExit: true });
 }

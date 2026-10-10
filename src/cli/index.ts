@@ -46,7 +46,6 @@ const COMMANDS: Record<string, (args: string[]) => Promise<void>> = {
   status: async (args) => (await import("./status.js")).statusCommand(args),
   doctor: async (args) => (await import("./doctor.js")).doctorCommand(args),
   typegen: async (args) => (await import("./typegen.js")).typegenCommand(args),
-  job: async (args) => (await import("./job.js")).jobCommand(args),
   mcp: async (args) => (await import("./mcp.js")).mcpCommand(args),
 };
 
@@ -149,7 +148,6 @@ function printHelp(): void {
     status                Show server status (cluster mode)
     doctor                Preview static diagnostics (experimental)
     typegen               Generate declarations and run tooling diagnostics (experimental)
-    job                   List, inspect, run, or start Job worker runtime
     mcp                   Start the Vext MCP stdio server
 
   Global options:
@@ -164,7 +162,6 @@ function printHelp(): void {
     vext status --help    Show status command options
     vext doctor --help    Show doctor command options
     vext typegen --help   Show typegen command options
-    vext job --help       Show job command options
     vext mcp --help       Show mcp command options
     vext deploy --help    Show deploy command options
 

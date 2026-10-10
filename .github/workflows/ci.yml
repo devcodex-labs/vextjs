@@ -109,6 +109,20 @@ jobs:
   # ────────────────────────────────────────────────────────────
   # 2. Unit Tests（无外部依赖）
   # ────────────────────────────────────────────────────────────
+  jobs-node24:
+    name: Scheduled Jobs native CJS (Node 24)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: "npm"
+      - run: npm ci
+      - run: npm run build
+      - name: Native default and named CJS Jobs discovery
+        run: npx vitest run --no-cache test/unit/jobs/job-loader.test.ts
+
   unit-tests:
     name: Unit Tests (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
@@ -227,7 +241,7 @@ jobs:
         run: npm ci
 
       - name: Run Redis-backed integration tests
-        run: npx vitest run test/integration/redis-job-store.test.ts --reporter=verbose
+        run: npx vitest run test/integration/redis-scheduled-jobs.test.ts --reporter=verbose
         env:
           VEXT_TEST_REDIS_URL: redis://127.0.0.1:6379
 
@@ -307,7 +321,7 @@ jobs:
 
       - name: Run tests with coverage
         # Full-suite coverage runs native TS compilers alongside real fork/HTTP
-        # fixtures; bound parallelism to keep their existing 30s deadlines useful.
+        # fixtures; bound parallelism to keep runtime deadlines predictable.
         run: npm run test:cov -- --maxWorkers=2
         env:
           VEXT_TEST_MONGODB_URI: mongodb://127.0.0.1:27017/vextjs_ci_cov
@@ -524,6 +538,7 @@ jobs:
         version-check,
         lint-typecheck,
         unit-tests,
+        jobs-node24,
         integration-tests,
         redis-integration,
         e2e-tests,
@@ -541,6 +556,7 @@ jobs:
         run: |
           echo "version-check: ${{ needs.version-check.result }}"
           echo "lint-typecheck: ${{ needs.lint-typecheck.result }}"
+          echo "jobs-node24: ${{ needs.jobs-node24.result }}"
           echo "unit-tests: ${{ needs.unit-tests.result }}"
           echo "integration-tests: ${{ needs.integration-tests.result }}"
           echo "redis-integration: ${{ needs.redis-integration.result }}"
@@ -560,6 +576,11 @@ jobs:
 
           if [[ "${{ needs.lint-typecheck.result }}" != "success" ]]; then
             echo "❌ lint-typecheck failed"
+            exit 1
+          fi
+
+          if [[ "${{ needs.jobs-node24.result }}" != "success" ]]; then
+            echo "❌ jobs-node24 failed"
             exit 1
           fi
 

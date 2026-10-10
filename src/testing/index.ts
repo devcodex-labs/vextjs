@@ -16,7 +16,7 @@
 // @see IMPLEMENTATION-PLAN.md 任务 1.19
 
 import type {} from "../lib/plugins/monsqlize/types.js";
-import { createApp, DEFAULT_CONFIG } from "../lib/app.js";
+import { createApp, DEFAULT_CONFIG, type AppInternals } from "../lib/app.js";
 import { resolveAdapter } from "../lib/adapter-resolver.js";
 import { loadPlugins } from "../lib/plugin-loader.js";
 import { loadMiddlewares } from "../lib/middleware-loader.js";
@@ -60,20 +60,15 @@ import type {
 import type { VextInternalHooks } from "../types/hooks.js";
 import { createVextFetch, type VextFetchConfig } from "../lib/fetch.js";
 import type { VextMiddleware } from "../types/middleware.js";
-import { createJobRegistry } from "../lib/jobs/job-registry.js";
-import { createJobRunner } from "../lib/jobs/job-runner.js";
-import type {
-  VextJobDefinition,
-  VextJobRegistry,
-  VextJobRunOptions,
-  VextJobRunResult,
-  VextLoadedJob,
-} from "../lib/jobs/types.js";
+import { createScheduledJobs } from "../lib/jobs/runtime.js";
+import type { VextJobDefinition, VextLoadedJob } from "../lib/jobs/types.js";
 
 import { PassThrough, Readable } from "node:stream";
 import { join } from "node:path";
 import { type IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
+
+const testInternals = new WeakMap<VextApp, AppInternals>();
 
 // ── 公共类型 ────────────────────────────────────────────────
 
@@ -176,17 +171,18 @@ export interface TestApp {
   close(): Promise<void>;
 }
 
-export interface CreateTestJobRunnerOptions extends Omit<
+export interface CreateTestJobSchedulerOptions extends Omit<
   CreateTestAppOptions,
   "routes"
 > {
   jobs: Record<string, VextJobDefinition> | VextJobDefinition[];
+  /** Initial clock; no real timers are started. */
+  now?: Date;
 }
 
-export interface TestJobRunner {
+export interface TestJobScheduler {
   app: VextApp;
-  registry: VextJobRegistry;
-  run(jobName: string, options?: VextJobRunOptions): Promise<VextJobRunResult>;
+  tick(now: Date): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -398,6 +394,7 @@ export async function createTestApp(
 
   // ── 2. 创建 app ──────────────────────────────────────
   const { app, internals } = createApp(finalConfig);
+  testInternals.set(app, internals);
   try {
     const localeLayout = resolveLocaleDirectory(
       rootDir,
@@ -635,43 +632,37 @@ export async function createTestApp(
   }
 }
 
-export async function createTestJobRunner(
-  options: CreateTestJobRunnerOptions,
-): Promise<TestJobRunner> {
-  const test = await createTestApp({
-    ...options,
-    routes: false,
-  });
-  const jobs = normalizeTestJobs(options.jobs);
-  const registry = createJobRegistry(jobs);
-  const runner = createJobRunner({ app: test.app, registry });
-  return {
-    app: test.app,
-    registry,
-    run: runner.run,
-    close: test.close,
-  };
-}
-
-function normalizeTestJobs(
-  jobs: CreateTestJobRunnerOptions["jobs"],
-): VextLoadedJob[] {
-  if (Array.isArray(jobs)) {
-    return jobs.map((definition, index) => ({
-      name: definition.name ?? `job${index + 1}`,
+/** Test actual scheduling rules with an explicitly advanced clock. */
+export async function createTestJobScheduler(
+  options: CreateTestJobSchedulerOptions,
+): Promise<TestJobScheduler> {
+  const test = await createTestApp({ ...options, routes: false });
+  try {
+    const jobs: VextLoadedJob[] = (
+      Array.isArray(options.jobs)
+        ? options.jobs.map(
+            (definition, index) =>
+              [definition.name ?? `job${index + 1}`, definition] as const,
+          )
+        : Object.entries(options.jobs)
+    ).map(([name, definition]) => ({
+      name: definition.name ?? name,
       definition,
-      sourceFile: `test/jobs/job${index + 1}.ts`,
-      sourcePath: `test/jobs/job${index + 1}.ts`,
+      sourceFile: `test/jobs/${name}.ts`,
+      sourcePath: `test/jobs/${name}.ts`,
       exportName: "default",
     }));
+    const scheduler = await createScheduledJobs(test.app, jobs, {
+      rootDir: options.rootDir ?? process.cwd(),
+      timers: false,
+    });
+    testInternals.get(test.app)!.setScheduledJobs(scheduler);
+    scheduler.start(options.now ?? new Date());
+    return { app: test.app, tick: scheduler.tick, close: test.close };
+  } catch (error) {
+    await test.close();
+    throw error;
   }
-  return Object.entries(jobs).map(([name, definition]) => ({
-    name: definition.name ?? name,
-    definition,
-    sourceFile: `test/jobs/${name}.ts`,
-    sourcePath: `test/jobs/${name}.ts`,
-    exportName: "default",
-  }));
 }
 
 // ── 404 兜底处理（与 bootstrap.ts 一致）──────────────────────

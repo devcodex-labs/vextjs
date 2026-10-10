@@ -52,7 +52,7 @@ const positive: RecipeOptionSchema = {
   minimum: 1,
   maximum: 2147483647,
 };
-const nonnegative: RecipeOptionSchema = { ...positive, minimum: 0 };
+
 const bool: RecipeOptionSchema = { type: "boolean" };
 const common = { description: text(), language: choice("ts", "js") };
 const boolOrObject: RecipeOptionSchema = {
@@ -311,7 +311,7 @@ export const VEXT_RECIPE_DEFINITIONS: readonly VextRecipeDefinition[] = [
   recipe(
     "RCP-15",
     "reusable-schema",
-    "生成供 validate/responses/Job payload 显式使用的 schema。",
+    "生成供 validate/responses 或业务域校验显式使用的 schema。",
     "support",
     {
       fields: jsonObject,
@@ -333,38 +333,17 @@ export const VEXT_RECIPE_DEFINITIONS: readonly VextRecipeDefinition[] = [
   recipe(
     "RCP-17",
     "job-handler",
-    "生成 manual/queue/schedule Job；不改应用 store 或启动进程。",
+    "生成随应用就绪后自动运行的 cron/interval 定时任务；不启动进程。",
     "backend",
     {
       jobName: text(120),
-      payload: jsonObject,
+      description: text(1000),
+      tags: { type: "array", items: text(100) },
+      enabled: bool,
       handler: code,
-      queue: object({ enabled: bool, priority: nonnegative }),
-      schedule: object({
-        enabled: bool,
-        cron: text(250),
-        interval: positive,
-        timezone: text(100),
-        startAt: text(100),
-        endAt: text(100),
-        misfirePolicy: choice("skip", "fire-once", "catch-up"),
-        maxCatchUp: positive,
-        jitter: nonnegative,
-        singleton: bool,
-      }),
-      timeout: positive,
-      concurrency: positive,
-      retry: {
-        anyOf: [
-          { enum: [false] },
-          object({
-            attempts: positive,
-            delay: nonnegative,
-            backoff: choice("fixed", "exponential"),
-          }),
-        ],
-      },
-      idempotencyKey: text(250),
+      cron: text(250),
+      interval: positive,
+      timezone: text(100),
     },
   ),
 ];

@@ -21,6 +21,8 @@ import type {
 import { reloadLocales } from "./i18n-reloader.js";
 import { resolveLocaleDirectory } from "../project/layout.js";
 import { isPathInside } from "../path-boundary.js";
+import { resolveJobsDirectory } from "../jobs/job-loader.js";
+import type { VextJobsConfig } from "../jobs/types.js";
 import type { ConfigureI18nFn } from "./i18n-reloader.js";
 import { reportMemoryIfNeeded } from "./memory-monitor.js";
 import type { MemoryReport } from "./memory-monitor.js";
@@ -555,13 +557,31 @@ export class SoftReloader {
       requiresColdRestartOnFailure = true;
       const cacheResult = invalidateAndEvict(compiledFiles, outDir);
 
+      // Jobs retain handler closures for the application's lifetime. If an
+      // imported dependency changes, rebuild them through the normal cold
+      // shutdown/startup path instead of leaving old handlers scheduled.
+      const jobsConfig = this.config.jobs as VextJobsConfig | undefined;
+      const jobsDir = resolveJobsDirectory(
+        outDir,
+        jobsConfig?.dir,
+        this.compiler.getProjectRoot(),
+      );
+      const scheduledJobInvalidated =
+        jobsConfig?.enabled !== false &&
+        [...cacheResult.invalidated].some((file) =>
+          isPathInside(jobsDir, file),
+        );
+
       // 级联检测：失效集合 > 80% 缓存 → 降级 Cold Restart
-      if (cacheResult.cascadeDetected) {
+      if (cacheResult.cascadeDetected || scheduledJobInvalidated) {
+        const reason = scheduledJobInvalidated
+          ? "scheduled job dependency changed"
+          : "cascade too large";
         this.logger.warn(
-          "[hot-reload] invalidation cascade too large " +
+          `[hot-reload] ${reason} ` +
             `(${cacheResult.invalidated.size} modules), requesting cold restart`,
         );
-        this.requestColdRestart("cascade too large");
+        this.requestColdRestart(reason);
 
         this.failureCount++;
         const elapsed = performance.now() - startTime;

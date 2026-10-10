@@ -4,7 +4,7 @@
 已发布稳定包：`v2.0.0`。本页也描述仓库当前源码中可能尚未发布的变更。使用特定版本的命令前先核对已安装包版本；通用安装命令不固定版本。
 :::
 
-VextJS 的 `vext` 命令覆盖创建、开发、构建、生产启动与运维。本页先给出一条可验证的使用流程，再按命令查阅选项；Job、MCP 等扩展入口放在基本生命周期之后。
+VextJS 的 `vext` 命令覆盖创建、开发、构建、生产启动与运维。本页先给出一条可验证的使用流程，再按命令查阅选项；MCP 等扩展入口放在基本生命周期之后。
 
 前置条件：Node.js 满足当前包的 `^20.19.0 || >=22.12.0`，已安装 npm，除 create 从目标父目录执行外，其余命令在应用 package.json 所在目录执行；只有声明了 `--root` 的子命令支持该选项。版本可用 `npx vextjs --version` 查看；示例输出仅说明格式，不要求安装固定版本。
 
@@ -44,7 +44,6 @@ npm run build  # → vext build
 | `vext typegen`                | 生成类型与依赖诊断（experimental） | 默认写产物；`--check` 只读            |
 | `vext doctor routes / all`    | 静态诊断（experimental）           | 默认只读；写入选项需显式选择          |
 | `vext deploy assets`          | 上传前端静态资源                   | 默认执行上传；`--dry-run` 只输出计划  |
-| `vext job ...`                | 查看或运行后台任务                 | 随子命令查看、入队、执行或常驻        |
 | `vext mcp` / `sync` / `skill` | MCP 服务、宿主同步与 Skill 导出    | stdio 常驻；sync/skill write 可写文件 |
 
 ## 从创建到生产启动
@@ -815,18 +814,9 @@ vext doctor routes --write-inspect --write-manifest --json
 - `docs.operationId` 缺失时，doctor 会按 runtime 行为给出 `auto-operation-id` 信息提示，而不是误报 warning；
 - 路由侧仍由 `doctor routes --write-manifest` 负责；service 侧则由 `typegen --write-manifest` 负责。
 
-## Job 命令
+## 定时任务
 
-后台任务使用 `vext job list`、`vext job inspect <name>`、`vext job run <name>`、`vext job enqueue <name>`、`vext job scheduler`、`vext job worker`、`vext job runs` 和 `vext job status <runId>`。这些命令加载 headless Job runtime，不启动 HTTP 服务。详见 [任务与 Jobs](/zh/guide/jobs)。
-
-```bash
-vext job --help
-vext job list --json
-vext job inspect <name> --json
-vext job runs --limit 10 --json
-```
-
-`<name>`、`<runId>` 替换为项目实际 Job 名或运行记录。共同选项包括 `--config <profile>`、`--outdir <dir>`、`--source` 和 `--json`；run/enqueue 支持 `--payload <json>` 或 `--payload-file <path>`，runs 的 `--limit` 为正整数。scheduler/worker 是常驻进程，run/enqueue 会产生业务副作用，使用前按 Jobs 指南完成 payload、store、worker/scheduler 配置与退出清理。list/inspect 仍会加载 headless runtime，不能当作不求值项目模块的纯静态分析。
+定时任务随 `vext start` / `vext dev` 的应用就绪后自动调度，无需独立 CLI 命令。定义、Redis 多副本协调和关闭行为见[定时任务 Jobs](/zh/guide/jobs)。
 
 ## MCP 命令
 
@@ -853,7 +843,7 @@ vext job runs --limit 10 --json
 
 `vext_project_check` 会执行有界静态诊断，覆盖目录缺失、路由 response schema 缺失、过期 docs.tags、service 依赖分析不完整、数据库 cursorSecret 配置选择、Redis store 目标缺失或依赖未配置环境变量、SVG 上传审查、前端 form/API 边界和占位测试等问题。返回值包含 `diagnostics`、`totalBySeverity`、`affectedConsumers` 和 `generatedState`；命令建议仍由宿主执行。`vext_runtime_inspect` 会读取框架运行时写入的 `.vext/runtime/snapshots/<instanceId>.json` 受管快照；MCP 不启动服务、不执行 Job、不读取原始日志；宿主 MCP 配置写入由 `vext mcp sync` 负责。
 
-`vext_project_inspect` 的 `jobs` section 会静态读取 `config.jobs` 和 Job 源文件，返回 Job 名称、来源文件、queue、schedule、payload schema presence、scheduler/worker/store 配置摘要、可由宿主执行的 `vext job ...` 命令和多进程/cluster 部署提示。MCP 不执行 Job、不连接队列、不读取运行时队列表。
+`vext_project_inspect` 的 `jobs` section 静态读取任务名称、cron / interval、启用状态、时区和 Jobs 的 Redis 配置摘要。返回启动方式与多副本部署提示；MCP 不运行任务或定时器。
 
 monorepo 通过实际 workspace 成员、共享包声明、package exports/sourceExports 和消费者依赖验证源码归属；相邻服务不会自动进入读取范围。显式配置的外部 models/locales/前端源目录仅在路径可证明时作为只读来源。跨根候选不因目录名称或共享声明而自动获得写入许可。
 

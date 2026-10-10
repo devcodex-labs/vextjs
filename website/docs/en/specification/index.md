@@ -11,7 +11,7 @@ These specifications explain what VextJS applications must observe, how responsi
 | [Validation and data contracts](/specification/validation-and-contracts) | The responsibilities of schemas, types, authorization, business invariants, and database constraints                                  |
 | [Data access](/specification/data-access)                                | Raw `app.db`, Collection/Model, registration keys, transactions, multiple databases, and caching                                      |
 | [Security and resources](/specification/security-and-resources)          | Identity, authorization, sessions/CSRF, security headers, rate limits, and resource cleanup                                           |
-| [Jobs and scheduling](/specification/jobs)                               | Jobs, scheduler, worker, Store, leases, retries, and business idempotency                                                             |
+| [Jobs and scheduling](/specification/jobs)                               | Scheduled jobs, Redis coordination, shutdown and business idempotency                                                                 |
 | [Build and operations](/specification/operations)                        | Type/behavior/build verification, configuration profiles, production artifacts, processes, and shutdown                               |
 
 For supported and unsupported frontend capabilities, see [Frontend Boundaries and Roadmap](/frontend/boundaries-and-roadmap). The presence of React, SSR, or Streaming does not imply that other frontend capabilities have been implemented.

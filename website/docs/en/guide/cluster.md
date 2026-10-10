@@ -530,7 +530,7 @@ services:
 
 ## Jobs and Cluster
 
-HTTP Cluster Workers do not execute Jobs by default, so multiple HTTP Workers do not each fire the same schedule. Run HTTP, `vext job scheduler`, and `vext job worker` as separate processes. Cooperation between multiple schedulers or workers depends on a shared Job Store and leases. Process separation does not provide exactly-once execution or business idempotency; see [Jobs](/guide/jobs).
+HTTP Cluster Workers register scheduled timers after readiness and coordinate through `config.jobs.redis`. Active jobs without Redis fail at startup; empty directories or entirely disabled jobs do not require Redis. Namespace is generated automatically from package name, profile and runtime mode; matching replicas need no manual value. All replicas share the same Redis target and schedule definition. Each point is admitted once and same-job overlap is skipped; business side effects still require idempotency. See [Jobs](/guide/jobs).
 
 ## FAQ
 

@@ -15,7 +15,7 @@
 | 业务校验函数     | 支付资格、状态转换等业务判断                                    | 由业务代码显式调用；没有独立的 Domain Validator 自动注入系统     |
 | Middleware       | 请求生命周期内的横切处理                                        | 插件注册全局中间件，或配置声明后由 Route 引用                    |
 | Plugin           | 初始化扩展、资源及其生命周期                                    | `definePlugin()`；按依赖顺序执行 `setup()`                       |
-| Job              | 独立于 HTTP 的任务入口及任务运行合同                            | `defineJob()`；使用任务 CLI 或任务测试入口加载                   |
+| Job              | 独立于 HTTP 的任务入口及任务运行合同                            | `defineJob()`；普通应用启动时加载，就绪后调度                    |
 | Frontend         | 页面、布局、交互和浏览器资源                                    | 前端构建与 renderer；页面 URL 由 Route 与 `res.render()` 绑定    |
 | Config           | 启动选项、资源配置及环境差异                                    | 启动配置合并、provider 求值和最终配置校验                        |
 
@@ -90,7 +90,7 @@ Route 负责从请求获得数据、选择 HTTP 响应和声明接口合同；�
 
 ### VEXT-ARCH-006 [MUST] 任务运行与页面渲染使用各自的显式入口
 
-创建 `src/jobs` 文件不会让普通 HTTP 启动自动执行或调度任务。任务执行、调度、队列 worker 和存储需按 [Jobs 指南](/zh/guide/jobs)选择与配置；任务 handler 的上下文不是 HTTP `req` / `res`。
+`src/jobs` 中启用的定时任务会在普通应用就绪后自动调度，直接复用当前应用及 Service。配置、Redis 协调及关闭规则见[Jobs 指南](/zh/guide/jobs)；handler 没有 HTTP req/res 上下文。
 
 前端 page 文件供 renderer 发现和构建，不会独立注册后端 URL。页面路由通过 `src/routes` 中的 handler 调用 `res.render()`；特殊 SPA fallback 由其显式配置控制。SSR、浏览器 hydration 和 API 请求分别遵循各自的生命周期，见[路由与页面](/zh/frontend/routing-and-pages)及[渲染模式](/zh/frontend/rendering-modes)。
 

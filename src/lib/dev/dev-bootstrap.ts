@@ -1,3 +1,4 @@
+import { prepareScheduledJobs } from "../jobs/runtime.js";
 import path from "node:path";
 import {
   acquireProjectOwner,
@@ -458,6 +459,7 @@ async function devBootstrapOwned(
           frontend,
           localeDirectory: config.locale?.directory,
           modelsDirectory: resolveConfiguredModelsDir(config),
+          jobsDirectory: config.jobs?.dir,
         }),
       });
     }
@@ -634,6 +636,10 @@ async function devBootstrapOwned(
       loadServices(app, path.join(outDir, "services"), {
         rootDir: projectRoot,
       }),
+    );
+
+    internals!.setScheduledJobs(
+      await prepareScheduledJobs(app, projectRoot, outDir),
     );
 
     // ── 步骤 7: 加载路由 ─────────────────────────────────

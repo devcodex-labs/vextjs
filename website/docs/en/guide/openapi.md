@@ -289,7 +289,7 @@ export default definePlugin({
 
 ## Job docs source
 
-Vext Docs can include Job entries when `openapi.docs.code.jobs` is enabled. These entries are separate from OpenAPI operations because jobs are not HTTP endpoints. See [Jobs](/guide/jobs).
+Vext Docs can include Job entries when `openapi.docs.code.jobs` is enabled. These entries are separate from OpenAPI operations because jobs are not HTTP endpoints. The source inherits `jobs.dir/include/exclude`; explicit Docs fields override individually, and disabled definitions remain visible. Details show schedule units, timezones, switches and static parse state without treating unknown fields as defaults or proving runtime execution. See [Scheduled Jobs](/guide/jobs#documentation-and-mcp) for configuration and JSDoc examples.
 
 ## Document configuration
 

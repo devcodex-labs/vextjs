@@ -50,7 +50,7 @@ try {
   await write(
     "src/config/default.mjs",
     `export default {
-    port: ${port}, host: "127.0.0.1", adapter: "native", logger: { level: "silent" }, openapi: { enabled: false },
+    port: ${port}, host: "127.0.0.1", adapter: "native", logger: { level: "silent" }, openapi: { enabled: true, docs: { code: { jobs: true } } }, jobs: { dir: "scheduled" },
     locale: { default: "en-US", supported: ["en-US", "zh-CN"] },
     frontend: { enabled: true, apiClient: false, publicPath: "/app/", render: { layout: false },
       i18n: { enabled: true, defaultLocale: "en-US", detect: ["query", "cookie", "accept-language"], inject: "all", clientLoad: "current" } }
@@ -134,6 +134,18 @@ export default function Page(props) {
     <output id="error">{fetcher.error instanceof VextPageResultError ? [fetcher.error.status, fetcher.error.code, fetcher.error.requestId].join(":") : ""}</output>
   </main>;
 }`,
+  );
+  await write(
+    "src/scheduled/heartbeat.mjs",
+    `import {defineJob} from "vextjs"; export default defineJob({name:"heartbeat",interval:86400000,handler(){}});`,
+  );
+  await write(
+    "src/scheduled/disabled.mjs",
+    `import {defineJob} from "vextjs"; export default defineJob({name:"disabled-daily",cron:"0 9 * * *",timezone:"Asia/Shanghai",enabled:false,handler(){}});`,
+  );
+  await write(
+    "src/scheduled/dynamic.mjs",
+    `import {defineJob} from "vextjs"; const chooseName=()=>"runtime-name"; export default defineJob({name:chooseName(),interval:1000,enabled:false,handler(){}});`,
   );
   const build = spawnSync(
     process.execPath,
@@ -305,6 +317,64 @@ export default function Page(props) {
     case: "locale freshness miss/hit, private bypass and hydration none",
     status: "PASS",
   });
+  {
+    const page = await browser.newPage();
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(String(error)));
+    await page.goto(base + "/docs", { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Jobs", exact: true }).click();
+    await page
+      .getByRole("heading", { name: "jobs.heartbeat", exact: true })
+      .waitFor();
+    const expandJobs = page
+      .getByRole("button", { name: "Expand Jobs", exact: true })
+      .first();
+    if (await expandJobs.count()) await expandJobs.click();
+    await page.getByRole("button", { name: "heartbeat", exact: true }).click();
+    const article = (title) =>
+      page.locator(".vext-docs-code-item").filter({
+        has: page.getByRole("heading", { name: title, exact: true }),
+      });
+    assert.match(await article("jobs.heartbeat").innerText(), /86400000/);
+    assert.match(await article("jobs.heartbeat").innerText(), /milliseconds/);
+    assert.match(await article("jobs.heartbeat").innerText(), /complete/);
+    assert.equal(
+      await article("jobs.heartbeat")
+        .getByRole("button", { name: "Send", exact: true })
+        .count(),
+      0,
+    );
+    await page.getByRole("button", { name: "disabled", exact: true }).click();
+    assert.match(
+      await article("jobs.disabled-daily").innerText(),
+      /Asia\/Shanghai/,
+    );
+    assert.match(await article("jobs.disabled-daily").innerText(), /false/);
+    await page.getByRole("button", { name: "dynamic", exact: true }).click();
+    assert.match(
+      await article("jobs.dynamic (name unknown)").innerText(),
+      /unknown; inferred path label: dynamic/,
+    );
+    assert.match(
+      await article("jobs.dynamic (name unknown)").innerText(),
+      /partial/,
+    );
+    await page.locator("#vext-docs-search").fill("86400000");
+    await page
+      .getByRole("button", { name: "heartbeat", exact: true })
+      .waitFor();
+    assert.equal(
+      await page.getByRole("button", { name: "disabled", exact: true }).count(),
+      0,
+    );
+    assert.deepEqual(errors, []);
+    observations.push({
+      case: "Jobs Docs inherited discovery, schedule units, disabled/dynamic metadata and search",
+      status: "PASS",
+    });
+    await page.screenshot({ path: path.join(output, "docs-jobs.png") });
+    await page.close();
+  }
   await writeFile(
     path.join(output, "results.json"),
     JSON.stringify(

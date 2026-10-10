@@ -619,22 +619,21 @@ describe("validateConfig", () => {
   // ── jobs ────────────────────────────────────────────────
 
   describe("jobs validation", () => {
-    it("accepts redis and auto job stores", () => {
+    it("accepts explicit Redis scheduling coordination", () => {
       expect(() =>
         _validateConfig({
           jobs: {
-            store: { type: "redis", url: "redis://127.0.0.1:6379" },
-            worker: { lease: { ttl: 30000, renewInterval: 10000 } },
+            redis: { url: "redis://127.0.0.1:6379", leaseTtl: 30000 },
           },
         }),
       ).not.toThrow();
-      expect(() => _validateConfig({ jobs: { store: "auto" } })).not.toThrow();
+      expect(() => _validateConfig({ jobs: { redis: {} } })).not.toThrow();
     });
 
     it("rejects invalid redis store fields", () => {
-      expect(() =>
-        _validateConfig({ jobs: { store: { type: "redis", url: 1 } } }),
-      ).toThrow("config.jobs.store.url");
+      expect(() => _validateConfig({ jobs: { redis: { url: 1 } } })).toThrow(
+        "config.jobs.redis.url",
+      );
     });
   });
   // ── logger ──────────────────────────────────────────────

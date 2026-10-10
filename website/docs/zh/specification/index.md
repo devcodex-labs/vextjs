@@ -11,7 +11,7 @@
 | [校验与数据契约](/zh/specification/validation-and-contracts) | Schema、类型、授权、业务不变量和数据库约束如何分工         |
 | [数据访问](/zh/specification/data-access)                    | 原始 app.db、Collection/Model、注册键、事务、多库和缓存    |
 | [安全与资源](/zh/specification/security-and-resources)       | 身份识别、授权、Session/CSRF、安全头、限流与资源关闭       |
-| [任务与调度](/zh/specification/jobs)                         | Job、scheduler、worker、Store、租约、重试与业务幂等        |
+| [任务与调度](/zh/specification/jobs)                         | 定时任务、Redis 协调、关闭与业务幂等                       |
 | [构建与运行](/zh/specification/operations)                   | 类型/行为/构建验证、配置 profile、生产产物、多进程与关闭   |
 
 前端已支持与未支持能力另见[前端边界与路线图](/zh/frontend/boundaries-and-roadmap)。不能从 React、SSR 或 Streaming 的存在推断其他前端能力已经实现。

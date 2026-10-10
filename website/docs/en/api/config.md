@@ -168,7 +168,7 @@ Configure automatic plugin deadlines through `plugin`; see [VextPluginConfig](#v
 | `database`        | `MonSQLizeDatabaseConfig`                               | `undefined`           | Built-in MonSQLize plugin extension; see [Database guide](../guide/database) |
 | `frontend`        | `boolean \| VextFrontendConfig`                         | `{ enabled: false }`  | Built-in frontend build and static serving configuration                     |
 | `cluster`         | [`Partial<VextClusterConfig>`](#vextclusterconfig)      | `undefined`           | Cluster multi-process configuration                                          |
-| `jobs`            | [`VextJobsConfig`](./jobs#configuration)                | See Jobs API          | Background Job discovery and worker configuration                            |
+| `jobs`            | [`VextJobsConfig`](./jobs#vextjobsconfig)               | See Jobs API          | Scheduled job discovery and Redis coordination                               |
 | `cache`           | [`VextCacheConfig`](#vextcacheconfig)                   | See below             | Route-level response cache configuration                                     |
 | `dev`             | [`VextDevConfig`](#vextdevconfig)                       | See below             | Development-only tooling configuration                                       |
 
@@ -1426,45 +1426,7 @@ const documentedDefaults = {
   jobs: {
     enabled: true,
     dir: "jobs",
-    runner: "inline",
-    store: {
-      type: "file",
-      dir: ".vext/jobs",
-    },
-    scheduler: {
-      enabled: true,
-      mode: "inline",
-      tickInterval: 1000,
-      timezone: "UTC",
-      misfirePolicy: "skip",
-      maxCatchUp: 10,
-      jitter: 0,
-      lease: {
-        enabled: true,
-        ttl: 30000,
-        renewInterval: 10000,
-      },
-    },
-    worker: {
-      enabled: true,
-      concurrency: 4,
-      shutdownTimeout: 10000,
-      pollInterval: 1000,
-      heartbeatInterval: 10000,
-      lease: {
-        ttl: 30000,
-        renewInterval: 10000,
-      },
-    },
-    defaults: {
-      timeout: 30000,
-      retry: {
-        attempts: 1,
-        delay: 0,
-        backoff: "fixed",
-      },
-      concurrency: 1,
-    },
+    timezone: "UTC",
   },
 };
 ```

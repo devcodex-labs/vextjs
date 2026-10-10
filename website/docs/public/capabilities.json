@@ -32,6 +32,11 @@
       "id": "path-validation-status",
       "label": "HTTP 400 for path validation and HTTP 422 for other request locations",
       "documentationRoute": "/guide/validation"
+    },
+    {
+      "id": "application-scheduled-jobs",
+      "label": "Application-started cron or interval tasks with optional shared Redis coordination and automatic namespace; no queue, retry, downtime catch-up or immediate startup execution",
+      "documentationRoute": "/guide/jobs"
     }
   ],
   "frontend": {

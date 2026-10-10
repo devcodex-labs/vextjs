@@ -2700,9 +2700,9 @@ function verifyRenderedMachineArtifacts() {
     const curatedPageUrls = markdownLinkUrls(llms).filter((url) =>
       entriesByCanonicalUrl.has(url),
     );
-    if (curatedPageUrls.length !== 15) {
+    if (curatedPageUrls.length !== 16) {
       fail(
-        `${artifact.indexName} must contain exactly 15 curated documentation links; found ${curatedPageUrls.length}`,
+        `${artifact.indexName} must contain exactly 16 curated documentation links; found ${curatedPageUrls.length}`,
       );
     }
     if (new Set(curatedPageUrls).size !== curatedPageUrls.length) {
@@ -2712,6 +2712,13 @@ function verifyRenderedMachineArtifacts() {
       if (entriesByCanonicalUrl.get(url)?.locale !== artifact.locale) {
         fail(`${artifact.indexName} contains a cross-locale page link: ${url}`);
       }
+    }
+    if (
+      !curatedPageUrls.some(
+        (url) => entriesByCanonicalUrl.get(url)?.docId === "guide.jobs",
+      )
+    ) {
+      fail(`${artifact.indexName} is missing the scheduled Jobs guide`);
     }
 
     const fullPageUrls = markdownLinkUrls(llmsFull).filter((url) =>

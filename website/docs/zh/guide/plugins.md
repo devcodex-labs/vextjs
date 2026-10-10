@@ -620,7 +620,7 @@ export default definePlugin({
 
 ### 定时任务插件
 
-下面的setInterval是进程内示意：任务可能重叠，多worker会重复执行，清除timer不会取消已开始的任务。需要持久调度、租约和并发约束时使用[Jobs](/zh/guide/jobs)。
+下面的setInterval是进程内示意：任务可能重叠，多worker会重复执行，清除timer不会取消已开始的任务。需要随应用启动的定时任务、重叠跳过和 Redis 多副本协调时，使用[Jobs](/zh/guide/jobs)。Jobs 不提供队列、持久运行记录或停机补跑。
 
 ```typescript
 // src/plugins/scheduler.ts

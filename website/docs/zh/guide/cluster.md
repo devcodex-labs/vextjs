@@ -538,7 +538,7 @@ services:
 
 ## Jobs 与 Cluster
 
-HTTP cluster worker 默认不执行 Job，避免多个 HTTP worker 各自触发同一定时任务。HTTP、`vext job scheduler` 和 `vext job worker` 可作为独立进程部署；多个 scheduler/worker 的协作依赖共享 Job store 与 lease。进程拆分不自动提供 exactly-once 或业务幂等性，详见[任务与 Jobs](/zh/guide/jobs)。
+存在启用的定时任务时，HTTP Cluster Worker 在应用就绪后注册定时器，并通过 `config.jobs.redis` 共同协调触发。缺少 Redis 配置会在启动阶段报错；空任务目录或全部关闭的任务无需 Redis。namespace 自动按包名、profile 和运行模式生成，相同副本无需手填；所有副本使用相同 Redis 目标及调度定义。同一触发点只接受一次、同任务重叠跳过，但业务副作用仍需幂等保护。详见[定时任务 Jobs](/zh/guide/jobs)。
 
 ## 常见问题
 

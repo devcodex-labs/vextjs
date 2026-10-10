@@ -884,9 +884,9 @@ Vext Cluster reload 不更新 Master 自身配置，也不会替你发布镜像�
 
 同进程多 app 的 Model 注册按 owner 维护：相同定义可共享；不同定义抢同一 key 在注册前失败；关闭只释放本 app 的引用。库/池选择与注册 key 不同，详见[数据库](/zh/guide/database)。多进程各自有注册表，外部数据库和缓存仍可能共享。
 
-## 部署 Job scheduler 与 worker
+## 部署定时任务
 
-Job scheduler 和 worker 使用独立于 HTTP 的进程。用 `npx vextjs job scheduler` 创建定时 run，用 `npx vextjs job worker` 领取和执行 pending run。分别配置 cwd、profile、持久存储、日志和关闭策略；HTTP rolling restart 不会代替它们重启。详见[任务与 Jobs](/zh/guide/jobs)。
+定时任务随 HTTP 应用就绪后自动调度，使用应用已有服务和关闭流程。内置 Cluster 存在启用任务时必须配置 `jobs.redis`；其他多副本部署也需要共享 Redis 和一致的调度定义，避免重复触发；namespace 由包名、profile 和运行模式自动生成，通常无需手填。Redis 不可用时跳过执行，不降级；重新启动只调度未来周期。详见[定时任务 Jobs](/zh/guide/jobs)。
 
 ## 文档站发布
 
