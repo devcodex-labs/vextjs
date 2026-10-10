@@ -1,3 +1,7 @@
+import type {
+  SocketWorkerContext,
+  ClusterWorkerPolicy,
+} from "./cluster/connection-policy.js";
 import { join } from "node:path";
 import cluster from "node:cluster";
 import {
@@ -208,6 +212,8 @@ async function resolveStartupConfig(
  */
 export async function bootstrap(
   rootDir = process.cwd(),
+  socketContext?: SocketWorkerContext,
+  expectedPolicy?: ClusterWorkerPolicy,
 ): Promise<BootstrapResult> {
   // 资源引用（用于错误边界清理）
   let internals: AppInternals | null = null;
@@ -245,6 +251,16 @@ export async function bootstrap(
       () => finalizeConfig(rawConfig),
       { phase: "config" },
     );
+    if (
+      (socketContext && !cluster.isWorker) ||
+      (expectedPolicy &&
+        ((config.cluster?.sticky ?? "none") !== expectedPolicy.sticky ||
+          (config.cluster?.workers ?? "auto") !== expectedPolicy.workers))
+    ) {
+      throw new Error(
+        "[cluster] Worker connection policy differs from Master; restart Master to change sticky or workers",
+      );
+    }
     const lifecycleLevel = getLifecycleLevel(rawConfig);
     sendLifecycleLevelToParent(lifecycleLevel);
 
@@ -282,10 +298,27 @@ export async function bootstrap(
     // 默认 native adapter（零外部依赖），其他 adapter 需用户额外安装对应框架。
     app.adapter = await startupProfiler.time(
       "start.adapter",
-      () => resolveAdapter(config, app),
+      () =>
+        resolveAdapter(
+          config,
+          app,
+          socketContext
+            ? {
+                socketHandoff: {
+                  host: socketContext.host,
+                  port: socketContext.port,
+                },
+              }
+            : undefined,
+        ),
       { phase: "config" },
     );
 
+    if (socketContext && !app.adapter.supportsSocketHandoff) {
+      throw new Error(
+        `[cluster] Adapter "${app.adapter.name}" does not support sticky="ip" socket handoff`,
+      );
+    }
     app.logger.info("[vextjs] initializing...");
 
     // ── 步骤 ①+: i18n 语言包自动加载 ─────────────────────
@@ -1265,6 +1298,7 @@ async function startClusterMaster(rootDir: string): Promise<void> {
         workers: [],
       }),
     workers,
+    listen: { host: config.host ?? "0.0.0.0", port: config.port },
     autoRestart: (clusterConfig.autoRestart as boolean | undefined) ?? true,
     maxRestarts: (clusterConfig.maxRestarts as number | undefined) ?? 5,
     restartWindow:
@@ -1287,6 +1321,8 @@ async function startClusterMaster(rootDir: string): Promise<void> {
   const snapshotWorkers = () =>
     [...master.getWorkerMetas().values()].map((worker) => ({
       id: worker.id,
+      slotId: worker.slotId,
+      generation: worker.generation,
       state: worker.state,
       startTime: worker.startTime,
       lastHeartbeat: worker.lastHeartbeat,
@@ -1298,11 +1334,12 @@ async function startClusterMaster(rootDir: string): Promise<void> {
       runtimeIdentity,
       summary: {
         state: "ready",
-        host: config.host ?? "0.0.0.0",
-        port: config.port,
+        host: master.getListenAddress()?.host ?? config.host ?? "0.0.0.0",
+        port: master.getListenAddress()?.port ?? config.port,
         cluster: true,
         workers: master.getReadyWorkerCount(),
         totalWorkers: master.getTargetWorkerCount(),
+        connections: master.getConnectionSnapshot(),
       },
       workers: snapshotWorkers(),
       event: { type: "worker-ready", ...event },
@@ -1317,18 +1354,31 @@ async function startClusterMaster(rootDir: string): Promise<void> {
       process.exit(1);
     });
   });
-  master.on("worker-exit", (event) => {
+  master.on("listener-error", (error: Error) => {
+    console.error("[cluster] TCP listener failed:", error);
+    void master.gracefulShutdown("TCP listener failure", 1);
+  });
+  master.on("worker-metrics", () => {
     void patchRuntimeSnapshotSafe(rootDir, {
       runtimeIdentity,
-      summary: {
-        state: master.getReadyWorkerCount() > 0 ? "ready" : "degraded",
-        workers: master.getReadyWorkerCount(),
-        totalWorkers: master.getTargetWorkerCount(),
-      },
-      workers: snapshotWorkers(),
-      event: { type: "worker-exit", ...event },
+      summary: { connections: master.getConnectionSnapshot() },
     });
   });
+  for (const type of ["worker-exit", "worker-stopping"] as const) {
+    master.on(type, (event) => {
+      void patchRuntimeSnapshotSafe(rootDir, {
+        runtimeIdentity,
+        summary: {
+          state: master.getReadyWorkerCount() > 0 ? "ready" : "degraded",
+          workers: master.getReadyWorkerCount(),
+          totalWorkers: master.getTargetWorkerCount(),
+          connections: master.getConnectionSnapshot(),
+        },
+        workers: snapshotWorkers(),
+        event: { type, ...event },
+      });
+    });
+  }
   master.on("reload-complete", (event) => {
     void patchRuntimeSnapshotSafe(rootDir, {
       runtimeIdentity,
@@ -1336,6 +1386,7 @@ async function startClusterMaster(rootDir: string): Promise<void> {
         state: "ready",
         workers: master.getReadyWorkerCount(),
         totalWorkers: master.getTargetWorkerCount(),
+        connections: master.getConnectionSnapshot(),
       },
       workers: snapshotWorkers(),
       reload: { status: "success", ...event },
@@ -1357,20 +1408,22 @@ async function startClusterMaster(rootDir: string): Promise<void> {
     runtimeIdentity,
     summary: {
       state: "ready",
-      host: config.host ?? "0.0.0.0",
-      port: config.port,
+      host: master.getListenAddress()?.host ?? config.host ?? "0.0.0.0",
+      port: master.getListenAddress()?.port ?? config.port,
       cluster: true,
       workers: readyWorkers,
       totalWorkers: master.getTargetWorkerCount(),
+      connections: master.getConnectionSnapshot(),
       built: isBuilt,
     },
     workers: snapshotWorkers(),
     event: {
       type: "ready",
-      host: config.host ?? "0.0.0.0",
-      port: config.port,
+      host: master.getListenAddress()?.host ?? config.host ?? "0.0.0.0",
+      port: master.getListenAddress()?.port ?? config.port,
       workers: readyWorkers,
       totalWorkers: master.getTargetWorkerCount(),
+      connections: master.getConnectionSnapshot(),
     },
   });
   const parentReadyLog = isEnvFlagEnabled(
@@ -1380,8 +1433,8 @@ async function startClusterMaster(rootDir: string): Promise<void> {
     process.send({
       type: "ready",
       server: {
-        host: config.host ?? "0.0.0.0",
-        port: config.port,
+        host: master.getListenAddress()?.host ?? config.host ?? "0.0.0.0",
+        port: master.getListenAddress()?.port ?? config.port,
       },
       startupProfile: startupProfiler.toJSON(),
       detail: {
@@ -1389,15 +1442,21 @@ async function startClusterMaster(rootDir: string): Promise<void> {
         cluster: true,
         workers: readyWorkers,
         totalWorkers: master.getTargetWorkerCount(),
+        connections: master.getConnectionSnapshot(),
       },
     });
   }
 
   if (!parentReadyLog) {
-    printReadyLog(console, config.host ?? "0.0.0.0", config.port, {
-      prefix: "[vextjs]",
-      suffix: `(workers=${readyWorkers}/${master.getTargetWorkerCount()})`,
-    });
+    printReadyLog(
+      console,
+      master.getListenAddress()?.host ?? config.host ?? "0.0.0.0",
+      master.getListenAddress()?.port ?? config.port,
+      {
+        prefix: "[vextjs]",
+        suffix: `(workers=${readyWorkers}/${master.getTargetWorkerCount()})`,
+      },
+    );
   }
 }
 

@@ -1,4 +1,8 @@
-import type { VextAdapter } from "../types/adapter.js";
+import type {
+  VextAdapter,
+  VextAdapterFactory,
+  VextAdapterRuntimeContext,
+} from "../types/adapter.js";
 import type { VextApp, VextConfig } from "../types/app.js";
 
 /**
@@ -167,12 +171,13 @@ async function loadBuiltInAdapterWithDiagnostics(
 async function loadBuiltInAdapter(
   name: string,
   app: VextApp,
+  context?: VextAdapterRuntimeContext,
 ): Promise<VextAdapter> {
   switch (name) {
     case "native": {
       const { createNativeAdapter } =
         await import("../adapters/native/adapter.js");
-      return createNativeAdapter({}, app);
+      return createNativeAdapter({}, app, context);
     }
 
     case "hono": {
@@ -186,7 +191,7 @@ async function loadBuiltInAdapter(
         async () => {
           const { createHonoAdapter } =
             await import("../adapters/hono/index.js");
-          return createHonoAdapter(app);
+          return createHonoAdapter(app, context);
         },
       );
     }
@@ -202,7 +207,7 @@ async function loadBuiltInAdapter(
         async () => {
           const { createFastifyAdapter } =
             await import("../adapters/fastify/adapter.js");
-          return createFastifyAdapter({}, app);
+          return createFastifyAdapter({}, app, context);
         },
       );
     }
@@ -218,7 +223,7 @@ async function loadBuiltInAdapter(
         async () => {
           const { createExpressAdapter } =
             await import("../adapters/express/adapter.js");
-          return createExpressAdapter({}, app);
+          return createExpressAdapter({}, app, context);
         },
       );
     }
@@ -234,7 +239,7 @@ async function loadBuiltInAdapter(
         async () => {
           const { createKoaAdapter } =
             await import("../adapters/koa/adapter.js");
-          return createKoaAdapter({}, app);
+          return createKoaAdapter({}, app, context);
         },
       );
     }
@@ -282,18 +287,19 @@ async function loadBuiltInAdapter(
 export async function resolveAdapter(
   config: VextConfig,
   app: VextApp,
+  context?: VextAdapterRuntimeContext,
 ): Promise<VextAdapter> {
   const adapterConfig = config.adapter ?? "native";
 
   // 字符串 → 内置 adapter（动态 import 按需加载）
   if (typeof adapterConfig === "string") {
-    return loadBuiltInAdapter(adapterConfig, app);
+    return loadBuiltInAdapter(adapterConfig, app, context);
   }
 
   // 函数 → adapter 工厂函数（如 fastifyAdapter({ bodyLimit: 5MB }) 返回的 (app) => VextAdapter）
   // 用户通过 import { fastifyAdapter } from 'vextjs/adapters/fastify' 使用
   if (typeof adapterConfig === "function") {
-    const adapter = (adapterConfig as (app: VextApp) => VextAdapter)(app);
+    const adapter = (adapterConfig as VextAdapterFactory)(app, context);
     validateAdapterInterface(adapter);
     return adapter;
   }

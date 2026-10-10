@@ -1128,7 +1128,7 @@ Cluster multi-process configuration. For the complete interface definition, see 
 | `memoryThreshold`  | `number`                       | `1073741824`  | Worker heapUsed threshold in bytes; a periodic breach asks Master for replacement rather than exiting immediately                            |
 | `pidFile`          | `string`                       | `'.vext.pid'` | PID file path (for `vext stop` / `vext reload` to locate the process)                                                                        |
 | `titlePrefix`      | `string`                       | `'vext'`      | Worker process title prefix                                                                                                                  |
-| `sticky`           | `'none' \| 'ip'`               | `'none'`      | ip is deprecated and diagnosed, still round-robin; use external load-balancer affinity. Planned removal in the next breaking release         |
+| `sticky`           | `'none' \| 'ip'`               | `'none'`      | none uses ordinary Cluster dispatch; ip routes TCP source IPs to stable Worker slots. Proxies/NAT can create hotspots; see the Cluster guide |
 
 ### `healthCheck` — heartbeat detection
 

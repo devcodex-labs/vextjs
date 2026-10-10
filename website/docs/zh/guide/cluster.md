@@ -154,9 +154,9 @@ export default {
     // Worker 进程标题前缀
     titlePrefix: "vext",
 
-    // sticky session 模式（'none' | 'ip'）
+    // 连接亲和性模式（'none' | 'ip'）
     // 'none' — 不启用（默认）
-    // 'ip'   — 当前仅影响调度策略分支，不提供 IP 粘性分配保证
+    // 'ip'   — 按 TCP 源 IP 分配到稳定 Worker 槽位
     sticky: "none",
   },
 } satisfies VextConfigOverride;
@@ -180,7 +180,27 @@ export default {
 
 Worker 之间不共享普通变量、Service 实例或内存 Store。需要全局一致的数据，应选择具有共享语义的存储；例如内存限流是各 Worker 独立计数，不能视为全局配额，见[限流](/zh/guide/rate-limit)。Session 与缓存的共享方式同样需按对应 Store 设计。
 
-`sticky: "ip"` 是弃用的兼容保留值：启动时给出诊断并沿用 Node SCHED_RR，没有实现按客户端 IP 映射 Worker。需要 IP affinity 时在外部负载均衡配置，并用共享 Session/状态存储处理跨 Worker 状态；该值计划在下一破坏性版本移除。
+### 源 IP 亲和性
+
+需要让同一 TCP 源 IP 的多条独立连接进入同一 Worker 时，设置 `cluster.sticky: "ip"`。Master 接收并暂停新连接，按源地址和稳定逻辑槽位计算路由，再通过 IPC 把 socket 交给 Worker；业务数据由 Worker 直接处理。五种内置 Adapter 的字符串配置与官方工厂均支持此模式。
+
+```ts
+export default {
+  cluster: { enabled: true, workers: 2, sticky: "ip" },
+};
+```
+
+默认 `"none"` 继续使用普通 Cluster 监听路径：Linux 使用 Node SCHED_NONE，其他平台使用 SCHED_RR。`"ip"` 直接实现真实亲和性，替换旧的 RR 占位行为；无需新增配置或迁移开关。仅在 Cluster 启动时生效，dev/testing 和普通单进程启动仍沿用原路径。
+
+路由依据是 TCP 对端地址，不读取 `X-Forwarded-For`、`Forwarded`、cookie 或 SID；应用的 `trustProxy` 与 `req.ip` 解析不能改变已完成的连接分发。反向代理或 NAT 会把多个客户端合并为同一个源 IP，可能集中到一个 Worker。外部负载均衡通常只能选择实例或独立上游，不能自动选择共享端口中的 Worker。
+
+槽位和可用集合稳定时，同一 IP 的新连接选择同一槽位。崩溃时仅不可用槽位的流量回退，恢复后可能回到原槽位。滚动替换保留槽位编号，但替换进程后内存状态不会保留；旧连接仍由旧 Worker 完成或在关闭预算耗尽时断开。改变 sticky 或 workers 配置需要完整重启 Master，rolling reload 会拒绝与 Master 策略不一致的候选。
+
+Worker 自行收到 SIGTERM/SIGINT 或因致命错误进入应用关闭流程时，会通知 Master 撤销新连接路由资格；新连接可选择其余可用槽位，在途连接继续使用原关闭预算。自行退出后仍按 autoRestart 与重启预算恢复原槽位，Master 主动替换或整体停止不会因此重复启动 Worker。
+
+交接设有有界额度和超时：当前全局最多 1,024 条待交接连接、每个 Worker 最多 64 条，交接期限为 5 秒；这些内部防护值不是 HTTP 请求执行时限。目标槽位额度耗尽时关闭新连接，不把它改投到其他繁忙程度较低的 Worker；超时且无法确认交接的进程会被终止并进入现有 auto-restart 规则。框架不会重放请求，客户端重试需考虑幂等性。指标通过 runtime snapshot 的 `summary.connections` 记录，按 Worker 指标周期及生命周期事件更新，包含 pending、committed、rejected、timedOut、sendFailed 与 backpressure；committed 表示提交指令发送完成，不表示 HTTP 请求成功。
+
+IP 亲和性适合依赖进程内状态的多连接应用，但不提供 Session 高可用，也不自动启用 Socket.IO、TLS 或 HTTP/2。状态一致性及故障恢复仍建议使用共享存储。自定义 Adapter 必须显式支持 socket handoff，参见[适配器](/zh/guide/adapters)。
 
 ## CLI 命令
 
@@ -454,6 +474,7 @@ Master 和 Worker 之间通过内部 IPC 协议通信。下表用于理解运行
 | ----------------- | ------------------------------------------------------------------------------- |
 | `ready`           | Worker 初始化完成，开始接受请求                                                 |
 | `heartbeat`       | 心跳响应                                                                        |
+| `stopping`        | Worker 开始自行关闭；停止分发新连接，退出后仍按 autoRestart 恢复                |
 | `metrics`         | 每 30 秒上报内存等快照；无请求指标提供者时计数为占位 0，并带 metricsUnavailable |
 | `request-restart` | Worker 请求自身重启（如检测到内存泄漏）                                         |
 
@@ -523,7 +544,7 @@ HTTP cluster worker 默认不执行 Job，避免多个 HTTP worker 各自触发�
 
 ### Cluster 模式下 WebSocket / SSE 需要注意什么？
 
-已建立的长连接由持有它的 Worker 处理，Worker 退出时仍可能断开。重连、跨请求状态、消息广播和关闭超时需单独设计；当前 `sticky: "ip"` 未实现 IP 粘性分配，不能据此保证同一客户端重新连接到原 Worker。是否支持具体协议还取决于适配器与应用实现。
+已建立的长连接由持有它的 Worker 处理，Worker 退出时仍可能断开。重连、跨请求状态、消息广播和关闭超时需单独设计；`sticky: "ip"` 可在槽位与可用集合稳定时保持源 IP 的重连亲和性；Worker 替换、故障或源地址变化后不能保证原进程或内存状态仍在。是否支持具体协议还取决于适配器与应用实现。
 
 ### Worker 数量设多少合适？
 

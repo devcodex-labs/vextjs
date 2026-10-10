@@ -545,6 +545,16 @@ export default {
 | 修改后响应仍显示旧名称                   | 核对环境配置覆盖、运行目录和旧进程，重新 build/start          | 检查四个请求及实际端口               |
 | EADDRINUSE                               | 停止自己先前启动的实例，或调整端口和请求 URL                  | 确认新实例成功监听后重试             |
 
+## Cluster 源 IP 亲和性与自定义 Adapter
+
+五种内置 Adapter 在 `cluster.sticky: "ip"` 下共用 Node HTTP 接收层，保留各自的路由、请求处理与关闭生命周期。Fastify 通过其正式 `serverFactory` 接入，仍执行 ready/listen/close。
+
+公开类型 `VextAdapterFactory` 的签名是 `(app, context?: VextAdapterRuntimeContext) => VextAdapter`。第二参数是每个实例的运行上下文；只有实际启用亲和性的 Cluster Worker 才传入 `context.socketHandoff`，其中 host/port 是 Master 已绑定的公共地址。自定义工厂不能仅因项目配置含 sticky 就自行切换运行模式。
+
+自定义 Adapter 默认仍只需实现原有接口。支持该模式时，应设置 `supportsSocketHandoff: true`，消费工厂上下文，并让 `listen()` 返回带 `receiveSocket(socket)` 和同步 `forceClose()` 的 `VextServerHandle`。此时 Worker 不绑定公共或私有 TCP 端口；receiveSocket 接收已提交的暂停 socket，登记所有权后才恢复读取。close 等待在途连接，forceClose 释放全部持有的连接（包括 upgrade），并与框架 shutdown 的绝对期限配合。缺少能力时在监听前报错；宣称支持却缺少返回控制方法时启动失败。
+
+旧的一参数工厂在普通模式下继续可用。封装内置工厂时需要把上下文一起传递，例如 `(app, context) => nativeAdapter()(app, context)`。仅将 `buildHandler()` 注入未监听 server 无法保证 Node 超时、连接统计和关闭合同，不能作为完整的 handoff 实现。
+
 ## 下一步
 
 - 了解 [配置](/zh/guide/configuration) 中 Adapter 相关的配置项

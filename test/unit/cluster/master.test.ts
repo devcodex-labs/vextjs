@@ -28,6 +28,7 @@ import {
 } from "../../../src/lib/cluster/master.js";
 import { applyClusterWorkerEnv } from "../../../src/lib/bootstrap.js";
 import { EventEmitter } from "node:events";
+import cluster from "node:cluster";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -39,6 +40,86 @@ function readRepoFile(relativePath: string): string {
 }
 
 // ── DEFAULT_CLUSTER_CONFIG ──────────────────────────────────
+
+describe("Worker stopping state", () => {
+  function setup(state = "ready") {
+    const master = new ClusterMaster();
+    const runtime = master as any;
+    const meta = { id: 1, slotId: 0, generation: "7", state };
+    runtime.workers.set(1, meta);
+    runtime.slots.activate(0, 1);
+    const workerStopping = vi.fn();
+    runtime.dispatcher = { workerStopping };
+    return { master, runtime, meta, workerStopping };
+  }
+  it("withdraws readiness once and cancels pending offers", () => {
+    const { master, runtime, meta, workerStopping } = setup();
+    const observer = vi.fn();
+    master.on("worker-stopping", observer);
+    runtime.handleWorkerMessage({ id: 1 }, { type: "stopping", workerId: "7" });
+    runtime.handleWorkerMessage({ id: 1 }, { type: "stopping", workerId: "7" });
+    expect(meta.state).toBe("stopping");
+    expect(master.getReadyWorkerCount()).toBe(0);
+    expect(workerStopping).toHaveBeenCalledExactlyOnceWith(1);
+    expect(observer).toHaveBeenCalledExactlyOnceWith({ workerId: 1 });
+  });
+  it("ignores stale generations and preserves intentional draining", () => {
+    const { runtime, meta, workerStopping } = setup();
+    runtime.handleWorkerMessage(
+      { id: 1 },
+      { type: "stopping", workerId: "old" },
+    );
+    expect(meta.state).toBe("ready");
+    meta.state = "draining";
+    runtime.handleWorkerMessage({ id: 1 }, { type: "stopping", workerId: "7" });
+    expect(meta.state).toBe("draining");
+    expect(workerStopping).not.toHaveBeenCalled();
+  });
+  it("cannot make a stopped startup candidate ready again", async () => {
+    const { runtime, meta } = setup("starting");
+    runtime.dispatcher.address = () => undefined;
+    const terminate = vi
+      .spyOn(runtime, "terminateUnreadyWorker")
+      .mockImplementation(() => {});
+    const worker = Object.assign(new EventEmitter(), { id: 1 });
+    const ready = runtime.waitForWorkerReady(worker);
+    runtime.handleWorkerMessage(worker, { type: "stopping", workerId: "7" });
+    worker.emit("message", { type: "ready" });
+    await expect(ready).rejects.toThrow("stopped before ready");
+    expect(meta.state).toBe("stopping");
+    expect(terminate).toHaveBeenCalledExactlyOnceWith(worker);
+  });
+  it("rechecks readiness after the ready promise before activating a slot", async () => {
+    const master = new ClusterMaster();
+    const runtime = master as any;
+    const worker = Object.assign(new EventEmitter(), {
+      id: 1,
+      process: { pid: 123, killed: false },
+      isDead: () => false,
+      isConnected: () => true,
+      send: vi.fn(() => true),
+    });
+    const fork = vi.spyOn(cluster, "fork").mockReturnValue(worker as never);
+    vi.spyOn(runtime, "waitForWorkerReady").mockImplementation(async () => {
+      runtime.workers.get(1).state = "stopping";
+    });
+    const terminate = vi
+      .spyOn(runtime, "terminateUnreadyWorker")
+      .mockImplementation(() => {});
+    const observer = vi.fn();
+    master.on("worker-ready", observer);
+    try {
+      await expect(runtime.forkWorker({ slotId: 0 })).rejects.toThrow(
+        "cannot activate affinity slot",
+      );
+      expect(runtime.slots.owner(0)).toBeUndefined();
+      expect(observer).not.toHaveBeenCalled();
+      expect(terminate).toHaveBeenCalledExactlyOnceWith(worker);
+    } finally {
+      fork.mockRestore();
+    }
+  });
+});
 
 describe("DEFAULT_CLUSTER_CONFIG", () => {
   it("should have workers set to 'auto'", () => {

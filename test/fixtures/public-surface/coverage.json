@@ -292,7 +292,8 @@
         "config:shutdown.onFatalError",
         "config:shutdown.timeout",
         "config:trustProxy",
-        "symbol:vextjs#VextPluginConfig"
+        "symbol:vextjs#VextPluginConfig",
+        "config:adapter.supportsSocketHandoff"
       ]
     },
     {
@@ -863,7 +864,9 @@
         "symbol:vextjs/adapters/koa#koaAdapter",
         "symbol:vextjs/adapters/native#NativeAdapterOptions",
         "symbol:vextjs/adapters/native#createNativeAdapter",
-        "symbol:vextjs/adapters/native#nativeAdapter"
+        "symbol:vextjs/adapters/native#nativeAdapter",
+        "symbol:vextjs#VextAdapterFactory",
+        "symbol:vextjs#VextAdapterRuntimeContext"
       ]
     },
     {

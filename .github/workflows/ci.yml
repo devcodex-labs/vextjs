@@ -306,7 +306,9 @@ jobs:
         run: npm run build
 
       - name: Run tests with coverage
-        run: npm run test:cov
+        # Full-suite coverage runs native TS compilers alongside real fork/HTTP
+        # fixtures; bound parallelism to keep their existing 30s deadlines useful.
+        run: npm run test:cov -- --maxWorkers=2
         env:
           VEXT_TEST_MONGODB_URI: mongodb://127.0.0.1:27017/vextjs_ci_cov
           VEXT_TEST_REDIS_URL: redis://127.0.0.1:6379
@@ -473,6 +475,11 @@ jobs:
           test/unit/frontend-deploy-validation.test.ts
           test/unit/frontend-runtime.test.ts
           test/unit/frontend-repairs.test.ts
+          test/unit/cluster/affinity-router.test.ts
+          test/unit/cluster/socket-receiver.test.ts
+          test/unit/cluster/socket-dispatcher.test.ts
+          test/unit/cluster/socket-http-server.test.ts
+          test/integration/cluster/ip-affinity.test.ts
           --reporter=verbose
 
       - name: Verify Windows package exports

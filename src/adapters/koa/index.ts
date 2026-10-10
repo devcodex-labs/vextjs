@@ -1,6 +1,10 @@
 import { createKoaAdapter } from "./adapter.js";
 import type { KoaAdapterOptions } from "./adapter.js";
-import type { VextAdapter } from "../../types/adapter.js";
+import type {
+  VextAdapter,
+  VextAdapterFactory,
+  VextAdapterRuntimeContext,
+} from "../../types/adapter.js";
 import type { VextApp } from "../../types/app.js";
 
 /**
@@ -64,13 +68,11 @@ export type { KoaAdapterOptions } from "./adapter.js";
  * import { koaAdapter } from 'vextjs/adapters/koa'
  * export default { adapter: koaAdapter({ bodyLimit: '5mb' }) }
  */
-export function koaAdapter(
-  options?: KoaAdapterOptions,
-): (app: VextApp) => VextAdapter {
+export function koaAdapter(options?: KoaAdapterOptions): VextAdapterFactory {
   const opts = options ?? {};
 
-  return (app: VextApp): VextAdapter => {
-    return createKoaAdapter(opts, app);
+  return (app: VextApp, context?: VextAdapterRuntimeContext): VextAdapter => {
+    return createKoaAdapter(opts, app, context);
   };
 }
 

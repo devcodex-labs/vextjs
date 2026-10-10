@@ -1,6 +1,10 @@
 import { Hono, type Context } from "hono";
 import { Buffer } from "node:buffer";
-import { createServer } from "node:http";
+import {
+  createAdapterHTTPServer,
+  socketHandoffControls,
+} from "../../lib/socket-http-server.js";
+import type { VextAdapterRuntimeContext } from "../../types/adapter.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import crypto from "node:crypto";
 import { createRouter } from "route-core";
@@ -292,7 +296,10 @@ async function writeWebResponse(
  * @param app VextApp 实例（用于传递给 createVextRequest 的 app 引用）
  * @returns VextAdapter 实例
  */
-export function createHonoAdapter(app: VextApp): VextAdapter {
+export function createHonoAdapter(
+  app: VextApp,
+  context?: VextAdapterRuntimeContext,
+): VextAdapter {
   const hono = new Hono();
   const explicitHeadRouter = createRouter({
     ignoreTrailingSlash: true,
@@ -310,6 +317,7 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
 
   return {
     name: "hono",
+    supportsSocketHandoff: Boolean(context?.socketHandoff),
 
     registerMiddleware(middleware: VextMiddleware): void {
       globalMiddlewares.push(middleware);
@@ -505,7 +513,8 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
       const requestHandler = this.buildHandler();
 
       return new Promise<VextServerHandle>((resolve, reject) => {
-        const server = createServer(
+        const server = createAdapterHTTPServer(
+          context,
           createNodeServerOptions(options?.server),
           requestHandler,
         );
@@ -525,6 +534,7 @@ export function createHonoAdapter(app: VextApp): VextAdapter {
               : host;
 
           resolve({
+            ...socketHandoffControls(server),
             port: actualPort,
             host: actualHost,
 

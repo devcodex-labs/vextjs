@@ -1,6 +1,10 @@
 import Fastify from "fastify";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import { createServer } from "node:http";
+import {
+  createAdapterHTTPServer,
+  socketHandoffControls,
+} from "../../lib/socket-http-server.js";
+import type { VextAdapterRuntimeContext } from "../../types/adapter.js";
 import type { IncomingMessage, ServerResponse, Server } from "node:http";
 import crypto from "node:crypto";
 import { createVextRequest } from "./request.js";
@@ -181,6 +185,7 @@ const _noop = async (): Promise<void> => {};
 export function createFastifyAdapter(
   options: FastifyAdapterOptions,
   app: VextApp,
+  context?: VextAdapterRuntimeContext,
 ): VextAdapter {
   // ── 创建 Fastify 实例 ────────────────────────────────────
   //
@@ -197,16 +202,18 @@ export function createFastifyAdapter(
     adapterBodyLimit: options.bodyLimit,
   });
   const serverConfig = app.config.server;
-  const serverFactory = hasServerConfig(serverConfig)
-    ? (handler: NodeRequestHandler): Server => {
-        const server = createServer(
-          createNodeServerOptions(serverConfig),
-          handler,
-        );
-        applyServerConfig(server, serverConfig);
-        return server;
-      }
-    : undefined;
+  const serverFactory =
+    context?.socketHandoff || hasServerConfig(serverConfig)
+      ? (handler: NodeRequestHandler): Server => {
+          const server = createAdapterHTTPServer(
+            context,
+            createNodeServerOptions(serverConfig),
+            handler,
+          );
+          applyServerConfig(server, serverConfig);
+          return server;
+        }
+      : undefined;
 
   const fastify: FastifyInstance = Fastify({
     logger: options.logger ?? false,
@@ -263,6 +270,7 @@ export function createFastifyAdapter(
 
   return {
     name: "fastify",
+    supportsSocketHandoff: Boolean(context?.socketHandoff),
 
     // ── registerMiddleware ───────────────────────────────────
     //
@@ -574,6 +582,7 @@ export function createFastifyAdapter(
           : host;
 
       return {
+        ...socketHandoffControls(fastify.server),
         port: actualPort,
         host: actualHost,
 

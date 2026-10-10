@@ -5,7 +5,11 @@ import type {
   Response as ExpressResponse,
 } from "express";
 import crypto from "node:crypto";
-import { createServer } from "node:http";
+import {
+  createAdapterHTTPServer,
+  socketHandoffControls,
+} from "../../lib/socket-http-server.js";
+import type { VextAdapterRuntimeContext } from "../../types/adapter.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createVextRequest } from "./request.js";
 import { createVextResponse } from "./response.js";
@@ -217,6 +221,7 @@ function collectRawBody(
 export function createExpressAdapter(
   options: ExpressAdapterOptions,
   app: VextApp,
+  context?: VextAdapterRuntimeContext,
 ): VextAdapter {
   // ── 创建 Express 实例 ────────────────────────────────────
   //
@@ -423,6 +428,7 @@ export function createExpressAdapter(
 
   return {
     name: "express",
+    supportsSocketHandoff: Boolean(context?.socketHandoff),
 
     // ── registerMiddleware ───────────────────────────────────
     //
@@ -642,7 +648,8 @@ export function createExpressAdapter(
       // 注册兜底中间件（确保在所有路由之后）
       registerFallbacks();
 
-      const server = createServer(
+      const server = createAdapterHTTPServer(
+        context,
         createNodeServerOptions(options?.server),
         expressApp,
       );
@@ -663,6 +670,7 @@ export function createExpressAdapter(
               : host;
 
           resolve({
+            ...socketHandoffControls(server),
             port: actualPort,
             host: actualHost,
 

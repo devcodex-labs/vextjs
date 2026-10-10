@@ -852,7 +852,7 @@ upstream vext_backend {
 }
 ```
 
-Vext Cluster reload does not update Master configuration, publish images, change database schemas, or preserve every long connection. `sticky: "ip"` is deprecated and diagnoses its round-robin behavior; use external load-balancer affinity. With zero Workers and no pending replacement, the standard host records failed state, cleans its PID, and exits 1 for supervisor recovery. Remaining healthy Workers keep running, so monitor ready capacity and business health.
+Vext Cluster reload does not update Master configuration, publish images, change database schemas, or preserve every long connection. `sticky: "ip"` routes TCP peer addresses to stable Worker slots inside one instance. Proxies/NAT can create hotspots, and failures or rolling replacement do not migrate in-memory sessions. External instance affinity does not provide Worker affinity behind a shared port. With zero Workers and no pending replacement, the standard host records failed state, cleans its PID, and exits 1 for supervisor recovery. Remaining healthy Workers keep running, so monitor ready capacity and business health.
 
 ## Monitor alarms
 

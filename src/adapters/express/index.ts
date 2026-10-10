@@ -1,6 +1,10 @@
 import { createExpressAdapter } from "./adapter.js";
 import type { ExpressAdapterOptions } from "./adapter.js";
-import type { VextAdapter } from "../../types/adapter.js";
+import type {
+  VextAdapter,
+  VextAdapterFactory,
+  VextAdapterRuntimeContext,
+} from "../../types/adapter.js";
 import type { VextApp } from "../../types/app.js";
 
 /**
@@ -65,11 +69,11 @@ export type { ExpressAdapterOptions } from "./adapter.js";
  */
 export function expressAdapter(
   options?: ExpressAdapterOptions,
-): (app: VextApp) => VextAdapter {
+): VextAdapterFactory {
   const opts = options ?? {};
 
-  return (app: VextApp): VextAdapter => {
-    return createExpressAdapter(opts, app);
+  return (app: VextApp, context?: VextAdapterRuntimeContext): VextAdapter => {
+    return createExpressAdapter(opts, app, context);
   };
 }
 
