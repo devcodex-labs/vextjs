@@ -890,7 +890,24 @@ Job scheduler 和 worker 使用独立于 HTTP 的进程。用 `npx vextjs job sc
 
 ## 文档站发布
 
-维护 VextJS 仓库本身时，文档站由 `.github/workflows/docs.yml` 发布到 [GitHub Pages](https://devcodex-labs.github.io/vextjs/)，base path 为 `/vextjs/`。自动发布跟随 main 的成功 push CI，检出对应精确 SHA；它与上文业务应用部署是两套流程。DevCodex Labs 组织主页由独立仓库维护。
+维护 VextJS 仓库本身时，文档源保存在 `devcodex-labs/vextjs`，同一提交发布到两个文档站。它们与上文业务应用部署是两套流程。
+
+| 站点           | 访问地址                                                                           | base path  | 发布方式                                                               |
+| -------------- | ---------------------------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------- |
+| 源码仓库文档站 | [https://devcodex-labs.github.io/vextjs/](https://devcodex-labs.github.io/vextjs/) | `/vextjs/` | 源码仓库的 GitHub Actions Pages 部署                                   |
+| 组织文档站     | [https://vextjs.github.io/](https://vextjs.github.io/)                             | `/`        | 推送到独立公开仓库 `vextjs/vextjs.github.io` 后，由该仓库的 Pages 发布 |
+
+源码仓库的 `Settings → Pages → Source` 保持 **GitHub Actions**。新增组织站需要以下首次配置，之后不需要手动复制构建结果：
+
+1. 在 `vextjs` 组织创建公开仓库 `vextjs.github.io`，初始化 `main` 分支。该仓库专门保存构建结果；发布时会替换根目录中的站点文件，删除旧产物并保留 Git 提交历史。
+2. 为该仓库创建专用 SSH Deploy Key。公钥放入站点仓库的 `Settings → Deploy keys`，勾选 **Allow write access**；私钥通过源码仓库的 `Settings → Secrets and variables → Actions` 保存为 `VEXT_DOCS_DEPLOY_KEY`。不要把私钥放进源码、文档或聊天消息。
+3. 在站点仓库的 `Settings → Pages` 选择 **Deploy from a branch**，分支选择 **main**、目录选择 **/(root)**。该组织根地址由仓库名称决定，无需配置 CNAME。
+
+`.github/workflows/docs.yml` 使用 Node.js 22，分别设置 `VEXT_DOCS_BASE` 与 `VEXT_DOCS_SITE_URL`，按表中的路径和地址构建两个站点。两份产物分别上传和校验，避免根路径与 `/vextjs/` 的资源链接混用。自动发布跟随源码仓库 `main` 的成功 push CI，检出该次 CI 的精确 SHA。
+
+两份构建及完整文档发布校验均通过后，工作流启动独立发布任务：源码仓库使用 Pages artifact 与内置 `GITHUB_TOKEN`；组织站使用 `VEXT_DOCS_DEPLOY_KEY` 推送产物。尚未配置该密钥时，工作流跳过组织站发布并记录提示，源码仓库仍照常发布。配置完成后的组织站推送失败，也不会阻止源码仓库的发布任务；任一构建失败会阻止本次两个站点的发布。发布前再次检查源码 `main` 的当前提交；已被后续提交替代的构建会跳过发布。
+
+需要重新发布时，在源码仓库的 `Actions → Deploy Docs → Run workflow` 选择 `main`，同时重建和发布两个站点。手动入口同样执行完整文档校验；其他分支不能通过该入口发布到生产站点。组织站的推送任务成功后，仍需等待目标仓库的 Pages 发布任务完成才能看到更新。
 
 ## 下一步
 

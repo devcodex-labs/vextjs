@@ -14,7 +14,7 @@ AI-first describes the engineering surface: conventions, scaffolding, typed cont
 
 The npm package name is `vextjs`; the CLI binary is `vext`. Requires Node.js **`^20.19.0 || >=22.12.0`**. Cold-start from the registry with **`npx vextjs …`**. After install, use project scripts or local `npx vext`.
 
-**Docs:** https://devcodex-labs.github.io/vextjs/ · **Migration:** [MIGRATION.md](./MIGRATION.md) · **Changelog:** [CHANGELOG.md](./CHANGELOG.md)
+**Docs:** https://devcodex-labs.github.io/vextjs/ · **Organization docs:** https://vextjs.github.io/ · **Migration:** [MIGRATION.md](./MIGRATION.md) · **Changelog:** [CHANGELOG.md](./CHANGELOG.md)
 
 ---
 
