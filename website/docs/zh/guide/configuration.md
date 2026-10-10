@@ -935,28 +935,31 @@ export default {
 
 ### Cluster 配置 (`cluster`)
 
-| 配置项                           | 类型               | 默认值        | 说明                                   |
-| -------------------------------- | ------------------ | ------------- | -------------------------------------- |
-| `cluster.enabled`                | `boolean`          | `false`       | 是否启用 Cluster 模式                  |
-| `cluster.workers`                | `number \| string` | `'auto'`      | Worker 数量（`'auto'` = CPU 核数）     |
-| `cluster.autoRestart`            | `boolean`          | `true`        | Worker 崩溃时自动重启                  |
-| `cluster.maxRestarts`            | `number`           | `5`           | 时间窗口内最大重启次数                 |
-| `cluster.restartWindow`          | `number`           | `60000`       | 重启计数窗口（毫秒）                   |
-| `cluster.restartBaseDelay`       | `number`           | `1000`        | 重启基础延迟（毫秒）                   |
-| `cluster.restartMaxDelay`        | `number`           | `30000`       | 重启最大延迟（毫秒）                   |
-| `cluster.healthCheck.enabled`    | `boolean`          | `true`        | 是否启用 Worker 心跳检测               |
-| `cluster.healthCheck.interval`   | `number`           | `15000`       | 心跳探测间隔（毫秒）                   |
-| `cluster.healthCheck.timeout`    | `number`           | `30000`       | 心跳超时（毫秒）                       |
-| `cluster.reload.workerDelay`     | `number`           | `2000`        | 替换下一个 Worker 前的等待时间（毫秒） |
-| `cluster.reload.readyTimeout`    | `number`           | `30000`       | Worker 就绪超时（毫秒）                |
-| `cluster.reload.shutdownTimeout` | `number`           | `10000`       | Worker 关闭超时（毫秒）                |
-| `cluster.pidFile`                | `string`           | `'.vext.pid'` | PID 文件路径                           |
+| 配置项                           | 类型                           | 默认值        | 说明                                                                   |
+| -------------------------------- | ------------------------------ | ------------- | ---------------------------------------------------------------------- |
+| `cluster.enabled`                | `boolean`                      | `false`       | 是否启用 Cluster 模式                                                  |
+| `cluster.workers`                | `number \| 'auto' \| 'auto-1'` | `'auto'`      | Worker 数量；自动检测可用 CPU，`auto-1` 至少为 1，实际数量最多 64      |
+| `cluster.autoRestart`            | `boolean`                      | `true`        | Worker 崩溃时自动重启                                                  |
+| `cluster.maxRestarts`            | `number`                       | `5`           | 时间窗口内最大重启次数                                                 |
+| `cluster.restartWindow`          | `number`                       | `60000`       | 重启计数窗口（毫秒）                                                   |
+| `cluster.restartBaseDelay`       | `number`                       | `1000`        | 重启基础延迟（毫秒）                                                   |
+| `cluster.restartMaxDelay`        | `number`                       | `30000`       | 重启最大延迟（毫秒）                                                   |
+| `cluster.memoryThreshold`        | `number`                       | `1073741824`  | Worker 堆内存阈值（字节）；周期检查超限后请求 Master 替换              |
+| `cluster.healthCheck.enabled`    | `boolean`                      | `true`        | 是否启用 Worker 心跳检测                                               |
+| `cluster.healthCheck.interval`   | `number`                       | `15000`       | 心跳探测间隔（毫秒）                                                   |
+| `cluster.healthCheck.timeout`    | `number`                       | `30000`       | 心跳超时（毫秒）                                                       |
+| `cluster.reload.workerDelay`     | `number`                       | `2000`        | 替换下一个 Worker 前的等待时间（毫秒）                                 |
+| `cluster.reload.readyTimeout`    | `number`                       | `30000`       | Worker 就绪超时（毫秒）                                                |
+| `cluster.reload.shutdownTimeout` | `number`                       | `10000`       | Worker 关闭超时（毫秒）                                                |
+| `cluster.pidFile`                | `string`                       | `'.vext.pid'` | PID 文件路径                                                           |
+| `cluster.titlePrefix`            | `string`                       | `'vext'`      | Master / Worker 进程标题前缀                                           |
+| `cluster.sticky`                 | `'none' \| 'ip'`               | `'none'`      | `none` 使用普通 Cluster 分发；`ip` 按 TCP 源 IP 分配到稳定 Worker 槽位 |
 
 ```typescript
 export default {
   cluster: {
     enabled: true,
-    workers: "auto", // 自动检测 CPU 核数
+    workers: "auto", // 自动检测可用 CPU，最多 64 个 Worker
     autoRestart: true,
     maxRestarts: 5,
     healthCheck: { enabled: true },
@@ -966,6 +969,8 @@ export default {
 ```
 
 也可以通过环境变量 `VEXT_CLUSTER=1` 开启 Cluster 模式，无需修改配置文件。
+
+CPU 检测规则、源 IP 亲和性的代理/NAT 限制及滚动重启行为，见[Cluster 指南](/zh/guide/cluster)。修改 `sticky` 或 `workers` 后需要完整重启 Master；`vext reload` 不用于切换这两项策略。
 
 ### Jobs 配置
 

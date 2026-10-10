@@ -1029,28 +1029,31 @@ Consider disabling it only after confirming that these capabilities are unnecess
 
 ### Cluster configuration (`cluster`)
 
-| Configuration item               | Type               | Default value | Description                                                  |
-| -------------------------------- | ------------------ | ------------- | ------------------------------------------------------------ |
-| `cluster.enabled`                | `boolean`          | `false`       | Whether to enable Cluster mode                               |
-| `cluster.workers`                | `number \| string` | `'auto'`      | Number of Workers (`'auto'` = number of CPU cores)           |
-| `cluster.autoRestart`            | `boolean`          | `true`        | Automatically restart Worker when it crashes                 |
-| `cluster.maxRestarts`            | `number`           | `5`           | Maximum number of restarts within the time window            |
-| `cluster.restartWindow`          | `number`           | `60000`       | Restart count window (milliseconds)                          |
-| `cluster.restartBaseDelay`       | `number`           | `1000`        | Restart base delay (milliseconds)                            |
-| `cluster.restartMaxDelay`        | `number`           | `30000`       | Maximum restart delay (milliseconds)                         |
-| `cluster.healthCheck.enabled`    | `boolean`          | `true`        | Whether to enable Worker heartbeat detection                 |
-| `cluster.healthCheck.interval`   | `number`           | `15000`       | Heartbeat detection interval (milliseconds)                  |
-| `cluster.healthCheck.timeout`    | `number`           | `30000`       | Heartbeat timeout (milliseconds)                             |
-| `cluster.reload.workerDelay`     | `number`           | `2000`        | Time to wait before replacing the next Worker (milliseconds) |
-| `cluster.reload.readyTimeout`    | `number`           | `30000`       | Worker ready timeout (milliseconds)                          |
-| `cluster.reload.shutdownTimeout` | `number`           | `10000`       | Worker shutdown timeout (milliseconds)                       |
-| `cluster.pidFile`                | `string`           | `'.vext.pid'` | PID file path                                                |
+| Configuration item               | Type                           | Default value | Description                                                                              |
+| -------------------------------- | ------------------------------ | ------------- | ---------------------------------------------------------------------------------------- |
+| `cluster.enabled`                | `boolean`                      | `false`       | Whether to enable Cluster mode                                                           |
+| `cluster.workers`                | `number \| 'auto' \| 'auto-1'` | `'auto'`      | Worker count; detect available CPUs, keep `auto-1` at least 1, and cap the count at 64   |
+| `cluster.autoRestart`            | `boolean`                      | `true`        | Automatically restart Worker when it crashes                                             |
+| `cluster.maxRestarts`            | `number`                       | `5`           | Maximum number of restarts within the time window                                        |
+| `cluster.restartWindow`          | `number`                       | `60000`       | Restart count window (milliseconds)                                                      |
+| `cluster.restartBaseDelay`       | `number`                       | `1000`        | Restart base delay (milliseconds)                                                        |
+| `cluster.restartMaxDelay`        | `number`                       | `30000`       | Maximum restart delay (milliseconds)                                                     |
+| `cluster.memoryThreshold`        | `number`                       | `1073741824`  | Worker heap threshold in bytes; a periodic breach asks Master for replacement            |
+| `cluster.healthCheck.enabled`    | `boolean`                      | `true`        | Whether to enable Worker heartbeat detection                                             |
+| `cluster.healthCheck.interval`   | `number`                       | `15000`       | Heartbeat detection interval (milliseconds)                                              |
+| `cluster.healthCheck.timeout`    | `number`                       | `30000`       | Heartbeat timeout (milliseconds)                                                         |
+| `cluster.reload.workerDelay`     | `number`                       | `2000`        | Time to wait before replacing the next Worker (milliseconds)                             |
+| `cluster.reload.readyTimeout`    | `number`                       | `30000`       | Worker ready timeout (milliseconds)                                                      |
+| `cluster.reload.shutdownTimeout` | `number`                       | `10000`       | Worker shutdown timeout (milliseconds)                                                   |
+| `cluster.pidFile`                | `string`                       | `'.vext.pid'` | PID file path                                                                            |
+| `cluster.titlePrefix`            | `string`                       | `'vext'`      | Master / Worker process title prefix                                                     |
+| `cluster.sticky`                 | `'none' \| 'ip'`               | `'none'`      | `none` uses ordinary Cluster dispatch; `ip` routes TCP source IPs to stable Worker slots |
 
 ```typescript
 export default {
   cluster: {
     enabled: true,
-    workers: "auto", // Automatically detect the number of CPU cores
+    workers: "auto", // Detect available CPUs, capped at 64 Workers
     autoRestart: true,
     maxRestarts: 5,
     healthCheck: { enabled: true },
@@ -1060,6 +1063,8 @@ export default {
 ```
 
 You can also turn on Cluster mode through the environment variable `VEXT_CLUSTER=1` without modifying the configuration file.
+
+See the [Cluster guide](/guide/cluster) for CPU detection, proxy/NAT limits of source-IP affinity, and rolling restart behavior. Changing `sticky` or `workers` requires a full Master restart; `vext reload` does not switch these policies.
 
 ### Jobs configuration
 

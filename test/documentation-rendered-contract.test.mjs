@@ -79,6 +79,69 @@ test("actual rendered validator accepts the freshly built source snapshot", () =
   assert.deepEqual(verify(), []);
 });
 
+test("actual rendered validator accepts all local links under the configured site base", () => {
+  assert.deepEqual(verify(undefined, "verifyRenderedAnchors(); failures"), []);
+});
+
+function withInjectedHomeLink(href) {
+  const link = JSON.stringify(`<a href="${href}">Broken navigation</a></body>`);
+  return verify(
+    undefined,
+    `
+    const originalRead = readFileSync;
+    readFileSync = (file, ...args) => {
+      const content = originalRead(file, ...args);
+      return String(file) === path.join(renderedRoot, "index.html") && typeof content === "string"
+        ? content.replace("</body>", ${link})
+        : content;
+    };
+    verifyRenderedAnchors(); failures`,
+  );
+}
+
+test("actual rendered validator rejects a missing navigation page without a fragment", () => {
+  const base = (process.env.VEXT_DOCS_BASE?.trim() || "/vextjs/").replace(
+    /^\/+|\/+$/g,
+    "",
+  );
+  const href = `${base ? `/${base}` : ""}/missing-navigation-page.html`;
+  assert.ok(
+    withInjectedHomeLink(href).some((failure) =>
+      failure.includes(`links to missing page ${href}`),
+    ),
+  );
+});
+
+test("actual rendered validator rejects a directory without an index page", () => {
+  const base = (process.env.VEXT_DOCS_BASE?.trim() || "/vextjs/").replace(
+    /^\/+|\/+$/g,
+    "",
+  );
+  const href = `${base ? `/${base}` : ""}/static/`;
+  assert.ok(
+    withInjectedHomeLink(href).some((failure) =>
+      failure.includes(`links to missing page ${href}`),
+    ),
+  );
+});
+
+test("actual rendered validator rejects project/root site path contamination", () => {
+  const base = (process.env.VEXT_DOCS_BASE?.trim() || "/vextjs/").replace(
+    /^\/+|\/+$/g,
+    "",
+  );
+  const href = base
+    ? "/guide/introduction.html"
+    : "/vextjs/guide/introduction.html";
+  assert.ok(
+    withInjectedHomeLink(href).some((failure) =>
+      failure.includes(
+        base ? "outside configured site base" : "links to missing page",
+      ),
+    ),
+  );
+});
+
 test("actual rendered validator rejects missing Rspress home logo navigation", () => {
   const failures = verify(
     undefined,

@@ -192,36 +192,6 @@ VextJS 当前不提供 `@Controller` / `@Get` / `@Inject` / `@Service` 等装饰
 - 要求 Node.js **`^20.19.0 || >=22.12.0`**
 - **TypeScript** 5.x（推荐，也支持纯 JavaScript）
 
-## 版本与迁移 {#versions-and-migration}
-
-本站的当前源码说明与 npm 已发布包需要分别核对。安装后先在应用目录执行：
-
-```bash
-npm ls vextjs monsqlize schema-dsl
-npm exec -- vext --help
-```
-
-包版本、锁文件和实际安装结果应一起保存。不要因 package.json 的版本范围包含 2.0.0，就假定当前 main 的每项修复已经发布。
-
-| 使用范围                 | 已确认的依据                                                                                                                                                                                                            | 如何选用                                                                                                    |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| 已发布 Vext 2.0.0        | [2.0.0 发布说明](https://github.com/devcodex-labs/vextjs/blob/main/changelogs/v2.0.0.md)与[主版本迁移清单](https://github.com/devcodex-labs/vextjs/blob/main/MIGRATION.md)                                              | 使用 `npm install vextjs@2.0.0`，按下表核对主版本变化，再运行应用自己的验证。                               |
-| 本轮文档核对的源码       | [源码快照 02a28884](https://github.com/devcodex-labs/vextjs/tree/02a28884f6773600ac67dc9212065706c83ed532)；[CHANGELOG 的 Unreleased](https://github.com/devcodex-labs/vextjs/blob/main/CHANGELOG.md)记录尚待发布的变化 | 构建位置/身份、profile 继承、产物事务及恢复等说明按该快照验证；在已发布包使用前应核对该版本源码和实际行为。 |
-| 数据库、校验和第三方插件 | 各包自己的实际安装版本与发布说明                                                                                                                                                                                        | 上游版本与 Vext 版本分别记录；不要把当前 MonSQLize 的全部 API 推定为任意旧安装版本都有。                    |
-
-需要验证当前源码候选时，在框架仓库执行 `npm ci`、`npm run build`、`npm pack`，然后在独立应用中安装生成的 `.tgz` 文件。记录源码提交及包文件；候选包里的版本号可能仍为 2.0.0，不能仅凭它判断来自 npm 正式发布。避免用 workspace/source link 代替安装包验收。正常使用已发布版本无需克隆框架仓库。
-
-### 从 1.x 迁移到 2.0.0
-
-| 旧用法或假设                       | 当前用法                                              | 迁移验证                                                                                                          |
-| ---------------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `app.monsqlize` 或缩减的数据库包装 | 统一使用原始 MonSQLize 实例 `app.db`                  | 验证连接、Model/Collection、事务和关闭；不要再重复关闭框架管理的 db。                                             |
-| scope 自动补齐 Model 短名称        | `use()`/`pool()` 选择 scope，`model()` 使用精确注册键 | 如 billing/invoice 使用 `BillingInvoice`，短名称只在模型显式声明别名时可用；详见[数据库](./database#model-定义)。 |
-| 全局限流默认开启                   | 显式 `rateLimit.enabled: true`                        | 验证额度、429、响应头及多进程 Store；`setRateLimiter()` 不负责启用全局中间件。                                    |
-| path 参数校验失败断言为 422        | path 为 HTTP 400；body/query/header/cookie 仍为 422   | 同时检查测试、OpenAPI 与客户端错误处理。                                                                          |
-
-迁移后依次运行生成类型、应用 typecheck、build、真实 start 和 HTTP/页面验证；启用数据库、SEO/sitemap、无 hydration 页面时再验证这些实际使用的能力。参数和示例以对应版本为准，升级验证不是仅把依赖版本号改掉。
-
 ## 下一步
 
 前往[快速开始](/zh/guide/quick-start)创建项目。在已有可运行应用中加入本页 `src/routes/index.ts` 的 hello 路由并合并配置，执行 `npm run dev` 后请求 `GET http://127.0.0.1:3000/hello`，应返回 200 及 `data.message: "Hello VextJS!"`。已有 index 路由时合并回调，避免覆盖原入口；若得到 404，核对文件前缀和实际端口。

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -30,7 +30,9 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(scriptDir, "..", "..");
 const docsRoot = path.join(root, "website", "docs");
 const renderedRoot = path.join(root, "website", "dist");
-const renderedBasePath = "/vextjs";
+const renderedBasePath = (process.env.VEXT_DOCS_BASE?.trim() || "/vextjs/")
+  .replace(/^\/+|\/+$/g, "")
+  .replace(/^(.+)$/, "/$1");
 const renderedOnly = process.argv.includes("--rendered");
 const rollout = resolveDocsRollout();
 const verification = resolveDocsVerification();
@@ -2080,11 +2082,10 @@ function verifyRenderedAnchors() {
   for (const page of pages.values()) {
     for (const match of page.html.matchAll(/\shref="([^"]+)"/g)) {
       const href = decodeHtml(match[1]);
-      if (!href.includes("#")) continue;
       if (/^(?:https?:|mailto:|tel:|javascript:)/i.test(href)) continue;
-      const basePath = page.route.endsWith("/")
-        ? page.route
-        : `${normalizeTargetPath(page.route)}.html`;
+      const basePath = `${renderedBasePath}${
+        page.route.endsWith("/") ? page.route : `${page.route}.html`
+      }`;
       let target;
       try {
         target = new URL(href, `https://docs.local${basePath}`);
@@ -2092,17 +2093,38 @@ function verifyRenderedAnchors() {
         fail(`${path.relative(root, page.file)} has invalid href: ${href}`);
         continue;
       }
-      const fragment = safeDecode(target.hash.slice(1));
-      if (!fragment) continue;
-      checked += 1;
-      const targetPage = pages.get(normalizeTargetPath(target.pathname));
-      if (!targetPage) {
+      if (target.origin !== "https://docs.local") continue;
+      const targetPath = safeDecode(target.pathname);
+      if (
+        renderedBasePath &&
+        targetPath !== renderedBasePath &&
+        !targetPath.startsWith(`${renderedBasePath}/`)
+      ) {
         fail(
-          `${path.relative(root, page.file)} links to missing page ${target.pathname}#${fragment}`,
+          `${path.relative(root, page.file)} links outside configured site base: ${href}`,
         );
         continue;
       }
-      if (!targetPage.anchors.has(fragment)) {
+      const fragment = safeDecode(target.hash.slice(1));
+      if (fragment) checked += 1;
+      const targetPage = pages.get(normalizeTargetPath(targetPath));
+      if (!targetPage) {
+        const asset = path.resolve(
+          renderedRoot,
+          `.${targetPath.slice(renderedBasePath.length) || "/"}`,
+        );
+        if (
+          asset.startsWith(`${renderedRoot}${path.sep}`) &&
+          existsSync(asset) &&
+          statSync(asset).isFile()
+        )
+          continue;
+        fail(
+          `${path.relative(root, page.file)} links to missing page ${target.pathname}${fragment ? `#${fragment}` : ""}`,
+        );
+        continue;
+      }
+      if (fragment && !targetPage.anchors.has(fragment)) {
         fail(
           `${path.relative(root, page.file)} links to missing anchor ${target.pathname}#${fragment}`,
         );
