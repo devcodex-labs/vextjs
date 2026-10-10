@@ -1,0 +1,103 @@
+# 共用构建校验；每个调用者拥有独立 job 结果与 artifact。
+name: Build Docs Site
+
+on:
+  workflow_call:
+    inputs:
+      site:
+        required: true
+        type: string
+      base:
+        required: true
+        type: string
+      url:
+        required: true
+        type: string
+      sha:
+        required: true
+        type: string
+
+env:
+  DEPLOY_SHA: ${{ inputs.sha }}
+
+jobs:
+  build:
+    name: Build Docs (${{ inputs.site }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+    env:
+      VEXT_DOCS_BASE: ${{ inputs.base }}
+      VEXT_DOCS_SITE_URL: ${{ inputs.url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # 获取完整提交历史，rspress lastUpdated 功能需要
+          ref: ${{ env.DEPLOY_SHA }}
+          persist-credentials: false
+
+      - name: Verify deployment commit
+        shell: bash
+        run: |
+          ACTUAL_SHA=$(git rev-parse HEAD)
+          if [[ "$ACTUAL_SHA" != "$DEPLOY_SHA" ]]; then
+            echo "Expected CI SHA: $DEPLOY_SHA"
+            echo "Checked out SHA: $ACTUAL_SHA"
+            exit 1
+          fi
+          echo "Building deployment SHA: $ACTUAL_SHA"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: "npm"
+          cache-dependency-path: website/package-lock.json
+
+      - name: Setup source repository Pages
+        if: inputs.site == 'project'
+        uses: actions/configure-pages@v6
+
+      - name: Install dependencies
+        working-directory: website
+        run: npm ci
+
+      - name: Install package dependencies and build CLI for docs verification
+        run: npm ci && npm run build
+
+      - name: Audit website production dependencies
+        working-directory: website
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Build
+        working-directory: website
+        run: npm run build:publish -- --rollout=final
+        env:
+          NODE_ENV: production
+
+      - name: Prepare Pages files
+        shell: bash
+        run: |
+          cat > website/dist/robots.txt <<EOF
+          User-agent: *
+          Allow: /
+
+          Sitemap: ${VEXT_DOCS_SITE_URL}/sitemap.xml
+          EOF
+          touch website/dist/.nojekyll
+
+      - name: Upload docs artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: docs-dist-${{ inputs.site }}
+          path: website/dist
+          if-no-files-found: error
+          include-hidden-files: true
+
+      - name: Upload source repository Pages artifact
+        if: inputs.site == 'project'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: website/dist

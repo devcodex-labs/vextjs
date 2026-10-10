@@ -905,7 +905,7 @@ Job scheduler 和 worker 使用独立于 HTTP 的进程。用 `npx vextjs job sc
 
 `.github/workflows/docs.yml` 使用 Node.js 22，分别设置 `VEXT_DOCS_BASE` 与 `VEXT_DOCS_SITE_URL`，按表中的路径和地址构建两个站点。两份产物分别上传和校验，避免根路径与 `/vextjs/` 的资源链接混用。自动发布跟随源码仓库 `main` 的成功 push CI，检出该次 CI 的精确 SHA。
 
-两份构建及完整文档发布校验均通过后，工作流启动独立发布任务：源码仓库使用 Pages artifact 与内置 `GITHUB_TOKEN`；组织站使用 `VEXT_DOCS_DEPLOY_KEY` 推送产物。尚未配置该密钥时，工作流跳过组织站发布并记录提示，源码仓库仍照常发布。配置完成后的组织站推送失败，也不会阻止源码仓库的发布任务；任一构建失败会阻止本次两个站点的发布。发布前再次检查源码 `main` 的当前提交；已被后续提交替代的构建会跳过发布。
+两站分别调用 `.github/workflows/docs-build.yml`，各自通过完整文档发布校验后启动对应的发布任务：源码仓库使用 Pages artifact 与内置 `GITHUB_TOKEN`；组织站使用 `VEXT_DOCS_DEPLOY_KEY` 推送产物。任一站点构建或发布失败，只阻止该站点本次发布，另一站点仍可在自身校验通过后发布。尚未配置该密钥时，工作流跳过组织站发布并记录提示，源码仓库仍照常发布。发布前再次检查源码 `main` 的当前提交；已被后续提交替代的构建会跳过发布。版本 tag 的自动发版继续由 `release.yml` 处理。
 
 需要重新发布时，在源码仓库的 `Actions → Deploy Docs → Run workflow` 选择 `main`，同时重建和发布两个站点。手动入口同样执行完整文档校验；其他分支不能通过该入口发布到生产站点。组织站的推送任务成功后，仍需等待目标仓库的 Pages 发布任务完成才能看到更新。
 

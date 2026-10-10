@@ -6,7 +6,7 @@
 #   - 在 main 手动触发（workflow_dispatch）
 #
 # 流水线结构：
-#   1. build  — 在 website/ 目录安装依赖并执行 rspress build
+#   1. build-project / build-organization — 独立调用共用构建工作流
 #   2. deploy-pages — 保留源码仓库的 /vextjs/ Pages 发布
 #   3. deploy-organization — 新增独立组织根站点 https://vextjs.github.io/
 #
@@ -40,8 +40,37 @@ jobs:
   # ────────────────────────────────────────────────────────────
   # 1. 构建文档站
   # ────────────────────────────────────────────────────────────
-  build:
-    name: Build Docs (${{ matrix.site }})
+  build-project:
+    name: Build source repository docs
+    needs: prepare-deployment
+    if: needs.prepare-deployment.outputs.current == 'true'
+    permissions:
+      contents: read
+      pages: write
+    uses: ./.github/workflows/docs-build.yml
+    with:
+      site: project
+      base: /vextjs/
+      url: https://devcodex-labs.github.io/vextjs
+      sha: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+  build-organization:
+    name: Build organization docs
+    needs: prepare-deployment
+    if: needs.prepare-deployment.outputs.current == 'true'
+    permissions:
+      contents: read
+      pages: write
+    uses: ./.github/workflows/docs-build.yml
+    with:
+      site: organization
+      base: /
+      url: https://vextjs.github.io
+      sha: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+  # 在进入发布并发组前跳过旧 CI 的迟到构建。
+  prepare-deployment:
+    name: Check deployment prerequisites
     runs-on: ubuntu-latest
     if: >-
       ${{
@@ -53,99 +82,6 @@ jobs:
           github.event.workflow_run.head_repository.full_name == github.repository
         )
       }}
-    permissions:
-      contents: read
-      pages: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - site: project
-            base: /vextjs/
-            url: https://devcodex-labs.github.io/vextjs
-          - site: organization
-            base: /
-            url: https://vextjs.github.io
-    env:
-      VEXT_DOCS_BASE: ${{ matrix.base }}
-      VEXT_DOCS_SITE_URL: ${{ matrix.url }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0 # 获取完整提交历史，rspress lastUpdated 功能需要
-          ref: ${{ env.DEPLOY_SHA }}
-          persist-credentials: false
-
-      - name: Verify deployment commit
-        shell: bash
-        run: |
-          ACTUAL_SHA=$(git rev-parse HEAD)
-          if [[ "$ACTUAL_SHA" != "$DEPLOY_SHA" ]]; then
-            echo "Expected CI SHA: $DEPLOY_SHA"
-            echo "Checked out SHA: $ACTUAL_SHA"
-            exit 1
-          fi
-          echo "Building deployment SHA: $ACTUAL_SHA"
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: "npm"
-          cache-dependency-path: website/package-lock.json
-
-      - name: Setup source repository Pages
-        if: matrix.site == 'project'
-        uses: actions/configure-pages@v6
-
-      - name: Install dependencies
-        working-directory: website
-        run: npm ci
-
-      - name: Install package dependencies and build CLI for docs verification
-        run: npm ci && npm run build
-
-      - name: Audit website production dependencies
-        working-directory: website
-        run: npm audit --omit=dev --audit-level=high
-
-      - name: Build
-        working-directory: website
-        run: npm run build:publish -- --rollout=final
-        env:
-          NODE_ENV: production
-
-      - name: Prepare Pages files
-        shell: bash
-        run: |
-          cat > website/dist/robots.txt <<EOF
-          User-agent: *
-          Allow: /
-
-          Sitemap: ${VEXT_DOCS_SITE_URL}/sitemap.xml
-          EOF
-          touch website/dist/.nojekyll
-
-      - name: Upload docs artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: docs-dist-${{ matrix.site }}
-          path: website/dist
-          if-no-files-found: error
-          include-hidden-files: true
-
-      - name: Upload source repository Pages artifact
-        if: matrix.site == 'project'
-        uses: actions/upload-pages-artifact@v5
-        with:
-          path: website/dist
-
-  # 在进入发布并发组前跳过旧 CI 的迟到构建。
-  prepare-deployment:
-    name: Check deployment prerequisites
-    runs-on: ubuntu-latest
-    needs: build
     outputs:
       current: ${{ steps.current.outputs.publish }}
       organization_ready: ${{ steps.organization.outputs.ready }}
@@ -182,7 +118,7 @@ jobs:
   deploy-pages:
     name: Publish source repository Pages
     runs-on: ubuntu-latest
-    needs: prepare-deployment
+    needs: [prepare-deployment, build-project]
     if: needs.prepare-deployment.outputs.current == 'true'
     permissions:
       contents: read
@@ -220,7 +156,7 @@ jobs:
   deploy-organization:
     name: Publish to vextjs.github.io
     runs-on: ubuntu-latest
-    needs: prepare-deployment
+    needs: [prepare-deployment, build-organization]
     if: >-
       needs.prepare-deployment.outputs.current == 'true' &&
       needs.prepare-deployment.outputs.organization_ready == 'true'
