@@ -1078,7 +1078,7 @@ describe("vext create", () => {
           "getting-started",
         );
         expect(files["src/frontend/pages/index.tsx"]).toContain(
-          'href="https://devcodex-labs.github.io/vextjs/"',
+          'href="https://vextjs.github.io/"',
         );
         expect(files["src/frontend/components/AppShell.tsx"]).toContain(
           "useVextI18n",
@@ -1093,7 +1093,7 @@ describe("vext create", () => {
           'href="/docs"',
         );
         expect(files["src/frontend/components/AppShell.tsx"]).toContain(
-          'href="https://devcodex-labs.github.io/vextjs/"',
+          'href="https://vextjs.github.io/"',
         );
         expect(files["src/frontend/components/AppShell.tsx"]).toContain(
           'className="nav-docs"',
@@ -1186,7 +1186,7 @@ describe("vext create", () => {
           /openapi:\s*\{\s*enabled: true,/,
         );
         expect(files["src/frontend/pages/index.jsx"]).toContain(
-          'href="https://devcodex-labs.github.io/vextjs/"',
+          'href="https://vextjs.github.io/"',
         );
         expect(files["src/frontend/pages/index.jsx"]).toContain(
           "runtime-trace",

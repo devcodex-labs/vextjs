@@ -65,7 +65,7 @@ interface CreateOptions {
 const VALID_ADAPTERS = ["hono", "fastify", "express", "koa", "native"];
 const VALID_TEMPLATES = ["api", "fullstack-react"];
 const VALID_FRONTENDS = ["react", "none"];
-const VEXT_DOCUMENTATION_URL = "https://devcodex-labs.github.io/vextjs/";
+const VEXT_DOCUMENTATION_URL = "https://vextjs.github.io/";
 
 /**
  * adapter 对应的 peer dependency 映射

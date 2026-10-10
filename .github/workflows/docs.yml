@@ -3,11 +3,15 @@
 #
 # 触发条件：
 #   - main 的 push-triggered CI 成功后，部署该次 CI 的精确 SHA
-#   - 手动触发（workflow_dispatch）
+#   - 在 main 手动触发（workflow_dispatch）
 #
 # 流水线结构：
 #   1. build  — 在 website/ 目录安装依赖并执行 rspress build
-#   2. deploy — 部署到当前仓库 GitHub Pages: /vextjs/
+#   2. deploy — 推送静态产物到 vextjs/vextjs.github.io 的 main
+#              由目标仓库的 branch-source Pages 发布到 https://vextjs.github.io/
+#
+# 首次配置：目标仓库初始化 main，Pages 选择 main / (root)，
+#           添加可写 Deploy Key，并在源码仓库保存 VEXT_DOCS_DEPLOY_KEY。
 #
 # @see website/package.json §scripts
 # @see https://rspress.dev/guide/start/deploy
@@ -23,16 +27,14 @@ on:
       - main
   workflow_dispatch:
 
-# 同一分支同时只允许一个部署运行，新运行会取消旧运行
-concurrency:
-  group: pages-${{ github.event.workflow_run.head_branch || github.ref_name || github.run_id }}
-  cancel-in-progress: true
-
-# GitHub Pages 部署所需权限
+# 源码与产物读取使用 GITHUB_TOKEN；目标仓库写入使用专用 SSH Deploy Key。
 permissions:
   contents: read
-  pages: write
-  id-token: write
+
+env:
+  VEXT_DOCS_BASE: /
+  VEXT_DOCS_SITE_URL: https://vextjs.github.io
+  DOCS_PUBLISH_REPOSITORY: vextjs/vextjs.github.io
 
 # ── Jobs ─────────────────────────────────────────────────────
 
@@ -45,24 +47,29 @@ jobs:
     runs-on: ubuntu-latest
     if: >-
       ${{
-        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
         (
           github.event.workflow_run.conclusion == 'success' &&
           github.event.workflow_run.event == 'push' &&
-          github.event.workflow_run.head_branch == 'main'
+          github.event.workflow_run.head_branch == 'main' &&
+          github.event.workflow_run.head_repository.full_name == github.repository
         )
       }}
     env:
       DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    outputs:
+      deploy_sha: ${{ steps.commit.outputs.sha }}
+      current: ${{ steps.current.outputs.publish }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
           fetch-depth: 0 # 获取完整提交历史，rspress lastUpdated 功能需要
           ref: ${{ env.DEPLOY_SHA }}
+          persist-credentials: false
 
       - name: Verify deployment commit
-        if: github.event_name == 'workflow_run'
+        id: commit
         shell: bash
         run: |
           ACTUAL_SHA=$(git rev-parse HEAD)
@@ -71,14 +78,8 @@ jobs:
             echo "Checked out SHA: $ACTUAL_SHA"
             exit 1
           fi
-          echo "Deploying successful CI SHA: $ACTUAL_SHA"
-
-      - name: Resolve deployment target
-        id: target
-        shell: bash
-        run: |
-          echo "docs_base=/vextjs/" >> "$GITHUB_OUTPUT"
-          echo "site_url=https://devcodex-labs.github.io/vextjs" >> "$GITHUB_OUTPUT"
+          echo "sha=$ACTUAL_SHA" >> "$GITHUB_OUTPUT"
+          echo "Building deployment SHA: $ACTUAL_SHA"
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -86,9 +87,6 @@ jobs:
           node-version: 22
           cache: "npm"
           cache-dependency-path: website/package-lock.json
-
-      - name: Setup GitHub Pages
-        uses: actions/configure-pages@v6
 
       - name: Install dependencies
         working-directory: website
@@ -106,47 +104,123 @@ jobs:
         run: npm run build:publish -- --rollout=final
         env:
           NODE_ENV: production
-          VEXT_DOCS_BASE: ${{ steps.target.outputs.docs_base }}
-          VEXT_DOCS_SITE_URL: ${{ steps.target.outputs.site_url }}
 
-      - name: Rewrite robots sitemap URL
+      - name: Prepare Pages files
         shell: bash
         run: |
           cat > website/dist/robots.txt <<EOF
           User-agent: *
           Allow: /
 
-          Sitemap: ${{ steps.target.outputs.site_url }}/sitemap.xml
+          Sitemap: ${VEXT_DOCS_SITE_URL}/sitemap.xml
           EOF
+          touch website/dist/.nojekyll
+
+      - name: Check built commit is still current
+        id: current
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          CURRENT_SHA=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')
+          if [[ "$CURRENT_SHA" == "$DEPLOY_SHA" ]]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Skipping superseded build: $DEPLOY_SHA (main is $CURRENT_SHA)"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Upload docs artifact
+        if: steps.current.outputs.publish == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: docs-dist
           path: website/dist
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v5
-        with:
-          path: website/dist
+          if-no-files-found: error
+          include-hidden-files: true
 
   # ────────────────────────────────────────────────────────────
-  # 2a. 部署到当前仓库 GitHub Pages
+  # 2. 向独立站点仓库推送；目标仓库保留普通提交历史，不强制推送
   # ────────────────────────────────────────────────────────────
   deploy-pages:
-    name: Deploy to GitHub Pages
+    name: Publish to vextjs.github.io
     runs-on: ubuntu-latest
     needs: build
+    if: needs.build.outputs.current == 'true'
+
+    # 只串行化已通过构建且仍对应 main 的发布，不中断正在进行的 Git 推送。
+    concurrency:
+      group: vextjs-docs-production
+      cancel-in-progress: false
 
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: https://vextjs.github.io/
+
+    env:
+      DEPLOY_SHA: ${{ needs.build.outputs.deploy_sha }}
 
     steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v5
-
-      - name: Print deployment URL
+      - name: Check current main commit
+        id: current
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          echo "✅ 文档站已部署至: ${{ steps.deployment.outputs.page_url }}"
+          CURRENT_SHA=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')
+          if [[ "$CURRENT_SHA" != "$DEPLOY_SHA" ]]; then
+            echo "Skipping superseded build: $DEPLOY_SHA (main is $CURRENT_SHA)"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify deployment key
+        if: steps.current.outputs.publish == 'true'
+        env:
+          DOCS_DEPLOY_KEY: ${{ secrets.VEXT_DOCS_DEPLOY_KEY }}
+        shell: bash
+        run: |
+          if [[ -z "$DOCS_DEPLOY_KEY" ]]; then
+            echo "::error::Set VEXT_DOCS_DEPLOY_KEY to the writable Deploy Key for ${DOCS_PUBLISH_REPOSITORY}."
+            exit 1
+          fi
+
+      - name: Checkout Pages repository
+        if: steps.current.outputs.publish == 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.DOCS_PUBLISH_REPOSITORY }}
+          ref: main
+          path: site
+          ssh-key: ${{ secrets.VEXT_DOCS_DEPLOY_KEY }}
+
+      - name: Download verified docs
+        if: steps.current.outputs.publish == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: docs-dist
+          path: docs-dist
+
+      - name: Publish verified docs
+        if: steps.current.outputs.publish == 'true'
+        shell: bash
+        run: |
+          test -f docs-dist/index.html
+          test -f docs-dist/zh/index.html
+          test -f docs-dist/docs-manifest.json
+          test -f docs-dist/sitemap.xml
+          git -C site rm -r --ignore-unmatch -- .
+          cp -a docs-dist/. site/
+          touch site/.nojekyll
+          cd site
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --all
+          if git diff --cached --quiet; then
+            echo "Documentation is already current."
+          else
+            git commit -m "docs: publish ${DEPLOY_SHA}"
+            git push origin HEAD:main
+          fi
+          echo "Published to ${DOCS_PUBLISH_REPOSITORY}; Pages will update ${VEXT_DOCS_SITE_URL}/"

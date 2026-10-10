@@ -890,7 +890,17 @@ Job scheduler 和 worker 使用独立于 HTTP 的进程。用 `npx vextjs job sc
 
 ## 文档站发布
 
-维护 VextJS 仓库本身时，文档站由 `.github/workflows/docs.yml` 发布到 [GitHub Pages](https://devcodex-labs.github.io/vextjs/)，base path 为 `/vextjs/`。自动发布跟随 main 的成功 push CI，检出对应精确 SHA；它与上文业务应用部署是两套流程。DevCodex Labs 组织主页由独立仓库维护。
+维护 VextJS 仓库本身时，文档源保存在 `devcodex-labs/vextjs`，构建后的静态站点保存在独立公开仓库 `vextjs/vextjs.github.io`，访问地址为 [https://vextjs.github.io/](https://vextjs.github.io/)，base path 为 `/`。它与上文业务应用部署是两套流程。
+
+首次发布需要以下配置，之后不需要手动复制构建结果：
+
+1. 在 `vextjs` 组织创建公开仓库 `vextjs.github.io`，初始化 `main` 分支。该仓库专门保存构建结果；发布时会替换根目录中的站点文件，删除旧产物并保留 Git 提交历史。
+2. 为该仓库创建专用 SSH Deploy Key。公钥放入站点仓库的 `Settings → Deploy keys`，勾选 **Allow write access**；私钥通过源码仓库的 `Settings → Secrets and variables → Actions` 保存为 `VEXT_DOCS_DEPLOY_KEY`。不要把私钥放进源码、文档或聊天消息。
+3. 在站点仓库的 `Settings → Pages` 选择 **Deploy from a branch**，分支选择 **main**、目录选择 **/(root)**。该组织根地址由仓库名称决定，无需配置 CNAME。
+
+`.github/workflows/docs.yml` 使用 Node.js 22，以 `VEXT_DOCS_BASE=/`、`VEXT_DOCS_SITE_URL=https://vextjs.github.io` 构建。自动发布跟随源码仓库 `main` 的成功 push CI，检出该次 CI 的精确 SHA，执行完整文档发布校验后，将产物通过专用 Deploy Key 推送到站点仓库。推送前检查源码 `main` 的当前提交；已被后续提交替代的构建会跳过发布。站点仓库的 Pages 随后发布新内容。
+
+需要重新发布时，在源码仓库的 `Actions → Deploy Docs → Run workflow` 选择 `main`。手动入口同样执行完整文档校验；其他分支不能通过该入口发布到生产站点。构建失败不会推送站点文件；工作流完成推送后，仍需等待目标仓库的 Pages 发布任务完成才能看到更新。
 
 ## 下一步
 

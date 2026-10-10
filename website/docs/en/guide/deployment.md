@@ -887,7 +887,17 @@ Run Job schedulers and workers as processes separate from HTTP. `npx vextjs job 
 
 ## Publish the documentation site
 
-When maintaining this VextJS repository, `.github/workflows/docs.yml` publishes the documentation to [GitHub Pages](https://devcodex-labs.github.io/vextjs/) with base path `/vextjs/`. Automatic publishing follows a successful main push CI and checks out that exact SHA. This is separate from application deployment above. The DevCodex Labs organization homepage is maintained in a separate repository.
+When maintaining this VextJS repository, documentation sources remain in `devcodex-labs/vextjs`. The built static site lives in the separate public repository `vextjs/vextjs.github.io` and is served at [https://vextjs.github.io/](https://vextjs.github.io/) with base path `/`. This is separate from application deployment above.
+
+Complete this setup once; subsequent builds publish automatically:
+
+1. Create the public repository `vextjs.github.io` in the `vextjs` organization and initialize its `main` branch. This repository is reserved for build output: publishing replaces the site files at its root, removes stale output, and preserves Git commit history.
+2. Create a dedicated SSH Deploy Key for that repository. Add the public key in the site repository's `Settings → Deploy keys` with **Allow write access** enabled. Save the private key as `VEXT_DOCS_DEPLOY_KEY` in the source repository's `Settings → Secrets and variables → Actions`. Never put the private key in source code, documentation, or chat messages.
+3. In the site repository's `Settings → Pages`, select **Deploy from a branch**, branch **main**, and folder **/(root)**. The repository name determines the organization root URL; no CNAME is needed.
+
+`.github/workflows/docs.yml` builds with Node.js 22, `VEXT_DOCS_BASE=/`, and `VEXT_DOCS_SITE_URL=https://vextjs.github.io`. Automatic publishing follows a successful source-repository `main` push CI and checks out that exact SHA. After the complete documentation publishing checks pass, the workflow pushes the output to the site repository using its dedicated Deploy Key. Before pushing, it checks the current source `main` commit and skips builds superseded by a later commit. The target repository's Pages job then publishes the new content.
+
+To republish, select `main` in the source repository's `Actions → Deploy Docs → Run workflow`. This manual entry also runs the complete documentation checks; other branches cannot publish to the production site through it. Failed builds do not push site files. After the workflow pushes successfully, wait for the target repository's Pages publishing job to finish before checking the updated site.
 
 ## Next step
 

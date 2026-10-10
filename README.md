@@ -4,7 +4,7 @@
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Node.js](https://img.shields.io/badge/Node.js-%5E20.19.0%20%7C%7C%20%3E%3D22.12.0-green.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
-[![Docs](https://img.shields.io/badge/docs-devcodex--labs.github.io-informational)](https://devcodex-labs.github.io/vextjs/)
+[![Docs](https://img.shields.io/badge/docs-vextjs.github.io-informational)](https://vextjs.github.io/)
 
 > **Build AI-assisted APIs and server-rendered React pages in one Node.js application.**
 
@@ -14,7 +14,7 @@ AI-first describes the engineering surface: conventions, scaffolding, typed cont
 
 The npm package name is `vextjs`; the CLI binary is `vext`. Requires Node.js **`^20.19.0 || >=22.12.0`**. Cold-start from the registry with **`npx vextjs …`**. After install, use project scripts or local `npx vext`.
 
-**Docs:** https://devcodex-labs.github.io/vextjs/ · **Migration:** [MIGRATION.md](./MIGRATION.md) · **Changelog:** [CHANGELOG.md](./CHANGELOG.md)
+**Docs:** https://vextjs.github.io/ · **Migration:** [MIGRATION.md](./MIGRATION.md) · **Changelog:** [CHANGELOG.md](./CHANGELOG.md)
 
 ---
 
@@ -174,7 +174,7 @@ VextJS is a strong fit when:
 
 VextJS uses **route-native SSR**: `src/routes/**` + `res.render()` provide SSR, normal hydration or pure-HTML `hydration: "none"`, Suspense, opt-in Streaming SSR, same-route navigation, static/revalidate freshness, and local media. It does not currently implement selective/partial hydration, an Islands component model, React Server Components, Server Functions or Actions, partial prerendering (PPR), or third-party bundler plugin ecosystems. Those models require additional execution and asset boundaries; Vext does not claim them until those contracts exist.
 
-Read the exact lifecycle, trade-offs, and exclusions in [Frontend boundaries and roadmap](https://devcodex-labs.github.io/vextjs/frontend/boundaries-and-roadmap). Implementation guides cover [rendering modes](https://devcodex-labs.github.io/vextjs/frontend/rendering-modes), [data flow](https://devcodex-labs.github.io/vextjs/frontend/data-flow), [assets and media](https://devcodex-labs.github.io/vextjs/frontend/static-assets-and-cdn), and the [typed API client](https://devcodex-labs.github.io/vextjs/frontend/api-client-and-contracts).
+Read the exact lifecycle, trade-offs, and exclusions in [Frontend boundaries and roadmap](https://vextjs.github.io/frontend/boundaries-and-roadmap). Implementation guides cover [rendering modes](https://vextjs.github.io/frontend/rendering-modes), [data flow](https://vextjs.github.io/frontend/data-flow), [assets and media](https://vextjs.github.io/frontend/static-assets-and-cdn), and the [typed API client](https://vextjs.github.io/frontend/api-client-and-contracts).
 
 ---
 
@@ -197,7 +197,7 @@ export default {
 };
 ```
 
-Benchmark methodology: [Adapter Matrix](https://devcodex-labs.github.io/vextjs/benchmark). It keeps one Vext application fixed and compares the supported adapters; reproduce it with `npm run test:bench` in this repo.
+Benchmark methodology: [Adapter Matrix](https://vextjs.github.io/benchmark). It keeps one Vext application fixed and compares the supported adapters; reproduce it with `npm run test:bench` in this repo.
 
 ---
 
@@ -235,7 +235,7 @@ built-in defaults → default → {profile} → local (development/test only) �
 
 Select profile with `vext start --config <name>` or `VEXT_CONFIG=<name>` (do not rely on baked `process.env.NODE_ENV` after `vext build` for profile selection).
 
-Common fields: `port`, `host`, `adapter`, `logger`, `cors`, `bodyParser`, `rateLimit`, `openapi`, `frontend`, `cache`, `session`, `shutdown`. See the [configuration guide](https://devcodex-labs.github.io/vextjs/guide/configuration) and [configuration reference](https://devcodex-labs.github.io/vextjs/api/config) before changing production behavior.
+Common fields: `port`, `host`, `adapter`, `logger`, `cors`, `bodyParser`, `rateLimit`, `openapi`, `frontend`, `cache`, `session`, `shutdown`. See the [configuration guide](https://vextjs.github.io/guide/configuration) and [configuration reference](https://vextjs.github.io/api/config) before changing production behavior.
 
 `rateLimit` is disabled by default and installs middleware only when
 `rateLimit.enabled === true`. Framework SEO is configured under
@@ -263,15 +263,15 @@ describe("API", () => {
 
 ## Documentation for people and AI assistants
 
-| Resource                        | URL                                                                    |
-| ------------------------------- | ---------------------------------------------------------------------- |
-| Human docs (EN/ZH)              | https://devcodex-labs.github.io/vextjs/                                |
-| Quick start                     | https://devcodex-labs.github.io/vextjs/guide/quick-start               |
-| Frontend guide and typed client | https://devcodex-labs.github.io/vextjs/frontend/getting-started        |
-| Runtime boundaries              | https://devcodex-labs.github.io/vextjs/frontend/boundaries-and-roadmap |
-| `llms.txt`                      | https://devcodex-labs.github.io/vextjs/llms.txt                        |
-| `capabilities.json`             | https://devcodex-labs.github.io/vextjs/capabilities.json               |
-| `docs-manifest.json`            | https://devcodex-labs.github.io/vextjs/docs-manifest.json              |
+| Resource                        | URL                                                      |
+| ------------------------------- | -------------------------------------------------------- |
+| Human docs (EN/ZH)              | https://vextjs.github.io/                                |
+| Quick start                     | https://vextjs.github.io/guide/quick-start               |
+| Frontend guide and typed client | https://vextjs.github.io/frontend/getting-started        |
+| Runtime boundaries              | https://vextjs.github.io/frontend/boundaries-and-roadmap |
+| `llms.txt`                      | https://vextjs.github.io/llms.txt                        |
+| `capabilities.json`             | https://vextjs.github.io/capabilities.json               |
+| `docs-manifest.json`            | https://vextjs.github.io/docs-manifest.json              |
 
 **For AI assistants:** prefer citing `docs-manifest.json` canonical URLs; check `capabilities.json` and the boundaries page before describing frontend capabilities. Do not invent features from React version, SSR, or Suspense alone.
 
