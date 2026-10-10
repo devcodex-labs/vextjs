@@ -7,8 +7,8 @@ import {
   resolveDocsVerification,
 } from "./scripts/docs-rollout.mjs";
 
-const DEFAULT_DOCS_BASE = "/";
-const DEFAULT_DOCS_SITE_URL = "https://vextjs.github.io";
+const DEFAULT_DOCS_BASE = "/vextjs/";
+const DEFAULT_DOCS_SITE_URL = "https://devcodex-labs.github.io/vextjs";
 
 function normalizeDocsBase(value?: string) {
   const raw = value?.trim() || DEFAULT_DOCS_BASE;

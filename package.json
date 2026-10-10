@@ -145,7 +145,7 @@
   "bugs": {
     "url": "https://github.com/devcodex-labs/vextjs/issues"
   },
-  "homepage": "https://vextjs.github.io/",
+  "homepage": "https://devcodex-labs.github.io/vextjs/",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },

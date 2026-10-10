@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://vextjs.github.io/docs-events.schema.json",
+  "$id": "https://devcodex-labs.github.io/vextjs/docs-events.schema.json",
   "title": "VextJS documentation event",
   "description": "Optional, privacy-preserving event contract for a documentation analytics collector. VextJS does not enable or bundle a collector by default.",
   "type": "object",

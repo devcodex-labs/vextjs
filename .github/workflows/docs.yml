@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────
-# VextJS 文档站 — GitHub Pages 自动部署
+# VextJS 文档站 — 保留源码仓库 Pages，并新增组织根站点
 #
 # 触发条件：
 #   - main 的 push-triggered CI 成功后，部署该次 CI 的精确 SHA
@@ -7,8 +7,8 @@
 #
 # 流水线结构：
 #   1. build  — 在 website/ 目录安装依赖并执行 rspress build
-#   2. deploy — 推送静态产物到 vextjs/vextjs.github.io 的 main
-#              由目标仓库的 branch-source Pages 发布到 https://vextjs.github.io/
+#   2. deploy-pages — 保留源码仓库的 /vextjs/ Pages 发布
+#   3. deploy-organization — 新增独立组织根站点 https://vextjs.github.io/
 #
 # 首次配置：目标仓库初始化 main，Pages 选择 main / (root)，
 #           添加可写 Deploy Key，并在源码仓库保存 VEXT_DOCS_DEPLOY_KEY。
@@ -32,9 +32,7 @@ permissions:
   contents: read
 
 env:
-  VEXT_DOCS_BASE: /
-  VEXT_DOCS_SITE_URL: https://vextjs.github.io
-  DOCS_PUBLISH_REPOSITORY: vextjs/vextjs.github.io
+  DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
 # ── Jobs ─────────────────────────────────────────────────────
 
@@ -43,7 +41,7 @@ jobs:
   # 1. 构建文档站
   # ────────────────────────────────────────────────────────────
   build:
-    name: Build Docs
+    name: Build Docs (${{ matrix.site }})
     runs-on: ubuntu-latest
     if: >-
       ${{
@@ -55,11 +53,22 @@ jobs:
           github.event.workflow_run.head_repository.full_name == github.repository
         )
       }}
+    permissions:
+      contents: read
+      pages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - site: project
+            base: /vextjs/
+            url: https://devcodex-labs.github.io/vextjs
+          - site: organization
+            base: /
+            url: https://vextjs.github.io
     env:
-      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-    outputs:
-      deploy_sha: ${{ steps.commit.outputs.sha }}
-      current: ${{ steps.current.outputs.publish }}
+      VEXT_DOCS_BASE: ${{ matrix.base }}
+      VEXT_DOCS_SITE_URL: ${{ matrix.url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -69,7 +78,6 @@ jobs:
           persist-credentials: false
 
       - name: Verify deployment commit
-        id: commit
         shell: bash
         run: |
           ACTUAL_SHA=$(git rev-parse HEAD)
@@ -78,7 +86,6 @@ jobs:
             echo "Checked out SHA: $ACTUAL_SHA"
             exit 1
           fi
-          echo "sha=$ACTUAL_SHA" >> "$GITHUB_OUTPUT"
           echo "Building deployment SHA: $ACTUAL_SHA"
 
       - name: Setup Node.js
@@ -87,6 +94,10 @@ jobs:
           node-version: 22
           cache: "npm"
           cache-dependency-path: website/package-lock.json
+
+      - name: Setup source repository Pages
+        if: matrix.site == 'project'
+        uses: actions/configure-pages@v6
 
       - name: Install dependencies
         working-directory: website
@@ -116,7 +127,29 @@ jobs:
           EOF
           touch website/dist/.nojekyll
 
-      - name: Check built commit is still current
+      - name: Upload docs artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: docs-dist-${{ matrix.site }}
+          path: website/dist
+          if-no-files-found: error
+          include-hidden-files: true
+
+      - name: Upload source repository Pages artifact
+        if: matrix.site == 'project'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: website/dist
+
+  # 在进入发布并发组前跳过旧 CI 的迟到构建。
+  prepare-deployment:
+    name: Check deployment commit
+    runs-on: ubuntu-latest
+    needs: build
+    outputs:
+      current: ${{ steps.current.outputs.publish }}
+    steps:
+      - name: Check current main commit
         id: current
         env:
           GH_TOKEN: ${{ github.token }}
@@ -130,35 +163,63 @@ jobs:
             echo "publish=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Upload docs artifact
+  # 原源码仓库 Pages 保留官方 Actions 发布流程，与组织站点并行。
+  deploy-pages:
+    name: Publish source repository Pages
+    runs-on: ubuntu-latest
+    needs: prepare-deployment
+    if: needs.prepare-deployment.outputs.current == 'true'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: vextjs-docs-project
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check current main commit
+        id: current
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          CURRENT_SHA=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')
+          if [[ "$CURRENT_SHA" == "$DEPLOY_SHA" ]]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Skipping superseded build: $DEPLOY_SHA (main is $CURRENT_SHA)"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy source repository Pages
         if: steps.current.outputs.publish == 'true'
-        uses: actions/upload-artifact@v7
-        with:
-          name: docs-dist
-          path: website/dist
-          if-no-files-found: error
-          include-hidden-files: true
+        id: deployment
+        uses: actions/deploy-pages@v5
 
   # ────────────────────────────────────────────────────────────
-  # 2. 向独立站点仓库推送；目标仓库保留普通提交历史，不强制推送
+  # 新增组织根站点；其密钥或推送失败不阻止原站点的独立发布任务。
   # ────────────────────────────────────────────────────────────
-  deploy-pages:
+  deploy-organization:
     name: Publish to vextjs.github.io
     runs-on: ubuntu-latest
-    needs: build
-    if: needs.build.outputs.current == 'true'
+    needs: prepare-deployment
+    if: needs.prepare-deployment.outputs.current == 'true'
 
     # 只串行化已通过构建且仍对应 main 的发布，不中断正在进行的 Git 推送。
     concurrency:
-      group: vextjs-docs-production
+      group: vextjs-docs-organization
       cancel-in-progress: false
 
     environment:
-      name: github-pages
+      name: organization-docs
       url: https://vextjs.github.io/
 
     env:
-      DEPLOY_SHA: ${{ needs.build.outputs.deploy_sha }}
+      DOCS_PUBLISH_REPOSITORY: vextjs/vextjs.github.io
+      VEXT_DOCS_SITE_URL: https://vextjs.github.io
 
     steps:
       - name: Check current main commit
@@ -199,7 +260,7 @@ jobs:
         if: steps.current.outputs.publish == 'true'
         uses: actions/download-artifact@v8
         with:
-          name: docs-dist
+          name: docs-dist-organization
           path: docs-dist
 
       - name: Publish verified docs

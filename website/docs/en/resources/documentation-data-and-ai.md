@@ -13,19 +13,19 @@ This page is for developers of search, AI answers, and a future knowledge graph.
 
 These links point to the formal site. For a local preview of the Chinese stage, read the corresponding files from that local build; do not assume the current changes have been deployed. Inspect the actual `schemaVersion`, `rollout`, and `verification` before integration.
 
-| Asset                                                                                       | Purpose                                                                                                                     |
-| ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| [`docs-manifest.json`](https://vextjs.github.io/docs-manifest.json)                         | `vext.docs-manifest/v2`: document identity, role, locale, URL, source hash, and relationship index.                         |
-| [`capabilities.json`](https://vextjs.github.io/capabilities.json)                           | Existing v1 capability summary and non-goals, not complete capability definitions or a graph; read details and limitations. |
-| [`ai-gold-questions.json`](https://vextjs.github.io/ai-gold-questions.json)                 | Questions, required documents/routes, and forbidden claims for answer regression. Structural checks do not prove semantics. |
-| [`llms.txt`](https://vextjs.github.io/llms.txt)                                             | Concise English entry points for language models and documentation tools. It is an index, not a crawler-control file.       |
-| [`llms-full.txt`](https://vextjs.github.io/llms-full.txt)                                   | Complete English URL-and-summary index: every public English documentation page appears exactly once.                       |
-| [`zh/llms.txt`](https://vextjs.github.io/zh/llms.txt)                                       | Concise Simplified Chinese entry points, isolated from the default English index.                                           |
-| [`zh/llms-full.txt`](https://vextjs.github.io/zh/llms-full.txt)                             | Complete Simplified Chinese URL-and-summary index: every public Chinese documentation page appears exactly once.            |
-| [`docs-events.schema.json`](https://vextjs.github.io/docs-events.schema.json)               | Optional privacy-preserving event contract. No collector is enabled by VextJS.                                              |
-| [`docs-dashboard-definition.json`](https://vextjs.github.io/docs-dashboard-definition.json) | Metric definitions and collection boundary for a site owner who later chooses a compliant collector.                        |
+| Asset                                                                                                     | Purpose                                                                                                                     |
+| --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| [`docs-manifest.json`](https://devcodex-labs.github.io/vextjs/docs-manifest.json)                         | `vext.docs-manifest/v2`: document identity, role, locale, URL, source hash, and relationship index.                         |
+| [`capabilities.json`](https://devcodex-labs.github.io/vextjs/capabilities.json)                           | Existing v1 capability summary and non-goals, not complete capability definitions or a graph; read details and limitations. |
+| [`ai-gold-questions.json`](https://devcodex-labs.github.io/vextjs/ai-gold-questions.json)                 | Questions, required documents/routes, and forbidden claims for answer regression. Structural checks do not prove semantics. |
+| [`llms.txt`](https://devcodex-labs.github.io/vextjs/llms.txt)                                             | Concise English entry points for language models and documentation tools. It is an index, not a crawler-control file.       |
+| [`llms-full.txt`](https://devcodex-labs.github.io/vextjs/llms-full.txt)                                   | Complete English URL-and-summary index: every public English documentation page appears exactly once.                       |
+| [`zh/llms.txt`](https://devcodex-labs.github.io/vextjs/zh/llms.txt)                                       | Concise Simplified Chinese entry points, isolated from the default English index.                                           |
+| [`zh/llms-full.txt`](https://devcodex-labs.github.io/vextjs/zh/llms-full.txt)                             | Complete Simplified Chinese URL-and-summary index: every public Chinese documentation page appears exactly once.            |
+| [`docs-events.schema.json`](https://devcodex-labs.github.io/vextjs/docs-events.schema.json)               | Optional privacy-preserving event contract. No collector is enabled by VextJS.                                              |
+| [`docs-dashboard-definition.json`](https://devcodex-labs.github.io/vextjs/docs-dashboard-definition.json) | Metric definitions and collection boundary for a site owner who later chooses a compliant collector.                        |
 
-The build also generates [`spec-rules.json`](https://vextjs.github.io/spec-rules.json), with `schemaVersion: vext.spec-rules/v1`, projecting rule identities, levels, and links from Specification pages.
+The build also generates [`spec-rules.json`](https://devcodex-labs.github.io/vextjs/spec-rules.json), with `schemaVersion: vext.spec-rules/v1`, projecting rule identities, levels, and links from Specification pages.
 
 The manifest, rules, and llms indexes are generated after the site build without build timestamps. Their output is repeatable when document sources, build contracts, navigation, question set, lockfile, and site configuration are fixed. Capabilities, questions, and metrics contracts are public source assets; do not mistake them for data wholly extracted from page prose.
 

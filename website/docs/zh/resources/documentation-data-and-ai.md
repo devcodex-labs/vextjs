@@ -14,19 +14,19 @@ VextJS 同时提供面向读者的文档页面和确定性的构建产物。这�
 
 以下链接为正式站点地址。中文预览阶段应读取对应本地构建中的文件，不假定线上已部署当前改造；接入时先检查实际 schemaVersion、rollout 与 verification。
 
-| 资产                                                                                        | 用途                                                                          |
-| ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| [`docs-manifest.json`](https://vextjs.github.io/docs-manifest.json)                         | vext.docs-manifest/v2；文档身份、角色、语言、URL、源文件 hash 与关系索引。    |
-| [`capabilities.json`](https://vextjs.github.io/capabilities.json)                           | 既有 v1 能力摘要与 non-goal；非完整能力定义或图谱，需再读对应细节和运行限制。 |
-| [`ai-gold-questions.json`](https://vextjs.github.io/ai-gold-questions.json)                 | 问题及所需文档/路由、禁止声称的边界；用于回答回归，结构校验不等于语义正确。   |
-| [`zh/llms.txt`](https://vextjs.github.io/zh/llms.txt)                                       | 面向语言模型和文档工具的简体中文精选入口；它是索引，不是 crawler 控制文件。   |
-| [`zh/llms-full.txt`](https://vextjs.github.io/zh/llms-full.txt)                             | 完整简体中文 URL 与摘要索引：每个公开中文文档页只出现一次。                   |
-| [`llms.txt`](https://vextjs.github.io/llms.txt)                                             | 默认英文精选入口，与简体中文内容隔离。                                        |
-| [`llms-full.txt`](https://vextjs.github.io/llms-full.txt)                                   | 完整英文 URL 与摘要索引：每个公开英文文档页只出现一次。                       |
-| [`docs-events.schema.json`](https://vextjs.github.io/docs-events.schema.json)               | 可选的隐私保护事件合同；VextJS 没有启用 collector。                           |
-| [`docs-dashboard-definition.json`](https://vextjs.github.io/docs-dashboard-definition.json) | 供未来自行选择合规 collector 的站点所有者使用的指标定义和采集边界。           |
+| 资产                                                                                                      | 用途                                                                          |
+| --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| [`docs-manifest.json`](https://devcodex-labs.github.io/vextjs/docs-manifest.json)                         | vext.docs-manifest/v2；文档身份、角色、语言、URL、源文件 hash 与关系索引。    |
+| [`capabilities.json`](https://devcodex-labs.github.io/vextjs/capabilities.json)                           | 既有 v1 能力摘要与 non-goal；非完整能力定义或图谱，需再读对应细节和运行限制。 |
+| [`ai-gold-questions.json`](https://devcodex-labs.github.io/vextjs/ai-gold-questions.json)                 | 问题及所需文档/路由、禁止声称的边界；用于回答回归，结构校验不等于语义正确。   |
+| [`zh/llms.txt`](https://devcodex-labs.github.io/vextjs/zh/llms.txt)                                       | 面向语言模型和文档工具的简体中文精选入口；它是索引，不是 crawler 控制文件。   |
+| [`zh/llms-full.txt`](https://devcodex-labs.github.io/vextjs/zh/llms-full.txt)                             | 完整简体中文 URL 与摘要索引：每个公开中文文档页只出现一次。                   |
+| [`llms.txt`](https://devcodex-labs.github.io/vextjs/llms.txt)                                             | 默认英文精选入口，与简体中文内容隔离。                                        |
+| [`llms-full.txt`](https://devcodex-labs.github.io/vextjs/llms-full.txt)                                   | 完整英文 URL 与摘要索引：每个公开英文文档页只出现一次。                       |
+| [`docs-events.schema.json`](https://devcodex-labs.github.io/vextjs/docs-events.schema.json)               | 可选的隐私保护事件合同；VextJS 没有启用 collector。                           |
+| [`docs-dashboard-definition.json`](https://devcodex-labs.github.io/vextjs/docs-dashboard-definition.json) | 供未来自行选择合规 collector 的站点所有者使用的指标定义和采集边界。           |
 
-另外，构建生成 [`spec-rules.json`](https://vextjs.github.io/spec-rules.json)，schemaVersion 为 vext.spec-rules/v1，由 Specification 正文投影规则身份、等级和链接。
+另外，构建生成 [`spec-rules.json`](https://devcodex-labs.github.io/vextjs/spec-rules.json)，schemaVersion 为 vext.spec-rules/v1，由 Specification 正文投影规则身份、等级和链接。
 
 manifest、rules 与 llms 索引在站点构建后生成，不含构建时间戳；固定文档源、构建合同、导航、问题集、依赖锁及站点配置时输出可重复。capabilities、问题集与度量合同是公开源资产，不应将它们误认为全部从正文自动提取。
 

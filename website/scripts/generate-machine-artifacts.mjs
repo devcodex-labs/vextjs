@@ -33,7 +33,7 @@ const docsRoot = path.join(websiteRoot, "docs");
 const distRoot = path.join(websiteRoot, "dist");
 const rollout = resolveDocsRollout();
 const verification = resolveDocsVerification();
-const DEFAULT_DOCS_SITE_URL = "https://vextjs.github.io";
+const DEFAULT_DOCS_SITE_URL = "https://devcodex-labs.github.io/vextjs";
 const docsSiteUrl = (
   process.env.VEXT_DOCS_SITE_URL || DEFAULT_DOCS_SITE_URL
 ).replace(/\/+$/, "");

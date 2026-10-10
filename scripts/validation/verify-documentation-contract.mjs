@@ -442,10 +442,10 @@ function verifyDocumentationGrowthContract() {
       "docs-manifest.json",
       "capabilities.json",
       "ai-gold-questions.json",
-      "https://vextjs.github.io/llms.txt",
-      "https://vextjs.github.io/llms-full.txt",
-      "https://vextjs.github.io/zh/llms.txt",
-      "https://vextjs.github.io/zh/llms-full.txt",
+      "https://devcodex-labs.github.io/vextjs/llms.txt",
+      "https://devcodex-labs.github.io/vextjs/llms-full.txt",
+      "https://devcodex-labs.github.io/vextjs/zh/llms.txt",
+      "https://devcodex-labs.github.io/vextjs/zh/llms-full.txt",
       "Language and completeness contract",
       "docs-events.schema.json",
       "docs-dashboard-definition.json",
@@ -456,10 +456,10 @@ function verifyDocumentationGrowthContract() {
       "docs-manifest.json",
       "capabilities.json",
       "ai-gold-questions.json",
-      "https://vextjs.github.io/llms.txt",
-      "https://vextjs.github.io/llms-full.txt",
-      "https://vextjs.github.io/zh/llms.txt",
-      "https://vextjs.github.io/zh/llms-full.txt",
+      "https://devcodex-labs.github.io/vextjs/llms.txt",
+      "https://devcodex-labs.github.io/vextjs/llms-full.txt",
+      "https://devcodex-labs.github.io/vextjs/zh/llms.txt",
+      "https://devcodex-labs.github.io/vextjs/zh/llms-full.txt",
       "语言与完整性合同",
       "docs-events.schema.json",
       "docs-dashboard-definition.json",
@@ -1907,10 +1907,11 @@ function verifyReadmePublicEntryContract() {
     "npx vextjs create",
     "res.render",
     "Apache-2.0",
+    "https://devcodex-labs.github.io/vextjs/",
     "https://vextjs.github.io/",
     "https://github.com/devcodex-labs/vextjs",
-    "https://vextjs.github.io/llms.txt",
-    "https://vextjs.github.io/capabilities.json",
+    "https://devcodex-labs.github.io/vextjs/llms.txt",
+    "https://devcodex-labs.github.io/vextjs/capabilities.json",
     "For AI assistants",
     "Build AI-assisted APIs and server-rendered React pages",
     "AI-first full-stack Node.js application framework",
@@ -1932,7 +1933,6 @@ function verifyReadmePublicEntryContract() {
     "rateLimit.enabled: true",
   ]);
   forbidTokens("README.md", [
-    "devcodex-labs.github.io/vextjs",
     "github.com/vextjs/vext",
     "License: MIT",
     "Node.js-%3E%3D18.0.0",
@@ -2303,7 +2303,7 @@ function verifyRenderedMachineArtifacts() {
     );
   }
   const siteUrl = (
-    process.env.VEXT_DOCS_SITE_URL || "https://vextjs.github.io"
+    process.env.VEXT_DOCS_SITE_URL || "https://devcodex-labs.github.io/vextjs"
   ).replace(/\/+$/, "");
   const relationSources = sourceEntries.map((entry) => {
     const source = read(entry.sourcePath);
@@ -2616,8 +2616,8 @@ function verifyRenderedMachineArtifacts() {
       locale: "en",
       indexName: "llms.txt",
       fullName: "llms-full.txt",
-      fullUrl: "https://vextjs.github.io/llms-full.txt",
-      alternateUrl: "https://vextjs.github.io/zh/llms.txt",
+      fullUrl: `${siteUrl}/llms-full.txt`,
+      alternateUrl: `${siteUrl}/zh/llms.txt`,
       optionalHeading: "## Other language",
       forbiddenOptionalHeading: "## Optional",
     },
@@ -2625,8 +2625,8 @@ function verifyRenderedMachineArtifacts() {
       locale: "zh",
       indexName: "zh/llms.txt",
       fullName: "zh/llms-full.txt",
-      fullUrl: "https://vextjs.github.io/zh/llms-full.txt",
-      alternateUrl: "https://vextjs.github.io/llms.txt",
+      fullUrl: `${siteUrl}/zh/llms-full.txt`,
+      alternateUrl: `${siteUrl}/llms.txt`,
       optionalHeading: "## 可选语言",
       forbiddenOptionalHeading: "## Optional",
     },
