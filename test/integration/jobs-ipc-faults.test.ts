@@ -12,6 +12,8 @@ describe("Jobs IPC over actual Worker channels", () => {
     "drop-accept",
     "late-permit",
     "drop-ack",
+    "pre-activation-stop-ipc",
+    "pre-activation-stop-redis",
     "manifest-mismatch",
     "crash-running",
     "disconnect-running",

@@ -7,8 +7,15 @@ import { JobsWorkerChannel } from "../../dist/lib/jobs/cluster-worker.js";
 import { createJobsManifest } from "../../dist/lib/jobs/cluster-protocol.js";
 import { defineJob } from "../../dist/lib/jobs/define-job.js";
 import { nextJobTime } from "../../dist/lib/jobs/schedule.js";
+import { createScheduledJobs } from "../../dist/lib/jobs/runtime.js";
+import { createHash } from "node:crypto";
+import Redis from "ioredis";
+import { resolveVextRedisKeyPrefix } from "../../dist/lib/redis/namespace.js";
 
 const scenario = process.argv[2];
+const activationStop = scenario.startsWith("pre-activation-stop-");
+const faultNamespace =
+  process.env.JOBS_FAULT_NAMESPACE ?? `late-activation-${process.pid}`;
 const controlled = scenario === "dst" || scenario === "long-pause";
 let wall = Date.parse(
   scenario === "dst" ? "2026-11-01T04:00:00Z" : "2026-01-01T00:00:00Z",
@@ -44,6 +51,8 @@ if (cluster.isWorker) {
       on: (event, listener) => process.on(event, listener),
       off: (event, listener) => process.off(event, listener),
       send(packet) {
+        if (activationStop && packet.type === "jobs:activated")
+          send({ test: "activated", name });
         if (
           name === "a" &&
           !dropped &&
@@ -83,7 +92,7 @@ if (cluster.isWorker) {
       setTimeout(() => process.exit(0), 50);
     },
   };
-  const manifest = createJobsManifest(
+  let manifest = createJobsManifest(
     [
       definition(
         scenario === "manifest-mismatch" && name === "b"
@@ -95,7 +104,38 @@ if (cluster.isWorker) {
     process.cwd(),
     true,
   );
-  await channel.bind(manifest, controls);
+  let scheduler;
+  if (activationStop) {
+    const config = scenario.endsWith("redis")
+      ? {
+          redis: {
+            url: process.env.VEXT_TEST_REDIS_URL ?? "redis://127.0.0.1:6379",
+            namespace: faultNamespace,
+            leaseTtl: 1000,
+          },
+        }
+      : {};
+    scheduler = await createScheduledJobs(
+      {
+        config: { jobs: config, shutdown: { timeout: 1 } },
+        logger: { info() {}, debug() {}, warn() {}, error() {} },
+      },
+      [
+        {
+          ...definition(spec.cron),
+          definition: defineJob({
+            ...spec,
+            handler() {
+              send({ test: "handler", name, at: Date.now() });
+            },
+          }),
+        },
+      ],
+      { rootDir: process.cwd(), timers: true, worker: channel },
+    );
+    manifest = scheduler.manifest;
+    scheduler.start();
+  } else await channel.bind(manifest, controls);
   send({ test: "ready", manifest });
   process.on("message", async (message) => {
     if (!message?.testCommand) return;
@@ -115,6 +155,7 @@ if (cluster.isWorker) {
         await held.get(message.claim)?.release();
         send({ test: "result", id: message.id });
       } else if (message.testCommand === "close") {
+        await scheduler?.close(Date.now() + 1000);
         channel.close();
         process.exit(0);
       }
@@ -139,17 +180,23 @@ if (cluster.isWorker) {
   let sequence = 0,
     delayed = false;
   function member(name, slot) {
-    const worker = cluster.fork({ JOBS_MEMBER: name });
+    const worker = cluster.fork({
+      JOBS_MEMBER: name,
+      JOBS_FAULT_NAMESPACE: faultNamespace,
+    });
     workers.push(worker);
     current.set(slot, worker);
     arbiter.register(worker, slot, String(slot + 1));
     const nativeSend = worker.send.bind(worker);
     worker.send = (packet, ...args) => {
+      if (activationStop && packet.type === "jobs:stop")
+        records.push({ test: "stop-sent", name });
       if (
         name === "a" &&
         !delayed &&
-        ((["drop-offer", "crash-reserved"].includes(scenario) &&
-          packet.type === "jobs:offer") ||
+        ((activationStop && packet.type === "jobs:activate") ||
+          (["drop-offer", "crash-reserved"].includes(scenario) &&
+            packet.type === "jobs:offer") ||
           (["late-permit", "crash-permitted"].includes(scenario) &&
             packet.type === "jobs:permit"))
       ) {
@@ -207,7 +254,38 @@ if (cluster.isWorker) {
     b = member("b", 1);
   try {
     await Promise.all([a.ready, b.ready]);
-    if (scenario === "manifest-mismatch") {
+    if (activationStop) {
+      await assert.rejects(
+        arbiter.activateInitial(),
+        /acknowledgement timed out/,
+      );
+      assert.equal(
+        records.some(
+          (record) => record.test === "stop-sent" && record.name === "a",
+        ),
+        true,
+      );
+      assert.equal(heldPackets.length, 1);
+      for (const deliver of heldPackets) deliver();
+      // Keep the stopped process alive across a real future Cron point. Redis
+      // could independently grant work if its delayed activation revived timers.
+      await delay(1400);
+      assert.equal(
+        records.filter(
+          (record) => record.name === "a" && record.test === "activated",
+        ).length,
+        0,
+        JSON.stringify({
+          stoppedWorker: records.filter((record) => record.name === "a"),
+        }),
+      );
+      assert.equal(
+        records.filter(
+          (record) => record.name === "a" && record.test === "handler",
+        ).length,
+        0,
+      );
+    } else if (scenario === "manifest-mismatch") {
       await assert.rejects(arbiter.activateInitial(), /manifest mismatch/);
       assert.equal(
         records.filter((record) => record.test === "activated").length,
@@ -377,6 +455,33 @@ if (cluster.isWorker) {
           await done;
         }),
     );
+    if (activationStop && scenario.endsWith("redis")) {
+      // Delete only this fixture's exact keys, after all its Workers exited.
+      const prefix = resolveVextRedisKeyPrefix({
+        namespace: faultNamespace,
+        module: "job",
+      });
+      const tag = createHash("sha256")
+        .update(prefix)
+        .update("\0sample")
+        .digest("hex");
+      const base = `{${tag}}:${prefix}sample`;
+      const client = new Redis(
+        process.env.VEXT_TEST_REDIS_URL ?? "redis://127.0.0.1:6379",
+        { maxRetriesPerRequest: 0, retryStrategy: () => null },
+      );
+      try {
+        await client.del(`${base}:last`, `${base}:running`);
+        assert.equal(await client.exists(`${base}:last`, `${base}:running`), 0);
+        records.push({
+          test: "redis-cleanup",
+          namespace: faultNamespace,
+          remaining: 0,
+        });
+      } finally {
+        client.disconnect();
+      }
+    }
   }
   console.log(
     JSON.stringify({

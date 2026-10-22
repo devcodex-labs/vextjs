@@ -160,7 +160,7 @@ export const DEPENDENCY_KNOWLEDGE: DependencyKnowledgeEntry[] = [
     [
       "启动只注册未来触发点；不提供队列、重试、停机补跑或启动立即执行。失败记录日志，下一周期继续。",
       "cron 必填，只接受五/六/七字段或批准宏，timezone 为任务 > 全局 > UTC。拒绝 interval、Date/ISO；上次未完成则消耗并跳过本次。",
-      "无 Redis 的可信内置 Cluster 使用 Master IPC；所有内置 Cluster 模式必须通过清单一致性和激活 ACK。外部独立副本显式共享 Redis。滚动替换先关闭旧代新准入并取得回执或实际 exit。",
+      "无 Redis 的可信内置 Cluster 使用 Master IPC；所有内置 Cluster 均先核实际 ready 集合与清单，Worker 收到匹配激活后启动未来 Timer 并 ACK，Master 收齐有效 ACK 并复核成员后报告整体就绪。丢 ACK 不回滚已有副作用；已 stop 的 Worker 拒绝迟到激活。外部独立副本显式共享 Redis。滚动替换先关闭旧代新准入并取得回执或实际 exit。",
       "Redis 原子触发标记在运行租约释放后仍保留；任务 leaseTtl > 全局 > 30000，安全整数且>=1000。迟到/失败续租或保守期限耗尽会永久隔离本 Worker 新准入并关闭，重连不复活。释放检查 owner，调用者 client 不由 Jobs 关闭。",
       "处理器响应 ctx.signal；进程崩溃可能丢失当次任务。网络分区及不响应取消的业务不能保证副作用恰好一次，需要业务幂等。",
     ],

@@ -4,6 +4,7 @@ import { performance } from "node:perf_hooks";
 import { nextJobTime } from "../jobs/schedule.js";
 import {
   createJobsManifest,
+  JOBS_PROTOCOL_VERSION,
   isJobsPacket,
   validateJobsManifest,
   type JobsIdentity,
@@ -111,8 +112,16 @@ export class JobsArbiter {
     if (!member || member.exited)
       throw new Error("[vextjs] unknown Jobs worker");
     const manifest = value ?? createJobsManifest([], undefined, "", true);
-    if (!validateJobsManifest(manifest))
-      throw new Error("[vextjs] invalid Jobs manifest");
+    if (!validateJobsManifest(manifest)) {
+      const versionMismatch =
+        manifest !== null &&
+        typeof manifest === "object" &&
+        "version" in manifest &&
+        manifest.version !== JOBS_PROTOCOL_VERSION;
+      throw new Error(
+        `[vextjs] invalid Jobs manifest${versionMismatch ? " (version mismatch)" : ""}`,
+      );
+    }
     if (manifest.jobs.some((job) => job.enabled) && !member.handshaken)
       throw new Error(
         "[vextjs] active Jobs require the built-in Master handshake",
@@ -132,13 +141,27 @@ export class JobsArbiter {
       const names = [
         ...new Set([...previous, ...actual].map((job) => job.name)),
       ];
-      const changed = names.filter(
-        (name) =>
-          JSON.stringify(previous.find((job) => job.name === name)) !==
-          JSON.stringify(actual.find((job) => job.name === name)),
-      );
+      const changed = names.flatMap((name) => {
+        const before = previous.find((job) => job.name === name);
+        const after = actual.find((job) => job.name === name);
+        if (!before || !after)
+          return [`${name} (${before ? "missing" : "added"})`];
+        const fields = [
+          ...new Set([...Object.keys(before), ...Object.keys(after)]),
+        ].filter(
+          (key) =>
+            JSON.stringify(before[key as keyof ManifestJob]) !==
+            JSON.stringify(after[key as keyof ManifestJob]),
+        );
+        return fields.length ? [`${name} (${fields.join(", ")})`] : [];
+      });
+      for (const key of ["version", "globalEnabled", "mode"] as const)
+        if (this.manifest?.[key] !== member.manifest?.[key]) changed.push(key);
+      for (const key of ["target", "keyPrefix"] as const)
+        if (this.manifest?.redis?.[key] !== member.manifest?.redis?.[key])
+          changed.push(`redis.${key}`);
       throw new Error(
-        `[vextjs] Jobs manifest mismatch: ${changed.join(", ") || "global enabled / coordination mode / Redis target or prefix"}.`,
+        `[vextjs] Jobs manifest mismatch: ${changed.join("; ") || "manifest unavailable"}.`,
       );
     }
   }

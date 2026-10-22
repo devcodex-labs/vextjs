@@ -4,7 +4,7 @@
 
 ### VEXT-JOB-001 [MUST] 应用启动集成
 
-`src/jobs` 中的有限默认 `defineJob()` 随应用启动发现；配置、名称、cron、时区、声明形状和必要 Redis 连通性在 HTTP 监听前校验。启用 Job 的必要 onReady 失败必须拒绝启动并清理；无启用 Job 保留日志隔离。Local 在就绪后激活；内置 Cluster 在 Master 清单屏障和激活 ACK 后才运行未来定时器，appReady 与 JobsActive 分开。
+`src/jobs` 中的有限默认 `defineJob()` 随应用启动发现；配置、名称、cron、时区、声明形状和必要 Redis 连通性在 HTTP 监听前校验。启用 Job 的必要 onReady 失败必须拒绝启动并清理；无启用 Job 保留日志隔离。Local 在就绪后激活。所有内置 Cluster 模式先由 Master 核对实际 ready 集合与清单并发送激活；Worker 收到匹配激活后启动未来 Timer 并 ACK。Master 收齐有效 ACK、复核成员未变后才报告 Jobs 整体就绪，appReady 与 JobsActive 分开。ACK 丢失不回滚已激活 Worker 的既有副作用；失败关闭新准入，已停止的 Worker 必须拒绝迟到激活。
 
 <a id="vext-job-002"></a>
 

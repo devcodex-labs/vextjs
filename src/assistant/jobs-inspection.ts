@@ -5,6 +5,7 @@ import type { StaticConfigProjection } from "../tooling/project-index/config-pro
 import {
   inspectJobSource,
   createJobStaticGraph,
+  JOB_FIELDS,
 } from "../lib/jobs/job-metadata.js";
 import { inferJobName } from "../lib/jobs/job-name.js";
 import {
@@ -12,7 +13,7 @@ import {
   resolveJobsDirectory,
 } from "../lib/jobs/job-discovery.js";
 import { nextJobTime } from "../lib/jobs/schedule.js";
-import { defineJob, validateJobLeaseTtl } from "../lib/jobs/define-job.js";
+import { defineJob } from "../lib/jobs/define-job.js";
 import { validateJobsConfig } from "../lib/config-loader.js";
 import type { VextJobDefinitionInput } from "../lib/jobs/types.js";
 
@@ -212,53 +213,46 @@ export function inspectStaticJobs(
       // Validate only known fields; opaque fields remain missing evidence.
       const candidate = Object.fromEntries(
         Object.entries(job.definition).filter(
-          ([key]) => job.fieldStates[key] === "known",
+          ([key]) =>
+            job.fieldStates[key] === "known" ||
+            !JOB_FIELDS.some((field) => field === key),
         ),
       );
       const scheduleKnown = job.fieldStates.cron !== "unknown";
-      if (job.fieldStates.leaseTtl === "known") {
-        try {
-          validateJobLeaseTtl(job.definition.leaseTtl);
-        } catch (cause) {
-          error(
-            "VEXT_MCP_JOBS_DEFINITION_INVALID",
-            `${job.sourceFile}: ${String(cause)}`,
-            job.sourceFile,
-          );
+      try {
+        // This validation-only witness checks independent known fields. It is
+        // never returned as a default Cron or used to calculate unknown points.
+        const definition = defineJob({
+          ...(!scheduleKnown ? { cron: "* * * * *" } : {}),
+          ...candidate,
+          handler:
+            job.fieldStates.handler === "absent"
+              ? undefined
+              : Object.hasOwn(candidate, "handler")
+                ? candidate.handler
+                : () => {},
+        } as unknown as VextJobDefinitionInput);
+        if (
+          scheduleKnown &&
+          definition.enabled !== false &&
+          job.fieldStates.enabled !== "unknown" &&
+          job.fieldStates.timezone !== "unknown" &&
+          fieldStates.timezone !== "unknown" &&
+          fieldStates.timezone !== "invalid" &&
+          !nextJobTime(
+            definition,
+            new Date(),
+            typeof value.timezone === "string" ? value.timezone : "UTC",
+          )
+        ) {
+          throw new Error("No representable future scheduled point.");
         }
-      }
-      if (scheduleKnown) {
-        try {
-          const definition = defineJob({
-            ...candidate,
-            handler:
-              job.fieldStates.handler === "absent"
-                ? undefined
-                : Object.hasOwn(candidate, "handler")
-                  ? candidate.handler
-                  : () => {},
-          } as unknown as VextJobDefinitionInput);
-          if (
-            definition.enabled !== false &&
-            job.fieldStates.enabled !== "unknown" &&
-            job.fieldStates.timezone !== "unknown" &&
-            fieldStates.timezone !== "unknown" &&
-            fieldStates.timezone !== "invalid" &&
-            !nextJobTime(
-              definition,
-              new Date(),
-              typeof value.timezone === "string" ? value.timezone : "UTC",
-            )
-          ) {
-            throw new Error("No representable future scheduled point.");
-          }
-        } catch (cause) {
-          error(
-            "VEXT_MCP_JOBS_DEFINITION_INVALID",
-            `${job.sourceFile}#${job.exportName}: ${String(cause)}`,
-            job.sourceFile,
-          );
-        }
+      } catch (cause) {
+        error(
+          "VEXT_MCP_JOBS_DEFINITION_INVALID",
+          `${job.sourceFile}#${job.exportName}: ${String(cause)}`,
+          job.sourceFile,
+        );
       }
     }
   }

@@ -4,7 +4,7 @@
 
 ### VEXT-JOB-001 [MUST] Application startup
 
-Startup discovers finite default SDK Jobs in src/jobs. Configuration, names, Cron, timezone, declaration shape and required Redis connectivity are checked before listening. With enabled Jobs, a necessary onReady failure rejects and cleans up startup; without enabled Jobs, existing logged isolation remains. Local activates after readiness; every built-in Cluster mode waits for the Master manifest barrier and activation ACKs. appReady is separate from JobsActive.
+Startup discovers finite default SDK Jobs in src/jobs. Configuration, names, Cron, timezone, declaration shape and required Redis connectivity are checked before listening. With enabled Jobs, a necessary onReady failure rejects and cleans up startup; without enabled Jobs, existing logged isolation remains. Local activates after readiness. In every built-in Cluster mode, Master first checks the actual ready-set manifests and sends activation; each Worker starts future timers on matching activation and acknowledges it. Master reports overall Jobs readiness only after all valid ACKs arrive and membership is rechecked. appReady is separate from JobsActive. A missing ACK does not roll back effects already performed by an activated Worker; failure closes admissions, and a stopped Worker must reject delayed activation.
 
 <a id="vext-job-002"></a>
 

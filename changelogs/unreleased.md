@@ -10,10 +10,11 @@ The next release is in development. Shared foundation repairs include:
 - Filesystem deployment coordinates physical directory overlaps and shares state across equivalent directory/prefix representations.
 - Private frontend writers without production consumers are removed; candidate generation and artifact transactions remain the shared write path.
 - Scheduled Jobs use explicit Cron and one default SDK Job per selected file. Automatic Local, built-in Master IPC and Redis coordination share startup activation and shutdown rules; per-job Redis leaseTtl, finite declaration validation, Docs/MCP metadata and bilingual examples follow the same contract.
+- Scheduled Jobs reject delayed activation after a trusted stop, including a stop received before activation. Manifest conflicts identify changed task and coordination fields. MCP diagnoses known invalid fields independently of an opaque Cron; documentation distinguishes Worker activation from Master's overall ACK barrier.
 - MCP project checks now report bounded static diagnostics for route response schemas, deprecated docs tags, service dependency analysis, Redis targets, cursor-secret choices, upload/form boundaries, placeholder tests, and generated-code quality.
 - README, bilingual guides, and public comments describe the exact Node engine range, owned-output cleanup, configuration layers, and current analysis boundaries.
 
-These changes are not a published release. MCP implementation is still pending separate requirements and design acceptance.
+These changes are not a published release. Broader MCP roadmap work remains tracked separately; the Jobs behavior above describes the current source candidate.
 
 The stable `2.0.0` major release was published on 2026-09-08. Its user-visible
 changes, migration checklist, release qualification, and compatibility notes

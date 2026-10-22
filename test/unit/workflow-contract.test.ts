@@ -1,4 +1,12 @@
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -48,6 +56,67 @@ function blockedByFailure(graph: Map<string, string[]>, failed: string) {
 }
 
 describe("main CI and deployment workflow contract", () => {
+  it("requires Release's actual integration step to have a healthy Redis service and target", () => {
+    const root = mkdtempSync(
+      path.join(os.tmpdir(), "vext-ci-resource-contract-"),
+    );
+    const files = [
+      ".github/workflows/ci.yml",
+      ".github/workflows/release.yml",
+      ".github/workflows/schema-dsl-compat.yml",
+      "scripts/validation/verify-ci-contract.mjs",
+      "scripts/ci-local.sh",
+      "scripts/ci-local.ps1",
+      "scripts/release-preflight.mjs",
+      "package.json",
+    ];
+    try {
+      for (const file of files) {
+        const target = path.join(root, file);
+        mkdirSync(path.dirname(target), { recursive: true });
+        writeFileSync(target, readFileSync(path.join(process.cwd(), file)));
+      }
+      const release = workflow("release.yml");
+      const target = path.join(root, ".github/workflows/release.yml");
+      const run = (source: string) => {
+        writeFileSync(target, source);
+        return spawnSync(
+          process.execPath,
+          [path.join(root, "scripts/validation/verify-ci-contract.mjs")],
+          { encoding: "utf8" },
+        );
+      };
+      const baseline = run(release);
+      expect(baseline.status, baseline.stderr).toBe(0);
+      const mutations = [
+        release.replace(/    services:\n[\s\S]*?(?=    steps:)/u, ""),
+        release.replace("          - 6379:6379\n", ""),
+        release.replace('          --health-cmd "redis-cli ping"\n', ""),
+        release.replace(
+          "          VEXT_TEST_REDIS_URL: redis://127.0.0.1:6379\n",
+          "",
+        ),
+        release
+          .replace(
+            "        env:\n          VEXT_TEST_REDIS_URL: redis://127.0.0.1:6379\n",
+            "",
+          )
+          .replace(
+            "      - name: Unit tests\n",
+            "      - name: Unit tests\n        env:\n          VEXT_TEST_REDIS_URL: redis://127.0.0.1:6379\n",
+          ),
+      ];
+      for (const source of mutations) {
+        expect(source).not.toBe(release);
+        const result = run(source);
+        expect(result.status, result.stdout).toBe(1);
+        expect(result.stderr).toContain("CI contract verification failed:");
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("runs push CI on main while retaining pull requests to main", () => {
     const ci = workflow("ci.yml");
     expect(ci).toMatch(/push:\s*\n\s+branches: \[main\]/u);

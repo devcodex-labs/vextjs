@@ -57,6 +57,17 @@ jobs:
       matrix:
         node-version: [20, 22]
 
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -81,6 +92,8 @@ jobs:
 
       - name: Integration tests
         run: npx vitest run test/integration --reporter=verbose
+        env:
+          VEXT_TEST_REDIS_URL: redis://127.0.0.1:6379
 
       - name: E2E tests (Node 22 only)
         if: matrix.node-version == 22

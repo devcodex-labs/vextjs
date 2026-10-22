@@ -25,7 +25,11 @@ function harness() {
   );
   let count = 0;
   const members: ReturnType<typeof member>[] = [];
-  function member(slot: number, cron?: string) {
+  function member(
+    slot: number,
+    cron?: string,
+    config?: Parameters<typeof createJobsManifest>[1],
+  ) {
     const host = new EventEmitter();
     const peer = new EventEmitter();
     const received: JobsPacket[] = [];
@@ -68,7 +72,7 @@ function harness() {
     const controls = { activate: vi.fn(), drain: vi.fn(), fail: vi.fn() };
     const manifest = createJobsManifest(
       [definition(cron)],
-      undefined,
+      config,
       process.cwd(),
       true,
     );
@@ -124,6 +128,187 @@ function harness() {
 afterEach(() => vi.useRealTimers());
 
 describe("built-in Jobs arbitration", () => {
+  it.each(["ipc", "redis"])(
+    "keeps a trusted pre-activation stop final in %s mode",
+    async (mode) => {
+      const peer = new EventEmitter();
+      const identity = { epoch: "master", generation: "worker", slot: 0 };
+      const sent: JobsPacket[] = [];
+      const channel = new JobsWorkerChannel({
+        on: (event, listener) => {
+          peer.on(event, listener);
+        },
+        off: (event, listener) => {
+          peer.off(event, listener);
+        },
+        send(packet) {
+          sent.push(packet);
+          if (packet.type === "jobs:hello")
+            peer.emit("message", {
+              version: 1,
+              type: "jobs:hello-ok",
+              ...identity,
+            });
+        },
+      });
+      const controls = { activate: vi.fn(), drain: vi.fn(), fail: vi.fn() };
+      const manifest = createJobsManifest(
+        [definition()],
+        mode === "redis"
+          ? { redis: { url: "redis://127.0.0.1:6379" } }
+          : undefined,
+        process.cwd(),
+        true,
+      );
+      try {
+        await channel.bind(manifest, controls);
+        const packet = {
+          version: 1 as const,
+          ...identity,
+          activationId: "delayed",
+        };
+        peer.emit("message", { ...packet, type: "jobs:stop" });
+        peer.emit("message", { ...packet, type: "jobs:stop" });
+        peer.emit("message", {
+          ...packet,
+          type: "jobs:activate",
+          manifestDigest: manifest.digest,
+        });
+        expect(controls.drain).toHaveBeenCalledOnce();
+        expect(controls.activate).not.toHaveBeenCalled();
+        expect(sent.some((item) => item.type === "jobs:activated")).toBe(false);
+        expect(
+          await channel.claim(
+            "sample",
+            new Date(),
+            new Date(Date.now() + 1000),
+            false,
+          ),
+        ).toBeNull();
+      } finally {
+        channel.close();
+      }
+    },
+  );
+  it("ignores foreign or empty stops and another activation's stop", async () => {
+    const h = harness();
+    const a = h.member(0);
+    try {
+      a.setCurrent();
+      await a.ready();
+      const identity = a.received.find(
+        (packet) => packet.type === "jobs:hello-ok",
+      )!;
+      for (const override of [
+        { epoch: "foreign" },
+        { generation: "foreign" },
+        { slot: 99 },
+        { activationId: "" },
+        { activationId: undefined },
+      ])
+        a.deliver({
+          ...identity,
+          type: "jobs:stop",
+          activationId: "pending",
+          ...override,
+        });
+      expect(a.controls.drain).not.toHaveBeenCalled();
+      await h.arbiter.activateInitial();
+      expect(a.controls.activate).toHaveBeenCalledOnce();
+      a.deliver({
+        ...identity,
+        type: "jobs:stop",
+        activationId: "old-activation",
+      });
+      expect(a.controls.drain).not.toHaveBeenCalled();
+      const activation = a.received.find(
+        (packet) => packet.type === "jobs:activate",
+      )!;
+      a.deliver({ ...activation, type: "jobs:stop" });
+      expect(a.controls.drain).toHaveBeenCalledOnce();
+    } finally {
+      h.close();
+    }
+  });
+  it.each([
+    {
+      field: "cron",
+      cron: "*/2 * * * * *",
+      config: { redis: { url: "redis://127.0.0.1:6379", leaseTtl: 1000 } },
+    },
+    {
+      field: "timezone",
+      config: {
+        timezone: "Asia/Shanghai",
+        redis: { url: "redis://127.0.0.1:6379", leaseTtl: 1000 },
+      },
+    },
+    {
+      field: "leaseTtl",
+      config: { redis: { url: "redis://127.0.0.1:6379", leaseTtl: 2000 } },
+    },
+    {
+      field: "redis.target",
+      config: { redis: { url: "redis://127.0.0.1:6380", leaseTtl: 1000 } },
+    },
+    {
+      field: "redis.keyPrefix",
+      config: {
+        redis: {
+          url: "redis://127.0.0.1:6379",
+          leaseTtl: 1000,
+          keyPrefix: "different",
+        },
+      },
+    },
+    {
+      field: "globalEnabled",
+      config: {
+        enabled: false,
+        redis: { url: "redis://127.0.0.1:6379", leaseTtl: 1000 },
+      },
+    },
+    { field: "mode", config: undefined },
+  ])(
+    "reports the mismatched $field without draining the valid old member",
+    async ({ field, cron, config }) => {
+      const h = harness();
+      const old = h.member(0, undefined, {
+        redis: { url: "redis://127.0.0.1:6379", leaseTtl: 1000 },
+      });
+      const candidate = h.member(0, cron, config);
+      try {
+        old.setCurrent();
+        await old.ready();
+        await h.arbiter.activateInitial();
+        await expect(candidate.ready()).rejects.toThrow(field);
+        expect(old.controls.drain).not.toHaveBeenCalled();
+        expect(candidate.controls.activate).not.toHaveBeenCalled();
+      } finally {
+        h.close();
+      }
+    },
+  );
+  it("identifies an incompatible manifest version before rejecting a replacement", async () => {
+    const h = harness();
+    const old = h.member(0);
+    const candidate = h.member(0);
+    try {
+      old.setCurrent();
+      await old.ready();
+      await h.arbiter.activateInitial();
+      expect(() =>
+        h.arbiter.ready(candidate.worker, {
+          ...candidate.manifest,
+          version: 2,
+        }),
+      ).toThrow("version mismatch");
+      expect(old.controls.drain).not.toHaveBeenCalled();
+      expect(candidate.controls.activate).not.toHaveBeenCalled();
+    } finally {
+      h.close();
+    }
+  });
   it("waits for the explicit initial barrier and gives one committed permit per point", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);

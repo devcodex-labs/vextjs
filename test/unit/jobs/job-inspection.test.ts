@@ -27,6 +27,54 @@ const task = (definition = 'cron: "* * * * * *"') =>
 const config = (value = "{}") => `export default ${value};`;
 
 describe("scheduled Jobs static evidence and startup prerequisites", () => {
+  it.each([
+    { fields: "handler:42", error: "handler" },
+    { fields: 'name:"invalid name",handler(){}', error: "name" },
+    { fields: 'enabled:"yes",handler(){}', error: "enabled" },
+    { fields: 'timezone:"Not/AZone",handler(){}', error: "timezone" },
+    { fields: "description:42,handler(){}", error: "description" },
+    { fields: "tags:[1],handler(){}", error: "tags" },
+    { fields: "docs:{summary:false},handler(){}", error: "docs.summary" },
+    { fields: "interval:1000,handler(){}", error: "interval" },
+    { fields: "interval:readInterval(),handler(){}", error: "interval" },
+    { fields: "leaseTtl:10,handler(){}", error: "leaseTtl" },
+    { fields: "", error: "handler" },
+  ])(
+    "diagnoses $error independently of an opaque Cron",
+    ({ fields, error }) => {
+      const result = inspect({
+        "src/config/default.ts": config(),
+        "src/jobs/a.ts": `import {defineJob} from "vextjs";export default defineJob({cron:readCron(),${fields}});`,
+      });
+      expect(result.jobs[0]?.cron).toBeNull();
+      expect(result.jobs[0]?.fieldStates.cron).toBe("unknown");
+      expect(result.jobs[0]?.runtimeVerified).toBe(false);
+      expect(
+        result.issues
+          .filter((issue) => issue.severity === "error")
+          .map((issue) => issue.message)
+          .join("\n"),
+      ).toContain(error);
+    },
+  );
+  it("keeps a legitimate opaque schedule unknown without leaking a validation witness", () => {
+    const result = inspect({
+      "src/config/default.ts": config(),
+      "src/jobs/a.ts":
+        'import {defineJob} from "vextjs";export default defineJob({cron:readCron(),name:readName(),handler:readHandler()});',
+    });
+    expect(result.issues.filter((issue) => issue.severity === "error")).toEqual(
+      [],
+    );
+    expect(result.jobs[0]).toMatchObject({
+      cron: null,
+      name: null,
+      runtimeVerified: false,
+      fieldStates: { cron: "unknown", name: "unknown", handler: "unknown" },
+    });
+    expect(result.readiness.projectState).toBe("partial");
+    expect(JSON.stringify(result)).not.toContain("* * * * *");
+  });
   it("classifies named default helper chains and Job aliases at every default shell", () => {
     for (const facade of [false, true]) {
       const entry =

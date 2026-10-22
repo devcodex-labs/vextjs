@@ -62,6 +62,27 @@ function releaseJobBlock(jobName) {
   return extractJobBlock(releaseWorkflow, jobName);
 }
 
+function indentedBlock(source, header, indent) {
+  const lines = source.split(/\r?\n/u);
+  const start = lines.findIndex(
+    (line) => line === `${" ".repeat(indent)}${header}`,
+  );
+  if (start === -1) fail(`release ci missing ${header}`);
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (
+      line.trim() &&
+      !line.trimStart().startsWith("#") &&
+      line.search(/\S/u) <= indent
+    ) {
+      end = index;
+      break;
+    }
+  }
+  return lines.slice(start, end).join("\n");
+}
+
 function requireTokens(label, content, tokens) {
   for (const token of tokens) {
     if (!content.includes(token)) fail(`${label} is missing ${token}`);
@@ -258,6 +279,33 @@ for (const job of ["ci", "docs-build"]) {
 requireTokens("release publication guard", releaseJobBlock("publish"), [
   "if: github.event_name == 'push' && github.ref_type == 'tag'",
 ]);
+const releaseCi = releaseJobBlock("ci");
+const releaseRedis = indentedBlock(
+  indentedBlock(releaseCi, "services:", 4),
+  "redis:",
+  6,
+);
+requireTokens("release ci Redis service", releaseRedis, [
+  "image: redis:7-alpine",
+  "6379:6379",
+  '--health-cmd "redis-cli ping"',
+  "--health-interval 10s",
+  "--health-timeout 5s",
+  "--health-retries 5",
+]);
+const releaseIntegration = indentedBlock(
+  releaseCi,
+  "- name: Integration tests",
+  6,
+);
+requireTokens("release ci integration", releaseIntegration, [
+  "run: npx vitest run test/integration --reporter=verbose",
+]);
+requireTokens(
+  "release ci integration Redis target",
+  indentedBlock(releaseIntegration, "env:", 8),
+  ["VEXT_TEST_REDIS_URL: redis://127.0.0.1:6379"],
+);
 requireTokens(
   "release external-consumer",
   releaseJobBlock("external-consumer"),

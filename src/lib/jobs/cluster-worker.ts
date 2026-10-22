@@ -188,7 +188,14 @@ export class JobsWorkerChannel implements JobCoordinator {
       return;
     }
     if (value.type === "jobs:drain" || value.type === "jobs:stop") {
-      if (value.activationId !== this.activationId) return;
+      // A trusted stop can precede its delayed activate packet. Fence this
+      // process permanently without accepting another active generation's ID.
+      const stopBeforeActivation =
+        value.type === "jobs:stop" &&
+        !this.activationId &&
+        !!value.activationId;
+      if (value.activationId !== this.activationId && !stopBeforeActivation)
+        return;
       this.stop(
         new Error(
           value.type === "jobs:drain"
