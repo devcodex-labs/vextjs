@@ -190,6 +190,8 @@ async setup(app, { signal }) {
 - `onReady(app)`：HTTP 开始监听后执行，适合预热缓存、检查外部依赖、打印启动信息。
 - `onClose(app)`：优雅关闭时执行，所有关闭钩子按后注册先执行（LIFO）顺序清理资源。
 
+存在启用Jobs时，必要onReady失败会拒绝启动并清理，避免任务使用未就绪依赖；没有启用Jobs时保持原有日志隔离。不要将所有ready错误都理解成“只记日志且启动成功”，任务行为见[Jobs指南](/zh/guide/jobs#重叠失败与关闭)。
+
 setup成功后其mutation facade也会撤销；不要在迟到任务中调用setup参数上的extend/setter。已注册回调可以读取app或使用捕获的client。回滚仅覆盖受管理的框架状态，不会自动撤销网络写入或关闭未成功登记的外部资源；超时不能强制终止任意JavaScript/I/O。关闭还受应用整体shutdown期限限制。
 
 ## 插件能力

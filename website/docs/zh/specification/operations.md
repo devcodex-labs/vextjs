@@ -56,7 +56,7 @@ TypeScript 后端生产启动要求有效构建产物；缺失或失效时应重
 
 Cluster 的每个 worker 拥有自己的进程内状态。Session、限流、缓存和 定时任务 Redis 是否共享，取决于其具体存储与命名空间；开启 cluster 不会自动把内存状态转换成共享状态。
 
-扩容前核对数据库连接池、外部请求额度、任务运行耗时和资源容量。定时任务随各应用 Worker 就绪后注册，启用的任务必须共享 Redis 协调触发。见 [Cluster](/zh/guide/cluster)及[任务规范](/zh/specification/jobs)。
+扩容前核对数据库连接池、外部请求额度、任务耗时和容量。单个内置 Cluster 的 Worker 自动协调 Jobs，无需 Redis；多个独立应用需共享执行资格时显式配置同一Jobs Redis与定义。应用能响应不等于任务已完成必要就绪。见[Cluster](/zh/guide/cluster)及[任务规范](/zh/specification/jobs)。
 
 <a id="vext-ops-006"></a>
 

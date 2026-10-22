@@ -93,25 +93,25 @@ backend locale 用于错误 key，默认形态包含 `code`、`message` 和 HTTP
 
 每条 Recipe 有独立 options schema，见 `vext://catalog/recipes`。未知字段或冲突参数会拒绝，不会默默忽略。以下是职责摘要，完整字段由当前安装包返回。
 
-| Recipe                    | 主要输入                                                              | 产物与必须完成的接入                                            |
-| ------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------- |
-| RCP-01 api-route          | method/path、RouteOptions、validate/responses、handler 或现有 service | 路由；自定义结果必须提供 responses                              |
-| RCP-02 api-module         | serviceMethod、input/output、body、RouteOptions、validate/responses   | 实际调用生成 service；输入默认经 `req.valid("body")` 传递       |
-| RCP-03 page-route         | page/path、props、RouteOptions                                        | render 路由与对应页面；只传可序列化且获准输出的数据             |
-| RCP-04 page-and-api       | page/path、props、apiPath、routeOptions/apiRouteOptions               | 页面实际请求生成 API，含 loading/error/取消逻辑                 |
-| RCP-05 service            | body、input/output 或 parameters/imports                              | 用例及必要类型；声明输入时需给处理该输入的 body                 |
-| RCP-06 model              | collection/key、schema/document、indexes/connection                   | 原生 VextModelDefinition；数据库由应用配置，不在导入期连接      |
-| RCP-07 middleware         | body、factory/options                                                 | handler 或参数工厂；须在配置或路由显式挂载                      |
-| RCP-08 plugin             | setup/onReady/onClose、dependencies                                   | 生命周期；只关闭自己创建的资源                                  |
-| RCP-09 locale             | target、module/submodule、locale/messages                             | 模块语言文件；实际读取并核对其他语言缺键                        |
-| RCP-10 test               | target/exportName、kind、cases                                        | 调用真实导出函数的 unit/integration 测试；至少两个不同预期/边界 |
-| RCP-11 type-contract      | target、fields                                                        | 消费者拥有的类型；复杂已有契约按需复用                          |
-| RCP-12 utility            | description/body、parameters/returnType、target                       | 真实纯操作；信息不足不生成 identity 占位包装                    |
-| RCP-13 frontend-component | title                                                                 | 展示组件骨架；业务交互、样式及 i18n 按实际需求补齐              |
-| RCP-14 frontend-layout    | page、reusable                                                        | 渲染 children；可复用布局须由真实页面入口引用                   |
-| RCP-15 reusable-schema    | fields、usage/consumer                                                | 合法 DSL/字段 schema；实际绑定请求、响应或 业务域校验           |
-| RCP-16 mock-scenario      | data、scenarios、target                                               | 数据与场景分开；选择已有 adapter，不默认安装 mock 库            |
-| RCP-17 job-handler        | cron、interval、timezone、enabled、handler                            | 随应用就绪后调度；多副本显式共享 Redis；不提供队列、重试或补跑  |
+| Recipe                    | 主要输入                                                              | 产物与必须完成的接入                                                                 |
+| ------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| RCP-01 api-route          | method/path、RouteOptions、validate/responses、handler 或现有 service | 路由；自定义结果必须提供 responses                                                   |
+| RCP-02 api-module         | serviceMethod、input/output、body、RouteOptions、validate/responses   | 实际调用生成 service；输入默认经 `req.valid("body")` 传递                            |
+| RCP-03 page-route         | page/path、props、RouteOptions                                        | render 路由与对应页面；只传可序列化且获准输出的数据                                  |
+| RCP-04 page-and-api       | page/path、props、apiPath、routeOptions/apiRouteOptions               | 页面实际请求生成 API，含 loading/error/取消逻辑                                      |
+| RCP-05 service            | body、input/output 或 parameters/imports                              | 用例及必要类型；声明输入时需给处理该输入的 body                                      |
+| RCP-06 model              | collection/key、schema/document、indexes/connection                   | 原生 VextModelDefinition；数据库由应用配置，不在导入期连接                           |
+| RCP-07 middleware         | body、factory/options                                                 | handler 或参数工厂；须在配置或路由显式挂载                                           |
+| RCP-08 plugin             | setup/onReady/onClose、dependencies                                   | 生命周期；只关闭自己创建的资源                                                       |
+| RCP-09 locale             | target、module/submodule、locale/messages                             | 模块语言文件；实际读取并核对其他语言缺键                                             |
+| RCP-10 test               | target/exportName、kind、cases                                        | 调用真实导出函数的 unit/integration 测试；至少两个不同预期/边界                      |
+| RCP-11 type-contract      | target、fields                                                        | 消费者拥有的类型；复杂已有契约按需复用                                               |
+| RCP-12 utility            | description/body、parameters/returnType、target                       | 真实纯操作；信息不足不生成 identity 占位包装                                         |
+| RCP-13 frontend-component | title                                                                 | 展示组件骨架；业务交互、样式及 i18n 按实际需求补齐                                   |
+| RCP-14 frontend-layout    | page、reusable                                                        | 渲染 children；可复用布局须由真实页面入口引用                                        |
+| RCP-15 reusable-schema    | fields、usage/consumer                                                | 合法 DSL/字段 schema；实际绑定请求、响应或 业务域校验                                |
+| RCP-16 mock-scenario      | data、scenarios、target                                               | 数据与场景分开；选择已有 adapter，不默认安装 mock 库                                 |
+| RCP-17 job-handler        | cron、timezone、leaseTtl、enabled、handler                            | 随应用就绪后调度；内置Cluster自动协调，独立副本按需共享Redis；不提供队列、重试或补跑 |
 
 `api-module` 始终调用本次生成的 service，不能同时指定其他 service 或覆盖 handler。使用自由 parameters 时必须给对应 serviceArgs；显式 input 默认需要 validate.body。独立 `api-route` 的 serviceArgs/serviceMethod 必须对应实际 service。
 
@@ -172,8 +172,8 @@ MCP 遇到这种明显的根对象混用会要求补充或改正输入；项目�
 
 ## 生成后仍需验证的集成边界
 
-- 定时任务 Recipe 生成 cron / interval 定义，业务输入由 handler 自行查询，不生成队列或 payload schema。通过 createTestJobScheduler 与真实 Redis 验证触发和协调。
-- 定时任务随应用就绪后启动；内置 Cluster 中存在启用任务时必须配置 Jobs 的 Redis。原子触发标记、运行租约与 owner 校验协调副本；处理器需要响应取消并保护业务副作用。
+- 定时任务 Recipe 只生成显式 Cron 定义，一文件一个有限默认Job，业务数据由handler调用Service查询；不生成interval、队列或payload schema。使用createTestJobScheduler测试计划规则，再按实际部署分别验证内置Cluster或共享Redis协调。
+- 定时任务等待必要onReady成功及任务整体就绪后运行。单个内置Cluster无需Redis，独立应用副本需要共同协调时显式共享Jobs Redis；任务级leaseTtl优先于全局。静态检查不能证明实际就绪或执行，处理器仍需协作取消和业务幂等。
 - API 字段级 `{ type: "boolean" }`、`{ enum: ["draft", "published"] }` 要与真实运行校验一致，不能转换成带有 type/enum 子字段的对象。整个请求位置仍是 DSL 字段表；完整根 JSON Schema 不可与它混淆。
 - 若生成登录、编辑或图片页面，宿主仍需按业务验证退出/401 的状态清理、保存成功但刷新失败的反馈、SSR 图片早于 hydration 失败等场景；这些是消费者验收责任，不是 Recipe 自动提供的行为。
 - 构建成功后才消费实际生成的 API client；源码不能凭空导入未生成文件。真实消费者包含 TS/JS、HTTP、OpenAPI、客户端类型与浏览器，不能用静态候选通过替代这些证据。

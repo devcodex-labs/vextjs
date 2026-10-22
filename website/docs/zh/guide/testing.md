@@ -680,7 +680,7 @@ npx vextjs start --port 3000
 
 ## 测试 Jobs
 
-普通 `createTestApp()` 不自动调度 `src/jobs`。使用 `createTestJobScheduler()` 提供任务定义和初始 `now`，通过 `tick(Date)` 验证未来触发、重叠跳过与失败行为，并在 finally / teardown 中 `close()`。它不启用真实定时器；多副本协调还需真实 Redis 集成测试。示例见 [Jobs API](/zh/api/jobs)。
+普通 `createTestApp()` 不自动调度 `src/jobs`。使用 `createTestJobScheduler()` 提供任务定义和初始 `now`，通过 `tick(Date)` 验证未来触发、重叠跳过与失败行为，并在 finally / teardown 中 `close()`。它不启用真实定时器；内置Cluster协调需真实Worker测试，独立副本的共享Redis协调需真实Redis集成测试；helper不能替代这两种部署验证。示例见 [Jobs API](/zh/api/jobs)。
 
 ## 下一步
 

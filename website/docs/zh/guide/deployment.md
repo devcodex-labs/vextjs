@@ -886,7 +886,48 @@ Vext Cluster reload 不更新 Master 自身配置，也不会替你发布镜像�
 
 ## 部署定时任务
 
-定时任务随 HTTP 应用就绪后自动调度，使用应用已有服务和关闭流程。内置 Cluster 存在启用任务时必须配置 `jobs.redis`；其他多副本部署也需要共享 Redis 和一致的调度定义，避免重复触发；namespace 由包名、profile 和运行模式自动生成，通常无需手填。Redis 不可用时跳过执行，不降级；重新启动只调度未来周期。详见[定时任务 Jobs](/zh/guide/jobs)。
+定时任务随应用完成必要初始化后等待未来计划点。单进程和单个内置 Cluster 无需 Redis，内置 Worker 自动协调。多个独立进程、容器或多机副本需要共享执行资格时，显式配置同一 Jobs Redis 目标与有效前缀，保持任务名称、Cron、时区和TTL一致。Redis无法使用时不降级各自执行，恢复后不补跑。最少配置与故障恢复见[定时任务 Jobs](/zh/guide/jobs#选择部署方式)。
+
+### Jobs 使用已有客户端或 Redis Cluster
+
+普通接入优先配置jobs.redis.url，由Jobs管理连接。如果应用已经直接声明ioredis依赖，并需要提供兼容客户端，可在静态配置创建懒连接，再由插件登记关闭。不要在插件setup中修改已经确定的jobs配置。
+
+```typescript
+// src/config/production.ts — 合并到已有配置
+import { Redis } from "ioredis";
+
+const client = new Redis("redis://127.0.0.1:6379/0", { lazyConnect: true });
+client.on("error", (error) => {
+  console.error("Jobs Redis connection error", error.name);
+});
+
+export default {
+  jobs: { redis: { client, namespace: "billing-production" } },
+};
+```
+
+```typescript
+// src/plugins/jobs-redis.ts
+import { definePlugin } from "vextjs";
+import { Redis, Cluster } from "ioredis";
+
+export default definePlugin({
+  name: "jobs-redis",
+  setup(app) {
+    const client = app.config.jobs?.redis?.client;
+    if (!(client instanceof Redis) && !(client instanceof Cluster)) {
+      throw new Error("Configure a managed Jobs Redis client");
+    }
+    app.onClose(() => {
+      client.disconnect();
+    });
+  },
+});
+```
+
+使用分片Redis Cluster时，在配置中导入ioredis的Cluster，以实际节点列表创建Cluster客户端代替Redis实例，其余配置与清理方式相同；不要把应用内置Cluster和Redis Cluster混为同一种配置。客户端须提供兼容的ping/eval能力，调用方管理认证、TLS、错误处理和关闭。不要设置会再次改写Jobs脚本键的客户端keyPrefix，隔离使用jobs.redis.namespace/keyPrefix。
+
+连接成功不代表复杂权限或故障切换已经验收，应按实际Redis目标测试。传入客户端不会由Jobs关闭；URL创建的Jobs连接则由Jobs管理。完整字段见[Jobs API](/zh/api/jobs#redis-配置)。
 
 ## 文档站发布
 

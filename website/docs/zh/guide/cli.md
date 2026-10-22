@@ -843,7 +843,7 @@ vext doctor routes --write-inspect --write-manifest --json
 
 `vext_project_check` 会执行有界静态诊断，覆盖目录缺失、路由 response schema 缺失、过期 docs.tags、service 依赖分析不完整、数据库 cursorSecret 配置选择、Redis store 目标缺失或依赖未配置环境变量、SVG 上传审查、前端 form/API 边界和占位测试等问题。返回值包含 `diagnostics`、`totalBySeverity`、`affectedConsumers` 和 `generatedState`；命令建议仍由宿主执行。`vext_runtime_inspect` 会读取框架运行时写入的 `.vext/runtime/snapshots/<instanceId>.json` 受管快照；MCP 不启动服务、不执行 Job、不读取原始日志；宿主 MCP 配置写入由 `vext mcp sync` 负责。
 
-`vext_project_inspect` 的 `jobs` section 静态读取任务名称、cron / interval、启用状态、时区和 Jobs 的 Redis 配置摘要。返回启动方式与多副本部署提示；MCP 不运行任务或定时器。
+`vext_project_inspect` 的 jobs section静态读取任务名称、Cron、时区、leaseTtl、启用状态和Jobs Redis摘要；单个内置Cluster预计自动协调，独立副本按配置判断。它不运行任务，静态结果不能证明实际启动、连接或执行。
 
 monorepo 通过实际 workspace 成员、共享包声明、package exports/sourceExports 和消费者依赖验证源码归属；相邻服务不会自动进入读取范围。显式配置的外部 models/locales/前端源目录仅在路径可证明时作为只读来源。跨根候选不因目录名称或共享声明而自动获得写入许可。
 

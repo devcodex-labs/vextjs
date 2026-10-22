@@ -974,7 +974,7 @@ CPU 检测规则、源 IP 亲和性的代理/NAT 限制及滚动重启行为，�
 
 ### Jobs 配置
 
-`config.jobs` 配置随应用启动的 cron / interval 定时任务。默认启用，插件、服务及 ready 阶段完成后才调度未来触发点；内置 Cluster 中有启用任务时必须配置 Redis。测试 helper 使用显式传入的定义，不自动扫描和运行任务。Docs 的 Job source 有独立目录配置，自定义 jobs.dir 时也应核对该文档源。
+`config.jobs` 配置随应用启动的 Cron 定时任务。默认启用，必要初始化完成后只调度未来计划点。单个内置 Cluster 自动协调，无需 Redis；多个独立应用副本需要共享协调时显式配置 Jobs Redis。测试 helper 使用传入定义，不自动扫描任务。项目 Jobs 文档默认逐字段继承 jobs.dir/include/exclude，显式文档字段只覆盖对应扫描项。
 
 ```ts
 export default {
@@ -982,7 +982,7 @@ export default {
     enabled: true,
     dir: "jobs",
     timezone: "UTC",
-    // Cluster / 多副本需共享 Redis；namespace 自动生成，无需手填。
+    // 单个内置Cluster无需Redis；独立应用副本需要共享协调时配置。
     // redis: { url: process.env.VEXT_REDIS_URL },
   },
 };

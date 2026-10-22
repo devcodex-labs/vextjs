@@ -1,83 +1,107 @@
 # 定时任务契约
 
+本页说明使用Jobs时可以依赖的行为及其限制。创建、配置和排错见[指南](/zh/guide/jobs)，字段说明见[API参考](/zh/api/jobs)。
+
+## 运行与执行保证
+
 <a id="vext-job-001"></a>
 
 ### VEXT-JOB-001 [MUST] 应用启动集成
 
-`src/jobs` 中的有限默认 `defineJob()` 随应用启动发现；配置、名称、cron、时区、声明形状和必要 Redis 连通性在 HTTP 监听前校验。启用 Job 的必要 onReady 失败必须拒绝启动并清理；无启用 Job 保留日志隔离。Local 在就绪后激活。所有内置 Cluster 模式先由 Master 核对实际 ready 集合与清单并发送激活；Worker 收到匹配激活后启动未来 Timer 并 ACK。Master 收齐有效 ACK、复核成员未变后才报告 Jobs 整体就绪，appReady 与 JobsActive 分开。ACK 丢失不回滚已激活 Worker 的既有副作用；失败关闭新准入，已停止的 Worker 必须拒绝迟到激活。
+任务随应用启动发现，配置、定义、名称、Cron、时区及必要Redis连接在HTTP监听前校验。应用完成必要初始化后才允许任务执行；应用可响应不表示任务已就绪。
+
+存在启用任务时，必要onReady失败必须拒绝启动并清理，避免任务使用未就绪的Service；没有启用任务时保留原有日志隔离。一个内置Cluster的各Worker须完成必要就绪和任务清单一致性检查，整体就绪后才开放调度；启动失败不得转为各Worker独立执行。已经发生的副作用不会因启动协调失败而回滚。
 
 <a id="vext-job-002"></a>
 
 ### VEXT-JOB-002 [MUST] 调度定义
 
-每个定义必须提供 Cron 字符串，接受五/六/七字段或批准宏，拒绝 interval、Date/ISO；时区为任务 > 全局 > UTC。默认启用，关闭不执行。单任务关闭仍校验字段、TTL、声明基数和名称，不要求未来点；全局关闭跳过发现但仍校验配置。启用任务在 prepare 和 activation 均须有未来点；最后一个点执行后 next=null 正常停止。
+每个任务必须显式提供合法Cron字符串：5/6/7字段或支持的宏，不接受interval、Date或ISO一次性日期。时区优先级为任务timezone > jobs.timezone > UTC；日期与星期默认OR，显式+星期表示AND，日历扩展和DST按所用Croner计算。
+
+默认启用。单任务disabled仍校验所有字段、声明形式、TTL及名称，但无需有未来计划点；全局关闭跳过任务发现，配置结构仍校验。启用任务在准备和实际开始调度时都须有严格未来点；有限年份最后一个计划点执行后正常停止。
 
 <a id="vext-job-003"></a>
 
 ### VEXT-JOB-003 [MUST] 执行与重叠
 
-启动只选择严格未来点。已注册触发稍晚但未跨下一周期时可执行，跨周期跳过。所有协调模式都消耗同点、旧点和 busy 点，不排队；Master 以 Croner successor 游标验证计划窗口，不用 worker 自报时间推进高水位。
+启动、重启或恢复只选择严格未来计划点，不立即执行或补跑。已注册计划点稍有延迟但未跨下一周期时可执行；跨周期跳过。
 
-同任务重叠跳过；不同任务可并行。handler 的异常被日志记录，不影响下一周期或 HTTP 服务；返回值不持久化。
+同名任务上次尚未结束时跳过本次点，不排队；不同任务可并行。被跳过或已经接受的同点不重新领取。handler异常记录日志，后续未来周期继续，不影响HTTP服务；返回值不持久化。
 
 <a id="vext-job-004"></a>
 
 ### VEXT-JOB-004 [MUST] 多副本配置
 
-自动选择单应用 Local、无 Redis 的可信内置 Cluster Master IPC、已配置 Redis 的共享域。Master 使用真实 Worker 对象映射 slot/generation，实际握手建立 masterEpoch 身份；环境变量和 cluster.isWorker 不单独授信，不因握手失败降级 Local。所有内置 Cluster 模式（含 Redis）在初始 fork 尝试结束后比较实际 ready 集合的清单并等待激活 ACK；成员变化重新验证或失败关闭。外部独立副本显式共享 Redis 和定义；自动 namespace 来自包名、profile 和运行模式。
+未配置jobs.redis时，单个应用在进程内协调，一个VextJS内置Cluster在其Worker范围自动协调，无需Redis。多个独立进程、PM2应用、容器或多机副本无法自动发现彼此；需要共享协调时显式配置同一个Jobs Redis目标与有效前缀，并保持任务名和定义一致。
+
+显式jobs.redis对象才开启Redis；环境变量URL本身不会开启。不能完成所选模式的启动条件时拒绝任务准入，不静默退回每个进程各自执行。没有任务或全部关闭时，不建立不必要的任务定时器、Jobs Redis连接或额外任务通信资源。
 
 <a id="vext-job-005"></a>
 
 ### VEXT-JOB-005 [MUST] 触发去重
 
-Redis 原子脚本用每任务最后触发时间和租约协调，标记在完成及租约过期后保留。Master IPC 使用 CLAIM→OFFER→ACCEPT→PERMIT，提交后才发最终许可；send 回调不证明授予或执行。最后一次 await 后同步复核身份、准入 epoch、窗口和许可，随即进入 handler。迟到消息不复活已放弃申请；同点、旧点和重叠点均被消耗。
+在有效协调域及健康协调状态下，同名任务的同一计划点最多取得一次执行资格。任务很快结束、租约过期或执行进程崩溃，不会使已经接受的同一点重新获得资格；重叠和旧点也不排队重放。
+
+取得资格后、业务完成前崩溃可能丢失本次工作。这是调度资格去重，不是业务成功一次的承诺；网络分区、Redis状态丢失或业务忽略取消时，仍需依靠业务幂等保护副作用。
 
 <a id="vext-job-006"></a>
 
 ### VEXT-JOB-006 [MUST] 运行租约
 
-有效 TTL 为 Job leaseTtl > 全局 Redis leaseTtl > 30000 毫秒，安全整数且至少 1000；仅 Redis 使用。每句柄约 TTL/3 续租，操作预算 min(2000,TTL/3)，保守有效期从发送前单调时钟计起；续租返回后同时检查旧有效期与操作截止。续租/释放检查 owner，同任务键同 hash slot。URL 连接由 Jobs 拥有，传入 client 不由 Jobs 关闭。普通 drain 关闭新准入但保持 Held 续租直到任务结算或共享关闭截止。
+Redis有效租约时长为Job.leaseTtl > jobs.redis.leaseTtl > 30000毫秒；必须是至少1000的安全整数。同名任务各副本应保持一致TTL。单进程或内置无Redis协调不使用Redis TTL，但仍校验字段。
+
+执行期间续租，TTL不是业务执行超时，长任务可以运行超过TTL。普通关闭或滚动退出期间，在途任务在结束或共享关闭截止前仍维持租约，不提前让同名任务重叠进入。URL创建的连接由Jobs关闭，传入client由调用方管理。
 
 <a id="vext-job-007"></a>
 
 ### VEXT-JOB-007 [MUST] Redis 故障
 
-Redis 错误不降级 Local。续租失败、迟到、过期或保守期限耗尽使本 Worker 永久 LeaseLost：关闭全部新准入、取消 pending、Abort 在途并进入关闭/替换。重连不复活资格。Redis 服务器时间拒绝未到或跨周期申请；跨独立应用及网络分区不承诺业务恰好一次。
+Redis故障不降级本地执行。申请执行资格失败时跳过该点；未失租且仍健康的实例可以在后续未来点继续申请。续租失败、过晚或租约有效期耗尽时，该Worker停止全部新任务、请求取消在途工作并进入关闭/替换；重连不自动恢复原Worker资格。
+
+Redis模式按服务器时间判断计划窗口；副本应保持时钟同步，偏差会记录诊断但不会自动校时。恢复后只考虑未来点，不补跑。失租后的业务必须协作响应取消，不能把租约机制当成强制停止或业务事务。
 
 <a id="vext-job-008"></a>
 
 ### VEXT-JOB-008 [MUST] 功能范围
 
-不提供任务队列、优先级、payload 入队、自动重试、停机补跑或启动立即执行。取得资格后崩溃可能丢失当次执行；需要可靠投递时使用专用队列模块。
+Jobs只提供随应用启动的Cron任务，不提供队列、payload入队、优先级、运行记录存储、自动重试、停机补跑、启动立即执行或run-now管理接口。
+
+需要可靠投递、执行历史或进度时，由业务采用相应队列、存储和监控；不能通过未知Job字段启用这些能力。
 
 <a id="vext-job-009"></a>
 
 ### VEXT-JOB-009 [MUST] 关闭与副作用
 
-关闭共享一个应用绝对截止：停新准入/Timer、Abort、预算内等待结算、关闭 coordinator，再清理依赖。未结算 Redis 任务不提前 DEL；IPC 已提交运行跨 slot/drain/超时保留，直到精确 settled/never-started 或实际 exit。滚动替换先验证候选清单，再取得旧代关闭新准入的精确回执或实际 exit，最后切 slot 并激活新代；drain 回执不等于 handler 已停止，SIGKILL 请求不等于 exit。
+应用关闭先停止新任务、请求协作取消，再在shutdown.timeout的共享应用预算内等待，之后清理协调资源及依赖。该配置以秒计，不是每个Job独立等待时间。
+
+滚动替换先检查候选定义，关闭旧Worker的新任务资格后再允许新Worker进入；关闭新任务资格不等于旧handler已经停止。同名在途任务的防重叠约束在替换期间保持，不能仅凭发出终止请求就认定进程或业务已结束。忽略signal的代码无法强行中断，已经完成的副作用也无法撤销。
+
+候选任务配置不一致时拒绝替换，保留旧Worker；内置Cluster失去协调连接时停止新任务、请求取消并关闭，不退回独立执行。内置协调状态不跨新的Cluster主进程持久化，不能据此承诺跨独立Cluster或主进程重启的业务副作用去重。
 
 <a id="vext-job-010"></a>
 
 ### VEXT-JOB-010 [MUST] 测试与开发
 
-`createTestApp` 不自动调度真实任务；`createTestJobScheduler` 在运行必要 onReady 前准备并挂载 scheduler，prepare/activation/tick 共用受控时钟，仅显式 tick，无真实 Timer 或扫描。开发任务及已加载默认转导出依赖变更均冷重启，冷热加载采用相同声明门禁。
+普通createTestApp不自动加载或执行项目Jobs。createTestJobScheduler显式接收任务定义和受控时钟，在必要onReady前准备调度器，只通过tick驱动，不扫描任务文件或创建真实定时器；测试应用的正常任务路径在NODE_ENV=test也不开真实定时器。
+
+开发模式默认会运行任务，任务文件及已经加载的相关依赖变化会冷重启；自定义目录遵循相同规则。测试helper不能代替实际单进程、内置Cluster或共享Redis部署验收。
 
 <a id="vext-job-011"></a>
 
 ### VEXT-JOB-011 [MUST] 发现与文档选取
 
-运行时选取六种 JS/TS 扩展，忽略下划线文件名、声明和测试文件，保留下划线目录。include 匹配实际文件并替换默认，exclude 追加内置忽略，不改写扩展。每个选中文件恰有一个默认 SDK Job；普通 helper/类型/常量允许，SDK 声明基数包含未执行分支与函数。允许有限不可变默认别名、CJS module.exports、相对默认转导出；拒绝 opaque 默认工厂、多声明、Job-valued named alias、用户 getter/Proxy 或晚变更导出。每个转导出壳及最终定义源均校验。完整编译投影须经结构证明，不能仅凭 marker 授信。
+默认递归选择任务目录下的ts/js/mjs/cjs/mts/cts模块，忽略下划线文件名、声明和test/spec模块；下划线目录本身不忽略。include替换默认包含规则，exclude追加内置忽略；匹配真实文件名，不自动转换生产扩展。
 
-框架加载/构建在任何优化前校验选中原始文件及有限默认闭包，同次输入/集合漂移不提交产物。无 src 部署只证明当前 emitted-input，不推断优化前历史声明，不要求部署源码或新增永久来源清单。
+每个选中文件只有一个有限默认SDK Job。普通helper、类型、常量、动态字段、不可变默认别名、CJS module.exports及项目源码内的有限相对默认转导出允许；工厂或条件默认形式、额外SDK声明（含未调用位置）、Job命名别名、用户getter/Proxy及后续改变导出拒绝。转导出入口和定义源都必须满足规则。
 
-Docs Jobs 源默认继承 jobs.dir/include/exclude，每个显式 Docs 字段可覆盖对应默认值；文档覆盖不改变调度选取，关闭定义也可被文档展示。
+显式name优先，否则按任务相对路径去扩展名、去末尾/index并转成点分名，不改变camelCase；关闭定义也参与重名检查。构建优化前检查输入，正常生产部署可以只有构建产物，不强制部署src；对不可得的原始历史不作反推证明。
 
 <a id="vext-job-012"></a>
 
 ### VEXT-JOB-012 [MUST] 静态证据与项目状态
 
-静态工具使用相同有限声明事实；moduleShapeState/declarationCardinality 与 fieldStates 独立，分别展示 known/unsupported/unknown 和理由。已知字段不等于形状有效，缺图/循环/越界/超预算保留 unknown。未知实际名称不冒用路径推导名；不 eval 配置、模块、getter 或 handler。
+项目任务文档默认逐字段继承jobs.dir/include/exclude，显式openapi.docs.code.jobs字段只覆盖对应文档扫描项，不改变实际任务发现或执行资格。关闭文档来源不停止任务，disabled定义仍可展示。
 
-框架支持 Jobs 不代表项目已启用。空/关闭项目及未知配置保持保守状态和理由，按所选开发/生产配置检查。展示有效时区、Redis TTL、预计协调模式与 source-input/emitted-input 边界；真实握手、激活、连接和执行始终 runtimeVerified=false，须独立宿主验收。
+文档扫描不执行配置、任务模块、getter或handler来补齐动态值。无法静态确认的值与声明边界保留未知及原因，不把路径推导名当成未知的实际动态名。框架支持Jobs、项目存在任务、预计配置及真实运行状态是不同事实；静态条目不能证明启动就绪、连接或执行。
 
-接口见 [Jobs API](/zh/api/jobs)，部署与业务示例见[定时任务指南](/zh/guide/jobs)。
+接口见 [Jobs API](/zh/api/jobs)，完整业务、配置与排错见[定时任务指南](/zh/guide/jobs)。

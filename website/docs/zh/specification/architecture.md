@@ -90,7 +90,7 @@ Route 负责从请求获得数据、选择 HTTP 响应和声明接口合同；�
 
 ### VEXT-ARCH-006 [MUST] 任务运行与页面渲染使用各自的显式入口
 
-`src/jobs` 中启用的定时任务会在普通应用就绪后自动调度，直接复用当前应用及 Service。配置、Redis 协调及关闭规则见[Jobs 指南](/zh/guide/jobs)；handler 没有 HTTP req/res 上下文。
+任务目录（默认 `src/jobs`）中的启用任务，在必要初始化与所选部署方式的任务就绪条件满足后按Cron调度，复用当前应用及Service。单进程、内置Cluster及独立副本的协调范围见[Jobs指南](/zh/guide/jobs#选择部署方式)；handler没有HTTP req/res上下文。
 
 前端 page 文件供 renderer 发现和构建，不会独立注册后端 URL。页面路由通过 `src/routes` 中的 handler 调用 `res.render()`；特殊 SPA fallback 由其显式配置控制。SSR、浏览器 hydration 和 API 请求分别遵循各自的生命周期，见[路由与页面](/zh/frontend/routing-and-pages)及[渲染模式](/zh/frontend/rendering-modes)。
 

@@ -806,9 +806,11 @@ interface TestJobScheduler {
 
 `jobs` 使用显式传入定义，不扫描 src/jobs。对象名称优先 definition.name，再用 key；数组依次回退为 job1/job2。名称重复时报错。其他选项沿用 `CreateTestAppOptions`，强制 `routes: false`；插件和服务仍有其实际初始化副作用。
 
+此helper在必要onReady之前准备并挂载调度器；有启用Jobs时，必要onReady失败会使初始化失败并清理。前文普通createTestApp的“单个hook报错后继续”不能作为此任务调度helper的失败保证。
+
 `now` 默认为当前时间，注册严格未来的触发点。`tick(Date)` 等待本次符合触发条件的处理器结束，重复 tick 不重复执行；错过多个周期不补跑，同任务重叠跳过。长任务可保留第一次 tick 的 Promise，再推进下一次 tick 验证重叠。处理器失败被日志记录；通过业务断言判断执行结果。
 
-`close()` 停止触发、请求取消，在应用总关闭预算内等待任务，再清理测试应用的依赖。helper 不创建真实定时器，但配置了 Redis 时会实际连接、验证和使用它；Redis 测试时间必须与服务器当前周期一致。普通 `createTestApp()` 不自动运行任务。例子见[定时任务指南](/zh/guide/jobs#测试与验收)。
+`close()` 停止触发、请求取消，在应用总关闭预算内等待任务，再清理测试应用的依赖。helper 不创建真实定时器，但配置了 Redis 时会实际连接、验证和使用它；Redis 测试时间必须与服务器当前周期一致。普通 `createTestApp()` 不自动运行任务。例子见[定时任务指南](/zh/guide/jobs#测试与观察)。
 
 ## 使用模式
 

@@ -538,7 +538,7 @@ services:
 
 ## Jobs 与 Cluster
 
-Jobs 只使用 Cron，一文件一个默认 SDK Job。无 Redis 的可信内置 Cluster 由 Master IPC 仲裁；配置 `jobs.redis` 后使用 Redis。所有内置模式先完成实际 Master 握手及 appReady，再比较有效任务清单并等待 Jobs 激活 ACK，HTTP ready 不等于 JobsActive。滚动替换先验证候选，再取得旧代关闭新准入的精确回执或实际 exit，最后切槽与激活新代；旧运行所有权保留到结算或实际退出，drain 不是强停 handler。独立进程/容器/多机副本显式共享 Redis；自动 namespace 来自包名、profile 和运行模式。任务 `leaseTtl` 覆盖全局 TTL，失租后本 Worker 全部新准入永久隔离，重连不复活。业务副作用仍需幂等保护。详见[定时任务 Jobs](/zh/guide/jobs)。
+Jobs只使用Cron，一文件一个有限默认任务。单个内置Cluster的Worker自动协调，无需Redis；各Worker需完成必要初始化且任务定义/配置一致，任务整体就绪后才允许执行。滚动替换先关闭旧Worker新任务资格，再允许新Worker进入，同名在途任务仍防止重叠；这不等于强行停止旧handler。多个独立应用需共享协调时显式配置Jobs Redis，任务leaseTtl覆盖全局TTL；失租后停止该Worker的新任务并请求取消，重连不自动恢复原资格。业务副作用仍需幂等，完整配置与排错见[定时任务 Jobs](/zh/guide/jobs)。
 
 ## 常见问题
 
