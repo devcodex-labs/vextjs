@@ -538,7 +538,7 @@ services:
 
 ## Jobs 与 Cluster
 
-存在启用的定时任务时，HTTP Cluster Worker 在应用就绪后注册定时器，并通过 `config.jobs.redis` 共同协调触发。缺少 Redis 配置会在启动阶段报错；空任务目录或全部关闭的任务无需 Redis。namespace 自动按包名、profile 和运行模式生成，相同副本无需手填；所有副本使用相同 Redis 目标及调度定义。同一触发点只接受一次、同任务重叠跳过，但业务副作用仍需幂等保护。详见[定时任务 Jobs](/zh/guide/jobs)。
+Jobs 只使用 Cron，一文件一个默认 SDK Job。无 Redis 的可信内置 Cluster 由 Master IPC 仲裁；配置 `jobs.redis` 后使用 Redis。所有内置模式先完成实际 Master 握手及 appReady，再比较有效任务清单并等待 Jobs 激活 ACK，HTTP ready 不等于 JobsActive。滚动替换先验证候选，再取得旧代关闭新准入的精确回执或实际 exit，最后切槽与激活新代；旧运行所有权保留到结算或实际退出，drain 不是强停 handler。独立进程/容器/多机副本显式共享 Redis；自动 namespace 来自包名、profile 和运行模式。任务 `leaseTtl` 覆盖全局 TTL，失租后本 Worker 全部新准入永久隔离，重连不复活。业务副作用仍需幂等保护。详见[定时任务 Jobs](/zh/guide/jobs)。
 
 ## 常见问题
 

@@ -2,7 +2,7 @@
 
 Jobs perform scheduled application work such as expiring data, refreshing statistics and synchronizing business data. Put business logic in a Service and use the Job to call it on schedule; it shares the ready application, plugins and app.services.
 
-Choose **cron or interval** for each task. Scheduling starts automatically after readiness without a separate scheduler or Worker. Only future points run: no queue, automatic retry, downtime catch-up or immediate startup execution. See the [API field reference](/api/jobs) and [Jobs contract](/specification/jobs).
+Each task requires an explicit **Cron** expression, with one default SDK Job per selected file. Scheduling starts after application readiness and coordination activation, without a separate scheduler or Worker. Only future points run: no queue, automatic retry, downtime catch-up or immediate startup execution. See the [API field reference](/api/jobs) and [Jobs contract](/specification/jobs).
 
 ## Create your first task
 
@@ -13,7 +13,7 @@ import { defineJob } from "vextjs";
 
 export default defineJob({
   name: "heartbeat",
-  interval: 60000,
+  cron: "* * * * *",
   async handler({ name, scheduledAt, signal, logger }) {
     signal.throwIfAborted();
     logger.info({ name, scheduledAt }, "heartbeat");
@@ -44,29 +44,58 @@ src/jobs/
 
 The six default module extensions are .ts/.js/.mjs/.cjs/.mts/.cts. Underscore **filenames**, declaration files and .test/.spec files are ignored; underscore directories are allowed. By default, .tsx/.jsx are not selected. Names remove the extension and trailing /index and replace slashes with dots; root index.ts becomes index. Unlike Services, names do not convert kebab-case to camelCase.
 
-A file may export multiple definitions:
+A selected file exports one default Job; ordinary helpers, types and constants may coexist:
 
 ```typescript
 // src/jobs/billing/index.ts
 import { defineJob } from "vextjs";
-export default defineJob({ interval: 60000, handler() {} });
-export const daily = defineJob({ cron: "0 9 * * *", handler() {} });
+export default defineJob({ cron: "* * * * *", handler() {} });
+export function helper(value: number) {
+  return value + 1;
+}
 ```
 
-Names are billing and billing.daily. Explicit name overrides inference and allows nonempty ASCII letters, digits and `_ . : -`. All loaded names must be unique, including disabled definitions. Prefer stable explicit business names so file moves do not change Redis identity.
+The name is billing. Explicit name overrides inference and allows nonempty ASCII letters, digits and `_ . : -`. Loaded names must be unique, including disabled definitions. Prefer stable business names so file moves do not change Redis identity. Put additional Jobs in separate files.
 
 JavaScript/ESM uses the same exports; native CommonJS can use:
 
 ```javascript
 // src/jobs/cleanup.cjs
 const { defineJob } = require("vextjs");
-module.exports = defineJob({ interval: 60000, handler() {} });
-// Multiple definitions can also use exports.daily = defineJob(...)
+module.exports = defineJob({ cron: "* * * * *", handler() {} });
+// Ordinary local helpers are allowed; exports.daily = defineJob(...) is rejected.
 ```
 
-Runtime supports relative default/named re-exports. Static Docs/MCP resolves safe ESM re-exports within declared source roots. Wrappers, export \*, dynamic CommonJS re-exports and out-of-root dependencies report incomplete evidence; an unresolved static export does not prove that no runnable task exists.
+Finite relative default reexports such as `export { default } from "../definitions/report.js"` are allowed. Both the shell and terminal definition are checked. Missing graphs, cycles, boundary escapes and exceeded budgets remain unknown and fail closed at startup. User getters/Proxy, dynamic exports and export-star are unsupported. A marker such as \_\_esModule alone never proves compiler transport.
 
-Every selected file needs a defineJob export; plain objects or helper-only files refuse startup. Keep helpers outside Jobs or use ignored filenames such as \_helpers.ts. Task enabled=false still imports and validates its module/definition; avoid business side effects and independent timers at module top level. Global jobs.enabled=false skips directory discovery.
+Every selected file needs exactly one default SDK Job. Plain objects, named-only definitions, arrays and opaque default factories refuse startup. Keep helper-only modules outside Jobs or use ignored filenames such as \_helpers.ts. Disabled Jobs still validate fields, TTL, declaration cardinality and duplicate names, while not requiring a future point. Global jobs.enabled=false skips discovery. Avoid top-level business calls or timers; the framework is not a general JavaScript side-effect sandbox.
+
+### Allowed and rejected declaration examples
+
+```typescript
+// Allowed: renamed SDK binding, immutable Job-value aliases and dynamic fields.
+import { defineJob as task } from "vextjs";
+const report = task({ cron: readCron(), handler() {} });
+const alias = report;
+export default alias;
+```
+
+`import * as sdk from "vextjs"; export default sdk.defineJob(...)` is also allowed. Dynamic fields remain unknown in Docs/MCP and are evaluated and validated during actual startup.
+
+```typescript
+// Each line independently illustrates a rejected default or additional form.
+export default makeJob();
+export default flag ? defineJob(a) : defineJob(b);
+const job = defineJob(a);
+export { job };
+export default job;
+export default defineJob(a);
+function unused() {
+  return defineJob(b);
+}
+```
+
+A second SDK declaration inside an uncalled function also counts, including its own require binding. User named Job aliases, even \_\_esModule or "module.exports", are rejected. Native CJS synthetic fields and complete compiler projections require format/binding proof. Framework builds check original inputs before optimization; tree-shaking cannot erase an extra declaration before validation. Source-less deployment proves only current emitted-input, never unavailable historical sources.
 
 ### Custom directory and filters
 
@@ -87,7 +116,7 @@ Tasks maps to src/tasks and to tasks under the compiled root, such as dist/tasks
 
 **Globs match actual files and are never automatically rewritten after compilation.** `include: ["**/*.ts"]` discovers source but misses emitted `task.js`. Use `**/*.{ts,js}` or other source/output pairs, or keep the defaults. MCP warns about obvious source-only globs for production, but you must still inspect build output.
 
-## cron, interval and timezone
+## cron and timezone
 
 ### cron expressions
 
@@ -114,17 +143,11 @@ Croner parses expressions; consult the installed Croner version for its extended
 
 DST creates missing or repeated local times, resolved by Croner. With the current dependency, `America/New_York`, `30 1 * * *`, and origin `2026-11-01T05:29:59Z`, the next point is `05:30Z`; the following point is next day `06:30Z`, not the repeated second 01:30 that day. Spring behavior also depends on the calculation origin: `30 2 * * *` from `2026-03-07T08:00Z` yields next day `07:30Z` (local 03:30), while from `2026-03-08T07:00Z` it yields next day `06:30Z`. Use UTC for stable absolute times, and verify boundary dates in your chosen region rather than assuming exactly one execution each calendar day.
 
-### Fixed intervals
+### Schedule category and future points
 
-Interval is a positive safe integer in milliseconds, mutually exclusive with cron and task timezone. The next point is:
+Accept five/six/seven field Cron or @yearly/@annually/@monthly/@weekly/@daily/@midnight/@hourly. Reject interval, Date and ISO date strings. Fixed-year Cron may naturally terminate after its last point. Enabled Jobs need a strictly future point at both preparation and activation; disabled definitions still need valid syntax.
 
-```text
-(Math.floor(currentTimeMs / interval) + 1) * interval
-```
-
-For interval=60000, readiness at 12:00:20 waits for 12:01:00. Readiness exactly at 12:01:00 waits for 12:02:00. There is no immediate execution or startup-relative interval. Matching replica intervals and synchronized clocks produce matching planned points.
-
-A previously armed 12:01 point delayed to 12:01:02 may execute before the following point. If the event loop resumes at 12:02 or later, the old point is skipped and the next future point is armed. Startup/restart/recovery also selects only future points. Invalid schedules/timezones, mutually exclusive fields and active definitions without a representable future point refuse startup.
+For a minute Cron, readiness at 12:00:20 waits for 12:01:00, while readiness exactly at 12:01:00 waits for 12:02:00. An armed 12:01 point delayed to 12:01:02 may execute before its successor; cross-period delay is skipped. Startup/restart/recovery selects future points, without replaying points passed during onReady.
 
 ## Calling Services and cooperative cancellation
 
@@ -177,7 +200,7 @@ Run npm exec -- vext typegen as described in [Service type generation](/guide/se
 import { defineJob } from "vextjs";
 export default defineJob({
   name: "refresh-status",
-  interval: 60000,
+  cron: "* * * * *",
   async handler({ app, signal, scheduledAt, logger }) {
     const count = await app.services.remoteStatus.refresh(signal);
     logger.info({ count, scheduledAt }, "Status refresh completed");
@@ -191,13 +214,13 @@ Context exposes app/name/scheduledAt/signal/logger, without req/res or a current
 
 ## Cluster and multiple replicas
 
-| Deployment                                          | Jobs Redis                | Your responsibility                                                                                                  |
-| --------------------------------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| One application process                             | Optional                  | Local overlap protection; use shared Redis to coordinate with other replicas                                         |
-| Built-in application Cluster with active tasks      | Required                  | Startup errors if absent; workers share target, namespace, name and schedule                                         |
-| Built-in Cluster with no tasks/all disabled         | Not required              | No Jobs Redis connection; configuration structure must remain valid                                                  |
-| PM2/independent processes/containers/multiple hosts | Configure explicitly      | Framework cannot detect external replicas; without Redis every process executes independently                        |
-| Any deployment using Redis Cluster                  | Compatible Cluster client | Application Cluster and Redis Cluster are separate concepts; Redis sharding does not enable application coordination |
+| Deployment                                          | Jobs Redis                | Your responsibility                                                                                                     |
+| --------------------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| One application process                             | Optional                  | Local overlap protection; use shared Redis to coordinate with other replicas                                            |
+| Built-in application Cluster with active tasks      | Optional                  | Master IPC without Redis; Redis when configured; both require trusted handshake, matching manifests and activation ACKs |
+| Built-in Cluster with no tasks/all disabled         | Not required              | No Jobs Redis connection; configuration structure must remain valid                                                     |
+| PM2/independent processes/containers/multiple hosts | Configure explicitly      | Framework cannot detect external replicas; without Redis every process executes independently                           |
+| Any deployment using Redis Cluster                  | Compatible Cluster client | Application Cluster and Redis Cluster are separate concepts; Redis sharding does not enable application coordination    |
 
 Minimal environment configuration:
 
@@ -287,7 +310,7 @@ Initialization probes PING and EVAL; runtime scripts also require TIME, GET, SET
 
 ### Leases, markers and operations
 
-LeaseTtl defaults to 30000ms, minimum 1000ms, renewed approximately every TTL/3. It is not business timeout and need not cover the entire handler duration. Completion releases the owner-checked lease; renewal failure requests cancellation. Redis failure skips the current point without local fallback; recovery waits for future points. Redis server time rejects premature/expired claims, so application clock skew can cause omissions.
+Effective leaseTtl is task > global jobs.redis.leaseTtl > 30000ms, a safe integer >=1000, used only by Redis. Renewal is approximately TTL/3; per-operation budget is min(2000,TTL/3), with a conservative deadline measured before send using a monotonic clock. Late/failed renewal or expiry permanently quarantines all Worker admissions, requests cancellation and shutdown/replacement; reconnect cannot revive eligibility. Ordinary drain keeps Held leases renewing until settlement or the shared deadline. Unsettled handlers are not prematurely DEL-released. Redis TIME remains authoritative; rate-limited clock-skew diagnostics show RTT and an offset interval without adjusting clocks.
 
 The logical prefix differs from the **actual keys**:
 
@@ -304,14 +327,14 @@ Retired last markers may remain. Clean exact old task keys through your operatio
 
 ## Overlap, failure and shutdown
 
-| Situation                                | Behavior                                                                                         |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Previous invocation still runs           | Skip this point without queuing; other tasks can run concurrently                                |
-| Handler throws                           | Log scheduled job failed; next future cycle continues without retry                              |
-| Event loop delay across periods/downtime | Missed points are skipped, without catch-up                                                      |
-| Redis claim errors                       | Log failure, without local fallback; next future point can attempt coordination                  |
-| Renewal failure                          | Log scheduled job lease unavailable; cancellation requested, and abort the signal                |
-| Shutdown                                 | Stop triggers, request cancellation, wait within total shutdown.timeout, then clean dependencies |
+| Situation                                | Behavior                                                                                            |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Previous invocation still runs           | Skip this point without queuing; other tasks can run concurrently                                   |
+| Handler throws                           | Log scheduled job failed; next future cycle continues without retry                                 |
+| Event loop delay across periods/downtime | Missed points are skipped, without catch-up                                                         |
+| Redis claim errors                       | Log failure, without local fallback; next future point can attempt coordination                     |
+| Renewal failure, lateness or expiry      | Permanently quarantine every Worker admission, Abort and shut down/replace; reconnect cannot revive |
+| Shutdown                                 | Stop triggers, request cancellation, wait within total shutdown.timeout, then clean dependencies    |
 
 A crash after acceptance can lose an invocation. Network partitions, Redis state loss and handlers ignoring cancellation do not guarantee exactly-once business effects. Reliable delivery belongs in a separate queue module. Keep history/alerts/progress in your business storage or monitoring; return values are not persisted.
 
@@ -341,7 +364,7 @@ import { defineJob } from "vextjs";
  */
 export default defineJob({
   name: "refresh-status",
-  interval: 60000,
+  cron: "* * * * *",
   description: "Read remote statuses periodically",
   tags: ["operations"],
   docs: {
@@ -357,15 +380,15 @@ export default defineJob({
 
 Summary: JSDoc > docs.summary > docs.description > description > generated fallback. Description: JSDoc > docs.description > description. Tags merge definition tags, docs.tags and jobs, deduplicated. Re-exports retain discovery file and actual definition location.
 
-Open /docs (or your configured path) after startup and select Jobs. Details show name, cron, interval in milliseconds, declared/effective cron timezone, switches and parse state, with schedule-field search. Unknown fields remain unknown; inferred path names cannot replace dynamic actual names, and unknown switches do not imply defaults.
+Open /docs and select Jobs. Details show name, Cron, declared/effective timezone, task/effective Redis TTL, expected coordination, switches, module shape, declaration cardinality and field states. Unknown stays unknown; inferred labels do not replace actual names. Static results always retain runtimeVerified:false.
 
-Static consumers verify vextjs defineJob import/require provenance and aliases, read literal/proven immutable values, and resolve safe ESM dependencies within declared roots. Calls/wrappers, opaque spreads, mutable bindings and cyclic/out-of-root references retain partial evidence and reasons. No business modules are executed to fill gaps. Documentation coverage, runtime discovery and live execution are distinct facts.
+Static consumers verify vextjs defineJob import/require provenance and aliases, read literal/proven immutable values, and resolve finite dependencies within declared roots. Dynamic fields and opaque spreads retain field-level unknown. Opaque default factories, extra SDK declaration positions and Job-valued named aliases are unsupported. Missing graphs, cycles, boundary/budget failures or unstable effective values retain module-shape unknown and reasons. No business modules are executed to fill gaps. Documentation coverage, runtime discovery and live execution are verified separately.
 
 ### Check with MCP
 
 Call vext_project_inspect with section=jobs from the connected host, then vext_capability_check with capability=C34. Use vext_project_check profile=standard, configTarget=production for the production configuration, or all to compare development/production.
 
-Results distinguish framework support, project declarations, missing evidence and startup prerequisites. Empty/disabled projects are not reported as Jobs enabled. Known Cluster-without-Redis, invalid definitions/timezones and duplicate names produce diagnostics. RuntimeVerified=false means no application startup, Redis connection or handler execution occurred. The host must then build, start and test; complete source or a Docs list does not prove execution.
+Results distinguish framework support, project declarations, missing evidence and prerequisites. Empty/disabled projects are not reported enabled. Built-in Cluster without Redis expects Master IPC, with the actual handshake/barrier unverified. Invalid definitions/timezones and duplicate names produce diagnostics. Module known/unsupported/unknown is separate from fieldStates. RuntimeVerified:false never proves startup, connectivity or handler execution; perform real host acceptance.
 
 ## Testing and acceptance
 
@@ -381,7 +404,7 @@ const scheduler = await createTestJobScheduler({
   now: new Date(0),
   jobs: {
     sample: defineJob({
-      interval: 1000,
+      cron: "* * * * * *",
       handler() {
         runs++;
       },
@@ -415,7 +438,7 @@ Run existing project tests and build, then a real isolated startup. Observe at l
 | Symptom                                       | Likely cause                                                                            | Action                                                                                                          |
 | --------------------------------------------- | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | Definition/name startup error                 | Missing defineJob export, invalid schedule/timezone, duplicate including disabled names | Follow file/field errors; move helpers or use underscore filenames                                              |
-| Cluster missing Redis                         | Active tasks without jobs.redis                                                         | Configure shared Redis or disable scheduling; environment URL alone is insufficient                             |
+| Cluster Jobs not active                       | Failed handshake, mismatched manifests or missing activation ACK                        | Verify the actual built-in Master startup/logs; independent replicas explicitly share Redis                     |
 | Redis initialization fails                    | Empty target, connection/auth/PING/EVAL failure                                         | Check precedence and target, Lua command permissions; keep credentials out of logs                              |
 | Application runs but no job                   | Disabled switches, future point not reached, NODE_ENV=test, selection mismatch          | Check effective profile, directory, glob and timezone                                                           |
 | Development works but production has no tasks | TypeScript-only include or missing output files                                         | Inspect emitted directory; include output extensions; globs match actual files                                  |

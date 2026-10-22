@@ -22,11 +22,76 @@ function inspect(
   });
   return inspectStaticJobs(view, projectStaticConfig(view, { mode }), rootDir);
 }
-const task = (definition = "interval: 1000") =>
+const task = (definition = 'cron: "* * * * * *"') =>
   `import {defineJob} from "vextjs"; export default defineJob({${definition}, handler() {throw new Error("must not run");}});`;
 const config = (value = "{}") => `export default ${value};`;
 
 describe("scheduled Jobs static evidence and startup prerequisites", () => {
+  it("classifies named default helper chains and Job aliases at every default shell", () => {
+    for (const facade of [false, true]) {
+      const entry =
+        task() + ' export {default as helper} from "../shared/barrel.js";';
+      const files = {
+        "src/config/default.ts": config(),
+        "src/jobs/main.ts": facade
+          ? 'export {default} from "../shared/definition.js";'
+          : entry,
+        "src/shared/definition.ts": entry,
+        "src/shared/barrel.ts": 'export {default} from "./plain.js";',
+        "src/shared/plain.ts": "export default function helper() { return 1; }",
+      };
+      expect(inspect(files).jobs[0]?.moduleShapeState).toBe("known");
+      expect(
+        inspect({ ...files, "src/shared/plain.ts": task() }).jobs[0]
+          ?.moduleShapeState,
+      ).toBe("unsupported");
+      const missing = { ...files };
+      delete (missing as Record<string, string>)["src/shared/plain.ts"];
+      expect(inspect(missing).jobs[0]?.moduleShapeState).toBe("unknown");
+    }
+    expect(
+      inspectJobSource(
+        "job.ts",
+        task() + 'export {default as other} from "./missing.js";',
+      ).moduleShape.state,
+    ).toBe("unknown");
+    for (const value of ['{label:"ordinary"}', "[1,2,3]"]) {
+      expect(
+        inspect({
+          "src/config/default.ts": config(),
+          "src/jobs/main.ts":
+            task() + 'export {default as helper} from "../shared/helper.js";',
+          "src/shared/helper.ts": `export default ${value};`,
+        }).jobs[0]?.moduleShapeState,
+      ).toBe("known");
+    }
+  });
+  it("does not mistake an accessor function for the effective handler value", () => {
+    const fact = inspectJobSource(
+      "job.ts",
+      'import {defineJob} from "vextjs";export default defineJob({cron:"* * * * * *",get handler(){throw new Error("must not execute")}});',
+    );
+    expect(fact.moduleShape.state).toBe("known");
+    expect(fact.definitions[0]?.fieldStates.handler).toBe("unknown");
+    expect(fact.definitions[0]?.staticState).toBe("partial");
+  });
+  it("follows finite named helper forwards and rejects a named Job behind a default CJS chain", () => {
+    const files = {
+      "src/config/default.ts": config(),
+      "src/jobs/main.ts":
+        task() + 'export {value as helper} from "../shared/barrel.js";',
+      "src/shared/barrel.ts": 'export {value} from "./plain.js";',
+      "src/shared/plain.ts": 'export const value={label:"ordinary"};',
+    };
+    expect(inspect(files).jobs[0]?.moduleShapeState).toBe("known");
+    expect(
+      inspect({
+        ...files,
+        "src/shared/plain.ts":
+          'import {defineJob} from "vextjs";export const value=defineJob({cron:"* * * * * *",handler(){}});',
+      }).jobs[0]?.moduleShapeState,
+    ).toBe("unsupported");
+  });
   it("requires framework provenance rather than a factory spelling", () => {
     for (const source of [
       task().replace('"vextjs"', '"./unrelated.js"'),
@@ -41,16 +106,16 @@ describe("scheduled Jobs static evidence and startup prerequisites", () => {
     const result = inspect({
       "src/config/default.ts": config(),
       "src/jobs/dynamic.ts": task(
-        "name: getName(), interval: getInterval(), enabled: getEnabled()",
+        "name: getName(), cron: getCron(), enabled: getEnabled()",
       ),
     });
     expect(result.jobs[0]).toMatchObject({
       name: null,
       inferredName: "dynamic",
-      interval: null,
+      cron: null,
       enabled: null,
       staticState: "partial",
-      fieldStates: { name: "unknown", interval: "unknown", enabled: "unknown" },
+      fieldStates: { name: "unknown", cron: "unknown", enabled: "unknown" },
     });
     expect(result.readiness.projectState).toBe("partial");
     expect(
@@ -61,23 +126,20 @@ describe("scheduled Jobs static evidence and startup prerequisites", () => {
     expect(
       inspectJobSource(
         "job.ts",
-        `import {defineJob} from "vextjs"; let interval=1000; interval=2000; export default defineJob({interval,handler(){}});`,
-      ).definitions[0]?.fieldStates.interval,
+        `import {defineJob} from "vextjs"; let cron="* * * * *"; cron="* * * * * *"; export default defineJob({cron,handler(){}});`,
+      ).definitions[0]?.fieldStates.cron,
     ).toBe("unknown");
   });
-  it("resolves bounded immutable imports and default/named re-exports without executing modules", () => {
+  it("resolves bounded imports and default reexports without executing modules", () => {
     const result = inspect({
       "src/config/default.ts": config(),
-      "src/jobs/facade.ts": 'export {default, daily} from "../shared/task.js";',
+      "src/jobs/facade.ts": 'export {default} from "../shared/task.js";',
       "src/shared/constants.ts":
-        'export const NAME="known-name"; export const INTERVAL=60000;',
-      "src/shared/task.ts": `import {defineJob} from "vextjs"; import {NAME,INTERVAL} from "./constants.js"; export default defineJob({name:NAME,interval:INTERVAL,handler(){throw new Error("must not run")}}); export const daily=defineJob({cron:"0 9 * * *",handler(){}});`,
+        'export const NAME="known-name"; export const CRON="* * * * *";',
+      "src/shared/task.ts": `import {defineJob} from "vextjs"; import {NAME,CRON} from "./constants.js"; export default defineJob({name:NAME,cron:CRON,handler(){throw new Error("must not run")}}); export function helper(n){return n+1;}`,
     });
-    expect(
-      result.jobs.map((job) => [job.name, job.interval, job.cron]),
-    ).toEqual([
-      ["known-name", 60000, null],
-      ["facade.daily", null, "0 9 * * *"],
+    expect(result.jobs.map((job) => [job.name, job.cron])).toEqual([
+      ["known-name", "* * * * *"],
     ]);
     expect(result.warnings).toEqual([]);
     expect(result.jobs[0]?.definitionFile).toBe("src/shared/task.ts");
@@ -111,7 +173,7 @@ describe("scheduled Jobs static evidence and startup prerequisites", () => {
         ].map((file) => [
           `src/jobs/${file}`,
           file.endsWith("cjs")
-            ? 'const {defineJob}=require("vextjs"); module.exports=defineJob({interval:1000,handler(){}});'
+            ? 'const {defineJob}=require("vextjs"); module.exports=defineJob({cron:"* * * * * *",handler(){}});'
             : task(),
         ]),
       ),
@@ -136,7 +198,7 @@ describe("scheduled Jobs static evidence and startup prerequisites", () => {
     expect(
       inspect({
         "src/config/default.ts": config("{cluster:{enabled:true}}"),
-        "src/jobs/a.ts": task("interval:1000,enabled:false"),
+        "src/jobs/a.ts": task('cron:"* * * * * *",enabled:false'),
       }).issues,
     ).toEqual([]);
     const enabled = inspect({
@@ -148,7 +210,7 @@ describe("scheduled Jobs static evidence and startup prerequisites", () => {
       runtimeVerified: false,
     });
   });
-  it("uses selected deployment mode to diagnose missing Redis and source-only globs", () => {
+  it("reports expected built-in IPC without treating absent Redis as an error", () => {
     const files = {
       "src/config/default.ts": config(),
       "src/config/production.ts": config(
@@ -159,19 +221,19 @@ describe("scheduled Jobs static evidence and startup prerequisites", () => {
     expect(inspect(files).issues).toEqual([]);
     const result = inspect(files, "production");
     expect(result.issues.map((issue) => issue.code)).toEqual(
-      expect.arrayContaining([
-        "VEXT_MCP_JOBS_CLUSTER_REDIS_REQUIRED",
-        "VEXT_MCP_JOBS_SOURCE_ONLY_GLOB",
-      ]),
+      expect.arrayContaining(["VEXT_MCP_JOBS_SOURCE_ONLY_GLOB"]),
     );
-    expect(result.readiness.projectState).toBe("partial");
+    expect(result.readiness.runtimeVerified).toBe(false);
+    expect(result.readiness.missingPrerequisites.join(" ")).toContain(
+      "Master IPC",
+    );
     expect(result.config.mode).toBe("production");
   });
   it("diagnoses invalid definitions, timezone/config and duplicate disabled names", () => {
     const result = inspect({
       "src/config/default.ts": config('{jobs:{timezone:"invalid/timezone"}}'),
-      "src/jobs/a.ts": task('name:"same",interval:0,enabled:false'),
-      "src/jobs/b.ts": task('name:"same",interval:1000,enabled:false'),
+      "src/jobs/a.ts": task('name:"same",cron:"invalid",enabled:false'),
+      "src/jobs/b.ts": task('name:"same",cron:"* * * * * *",enabled:false'),
     });
     expect(
       result.issues
@@ -188,7 +250,7 @@ describe("scheduled Jobs static evidence and startup prerequisites", () => {
     const result = inspect({
       "src/config/default.ts": config(),
       "src/jobs/bad-handler.ts":
-        'import {defineJob} from "vextjs"; export default defineJob({interval:1000,handler:123});',
+        'import {defineJob} from "vextjs"; export default defineJob({cron:"* * * * * *",handler:123});',
       "src/jobs/impossible.ts": task('cron:"0 0 31 2 *"'),
     });
     expect(

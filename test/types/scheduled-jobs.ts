@@ -2,7 +2,8 @@ import { defineJob, type VextUserConfig } from "vextjs";
 import { createTestJobScheduler, type TestJobScheduler } from "vextjs/testing";
 
 defineJob({
-  interval: 60000,
+  cron: "* * * * *",
+  leaseTtl: 1000,
   handler(ctx) {
     const time: Date = ctx.scheduledAt;
     const signal: AbortSignal = ctx.signal;
@@ -20,7 +21,7 @@ defineJob({ cron: "0 9 * * *", timezone: "Asia/Shanghai", handler() {} });
 defineJob({ handler() {} });
 // @ts-expect-error Cron and interval are mutually exclusive.
 defineJob({ cron: "* * * * *", interval: 1000, handler() {} });
-// @ts-expect-error Interval jobs cannot use a timezone.
+// @ts-expect-error Interval is unsupported even with a timezone.
 defineJob({ interval: 1000, timezone: "UTC", handler() {} });
 // @ts-expect-error Queue configuration was removed.
 defineJob({ interval: 1000, queue: {}, handler() {} });
@@ -35,7 +36,7 @@ void config;
 async function scheduler(): Promise<TestJobScheduler> {
   return createTestJobScheduler({
     now: new Date(0),
-    jobs: { sample: defineJob({ interval: 1000, handler() {} }) },
+    jobs: { sample: defineJob({ cron: "* * * * * *", handler() {} }) },
   });
 }
 void scheduler;

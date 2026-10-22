@@ -520,6 +520,11 @@ export function createApp(config: VextConfig): {
               { error: (err as Error).message },
               "[vextjs] onReady hook failed",
             );
+            if (_scheduledJobs?.hasEnabledJobs) {
+              readyHooks.length = 0;
+              await _scheduledJobs.close(Date.now());
+              throw err;
+            }
           }
         }
         // 执行完后清空，释放 hooks 持有的闭包引用
@@ -565,7 +570,7 @@ export function createApp(config: VextConfig): {
         if (_scheduledJobs) {
           await deadline.run(
             "scheduled jobs close",
-            () => _scheduledJobs!.close(),
+            () => _scheduledJobs!.close(deadline.deadlineAt),
             (error) => {
               app.logger.error(
                 { error: shutdownErrorMessage(error) },
@@ -936,6 +941,7 @@ type ShutdownStepResult =
   | { status: "timed-out" };
 
 interface ShutdownDeadline {
+  readonly deadlineAt: number;
   run(
     stage: string,
     operation: () => unknown,
@@ -960,6 +966,7 @@ function createShutdownDeadline(
   };
 
   return {
+    deadlineAt,
     async run(stage, operation, onDetachedError) {
       let operationPromise: Promise<unknown>;
       try {

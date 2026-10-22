@@ -52,6 +52,8 @@ export interface SocketCancelMessage {
  * 并继续 fork 下一个 Worker（串行启动）。
  */
 export interface WorkerReadyMessage {
+  /** appReady includes the prepared Jobs manifest; activation has a separate ACK. */
+  jobs?: import("../jobs/cluster-protocol.js").JobsManifest;
   type: "ready";
   /** Worker 进程 PID */
   pid: number;

@@ -1,10 +1,18 @@
-import { createSourceBindings } from "../source-bindings.js";
-import { type SyntaxNode, walkSourceSyntax } from "../source-syntax.js";
+import path from "node:path";
+import {
+  analyzeJobDeclaration,
+  inspectNamedJobDependencies,
+  type JobDeclaration,
+} from "./job-declaration.js";
+import { isCanonicalDependencyScope } from "./job-source.js";
+import { jobModuleCandidates, jobModuleReferences } from "./job-module-path.js";
+import type { SourceView } from "../../tooling/source-view/types.js";
+import { type SyntaxNode } from "../source-syntax.js";
 import {
   createStaticModuleFromText,
   type StaticExpression,
   type StaticModule,
-  type StaticModuleGraph,
+  StaticModuleGraph,
 } from "../../tooling/project-index/static-module-graph.js";
 import {
   readStaticExpression,
@@ -21,11 +29,14 @@ export const JOB_FIELDS = [
   "docs",
   "enabled",
   "cron",
-  "interval",
+  "leaseTtl",
   "timezone",
   "handler",
 ] as const;
 export interface StaticJobDefinition {
+  moduleShapeState: JobDeclaration["state"];
+  declarationCardinality: number;
+  moduleShapeReason?: string;
   exportName: string;
   line: number;
   definition: Record<string, unknown>;
@@ -41,6 +52,13 @@ export interface JobInspectionOptions {
 export interface StaticJobInspection {
   definitions: StaticJobDefinition[];
   warnings: string[];
+  moduleShape: Pick<
+    JobDeclaration,
+    "state" | "declarationCardinality" | "reason"
+  >;
+}
+export function createJobStaticGraph(view: SourceView): StaticModuleGraph {
+  return new StaticModuleGraph(view, jobModuleReferences);
 }
 
 /** No user module, factory or handler is executed to obtain static evidence. */
@@ -56,10 +74,99 @@ export function inspectJobSource(
   source: string,
   options: JobInspectionOptions = {},
 ): StaticJobInspection {
-  const module =
+  let module =
     options.graph && options.rootId
       ? options.graph.module(options.rootId, file)
       : createStaticModuleFromText(file, source);
+  const analyze = (input: StaticModule) =>
+    analyzeJobDeclaration(input.path, input.source, {
+      verifiedDependencyScope(specifier) {
+        const target = path.posix.normalize(
+          path.posix.join(path.posix.dirname(input.path), specifier),
+        );
+        if (!options.graph || !options.rootId) return undefined;
+        if (path.posix.basename(target) !== ".vext-dependencies.cjs")
+          return false;
+        try {
+          const binder = options.graph.module(options.rootId, target);
+          return isCanonicalDependencyScope(
+            path.resolve(path.dirname(target)),
+            binder.source,
+          );
+        } catch {
+          return undefined;
+        }
+      },
+    });
+  const checked = (input: StaticModule): JobDeclaration => {
+    const fact = analyze(input);
+    const named = inspectNamedJobDependencies(
+      input.path,
+      fact,
+      (importer, specifier) => {
+        if (!options.graph || !options.rootId) return;
+        for (const target of jobModuleCandidates(importer, specifier)) {
+          try {
+            return {
+              file: target,
+              fact: analyze(options.graph.module(options.rootId, target)),
+            };
+          } catch {
+            /* finite sealed view only */
+          }
+        }
+        return undefined;
+      },
+    );
+    return named.state === "known" || fact.state === "unsupported"
+      ? fact
+      : { ...fact, ...named };
+  };
+  let declaration = checked(module);
+  const seen = new Set<string>();
+  while (declaration.state === "known" && declaration.reexport) {
+    if (
+      !options.graph ||
+      !options.rootId ||
+      seen.has(module.path) ||
+      seen.size >= 64
+    ) {
+      declaration = {
+        ...declaration,
+        state: "unknown",
+        reason:
+          "default dependency graph is unavailable, circular or over budget",
+      };
+      break;
+    }
+    seen.add(module.path);
+    const candidates = jobModuleCandidates(
+      module.path,
+      declaration.reexport,
+    ).filter(
+      (candidate) =>
+        /\.[cm]?ts$/iu.test(module.path) || !/\.[cm]?ts$/iu.test(candidate),
+    );
+    let dependency: StaticModule | undefined;
+    for (const candidate of candidates) {
+      try {
+        dependency = options.graph.module(options.rootId, candidate);
+        break;
+      } catch {
+        /* bounded source view only */
+      }
+    }
+    if (!dependency) {
+      declaration = {
+        ...declaration,
+        state: "unknown",
+        reason: "default dependency is unavailable in the source view",
+      };
+      break;
+    }
+    module = dependency;
+    declaration = checked(module);
+  }
   const exports = new Map<string, SyntaxNode | null>();
   const warnings: string[] = [];
   for (const statement of module.program.body) {
@@ -76,22 +183,38 @@ export function inspectJobSource(
     }
     if (statement.type === "ExportDefaultDeclaration")
       exports.set("default", statement.declaration);
-    if (statement.type === "ExportAllDeclaration")
+    if (
+      statement.type === "ExportAllDeclaration" &&
+      statement.exportKind !== "type"
+    )
       warnings.push(
         `${file}: export * requires runtime verification; exported job identities are unknown.`,
       );
-    if (statement.type !== "ExportNamedDeclaration") continue;
+    if (
+      statement.type !== "ExportNamedDeclaration" ||
+      statement.exportKind === "type"
+    )
+      continue;
     if (statement.declaration?.type === "VariableDeclaration") {
       for (const binding of statement.declaration.declarations)
         if (binding.id.type === "Identifier" && binding.init)
           exports.set(binding.id.name, binding.init);
     }
     for (const specifier of statement.specifiers) {
-      if (specifier.type !== "ExportSpecifier") continue;
+      if (
+        specifier.type !== "ExportSpecifier" ||
+        specifier.exportKind === "type"
+      )
+        continue;
       const name = staticKey(specifier.exported);
       if (name) exports.set(name, statement.source ? null : specifier.local);
     }
   }
+  if (declaration.definition) exports.set("default", declaration.definition);
+  if (declaration.state !== "known")
+    warnings.push(
+      `${file}: Job module shape ${declaration.state}: ${declaration.reason}.`,
+    );
   const definitions: StaticJobDefinition[] = [];
   for (const [exportName, node] of exports) {
     try {
@@ -104,7 +227,8 @@ export function inspectJobSource(
         expression = options.graph.exported(options.rootId, file, exportName);
       } else {
         expression = { module, node, symbols: [] };
-        if (options.graph) expression = options.graph.resolve(expression);
+        if (node !== declaration.definition && options.graph)
+          expression = options.graph.resolve(expression);
         else expression = resolveLocal(expression);
       }
       const call = unwrapStaticExpression(expression.node);
@@ -120,7 +244,14 @@ export function inspectJobSource(
 
       if (
         call.type !== "CallExpression" ||
-        !isFactory(expression.module, call.callee)
+        !(
+          expression.module === module
+            ? declaration
+            : analyze(expression.module)
+        ).declarationCalls.some(
+          (candidate) =>
+            candidate.start === call.start && candidate.end === call.end,
+        )
       ) {
         warnings.push(
           `${file}#${exportName}: export is not a statically proven vextjs defineJob() value.`,
@@ -166,6 +297,13 @@ export function inspectJobSource(
           const key = staticKey(property.key);
           if (!key) continue;
           if (key === "handler") {
+            if (property.kind !== "init") {
+              unknown(
+                key,
+                "handler accessor value is unknown; it was not executed",
+              );
+              continue;
+            }
             const handler = unwrapStaticExpression(property.value);
             if (
               handler.type === "ArrowFunctionExpression" ||
@@ -213,6 +351,9 @@ export function inspectJobSource(
           `${file}#${exportName}: unknown static fields: ${unresolved.join(", ")}.`,
         );
       definitions.push({
+        moduleShapeState: declaration.state,
+        declarationCardinality: declaration.declarationCardinality,
+        moduleShapeReason: declaration.reason,
         exportName,
         definition,
         fieldStates,
@@ -230,7 +371,15 @@ export function inspectJobSource(
     warnings.push(
       `${file}: no statically proven defineJob() export; runtime rejects empty exports or must resolve a dynamic wrapper.`,
     );
-  return { definitions, warnings };
+  return {
+    definitions,
+    warnings,
+    moduleShape: {
+      state: declaration.state,
+      declarationCardinality: declaration.declarationCardinality,
+      reason: declaration.reason,
+    },
+  };
 }
 function resolveLocal(expression: StaticExpression): StaticExpression {
   const seen = new Set<string>();
@@ -254,101 +403,6 @@ function localValue(module: StaticModule, node: SyntaxNode): unknown {
     throw new Error(fact.reason ?? "value is not statically resolvable");
   return fact.value;
 }
-const factoryBindingCache = new WeakMap<
-  StaticModule,
-  ReturnType<typeof collectFactoryBindings>
->();
-const lexicalBindingCache = new WeakMap<
-  StaticModule,
-  ReturnType<typeof createSourceBindings>
->();
-function lexicalBindings(module: StaticModule) {
-  let bindings = lexicalBindingCache.get(module);
-  if (!bindings) {
-    bindings = createSourceBindings(module.program);
-    lexicalBindingCache.set(module, bindings);
-  }
-  return bindings;
-}
-function collectFactoryBindings(module: StaticModule) {
-  const factories = new Set<string>();
-  const requireFactories = new Set<string>();
-  const namespaces = new Set<string>();
-  for (const statement of module.program.body) {
-    if (
-      statement.type === "ImportDeclaration" &&
-      statement.source.value === "vextjs" &&
-      statement.importKind !== "type"
-    ) {
-      for (const specifier of statement.specifiers) {
-        if (
-          specifier.type === "ImportSpecifier" &&
-          specifier.importKind !== "type" &&
-          staticKey(specifier.imported) === "defineJob"
-        )
-          factories.add(specifier.local.name);
-        if (specifier.type === "ImportNamespaceSpecifier")
-          namespaces.add(specifier.local.name);
-      }
-    }
-    const declaration =
-      statement.type === "ExportNamedDeclaration"
-        ? statement.declaration
-        : statement;
-    if (
-      declaration?.type !== "VariableDeclaration" ||
-      declaration.kind !== "const"
-    )
-      continue;
-    for (const binding of declaration.declarations) {
-      if (!isVextRequire(binding.init, module)) continue;
-      if (binding.id.type === "Identifier") namespaces.add(binding.id.name);
-      if (binding.id.type === "ObjectPattern")
-        for (const property of binding.id.properties)
-          if (
-            property.type === "Property" &&
-            staticKey(property.key) === "defineJob" &&
-            property.value.type === "Identifier"
-          )
-            requireFactories.add(property.value.name);
-    }
-  }
-  const mutated = new Set<string>();
-  walkSourceSyntax(module.program, (node) => {
-    let target: SyntaxNode | undefined =
-      node.type === "AssignmentExpression"
-        ? node.left
-        : node.type === "UpdateExpression"
-          ? node.argument
-          : undefined;
-    while (target?.type === "MemberExpression") target = target.object;
-    if (target?.type === "Identifier") mutated.add(target.name);
-  });
-  return { factories, requireFactories, namespaces, mutated };
-}
-function isFactory(module: StaticModule, callee: SyntaxNode): boolean {
-  let bindings = factoryBindingCache.get(module);
-  if (!bindings) {
-    bindings = collectFactoryBindings(module);
-    factoryBindingCache.set(module, bindings);
-  }
-  const { factories, requireFactories, namespaces, mutated } = bindings;
-  if (callee.type === "Identifier")
-    return (
-      !mutated.has(callee.name) &&
-      (requireFactories.has(callee.name) ||
-        (factories.has(callee.name) && !module.invalid.has(callee.name)))
-    );
-  return (
-    callee.type === "MemberExpression" &&
-    !callee.computed &&
-    staticKey(callee.property) === "defineJob" &&
-    ((callee.object.type === "Identifier" &&
-      namespaces.has(callee.object.name) &&
-      !mutated.has(callee.object.name)) ||
-      isVextRequire(callee.object, module))
-  );
-}
 function commonJsExportName(node: SyntaxNode): string | undefined {
   if (
     node.type !== "MemberExpression" ||
@@ -370,20 +424,6 @@ function commonJsExportName(node: SyntaxNode): string | undefined {
   )
     return key;
   return undefined;
-}
-function isVextRequire(
-  node: SyntaxNode | null | undefined,
-  module: StaticModule,
-): boolean {
-  return (
-    node?.type === "CallExpression" &&
-    node.callee.type === "Identifier" &&
-    node.callee.name === "require" &&
-    !lexicalBindings(module).resolve(node.callee) &&
-    node.arguments.length === 1 &&
-    node.arguments[0]?.type === "Literal" &&
-    node.arguments[0].value === "vextjs"
-  );
 }
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);

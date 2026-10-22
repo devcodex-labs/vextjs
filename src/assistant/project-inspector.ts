@@ -616,8 +616,8 @@ function summarizeJobRedis(value: unknown) {
 function createJobDeploymentNotes(): string[] {
   return [
     "Scheduled jobs start automatically after application readiness; no separate scheduler or worker process is required.",
-    "Active jobs in built-in Cluster require config.jobs.redis at startup. Multiple hosts must share Redis. Namespace is automatic from package name/profile/runtime mode; matching replicas need no explicit value.",
-    "Redis coordinates each scheduled point and renews running leases; failures pause triggers without a local fallback. No retries, downtime catch-up or immediate startup execution are provided.",
+    "Jobs are Cron-only, one default SDK Job per selected file. Auto chooses Local, trusted built-in Master IPC without Redis, or Redis when configured. All built-in Cluster modes require handshake, matching manifests and activation ACKs. Independent hosts explicitly share Redis.",
+    "Per-job Redis leaseTtl overrides global TTL and defaults to 30000ms (safe integer >=1000). Failed, late or expired renewal permanently quarantines Worker admissions and initiates shutdown; reconnect cannot revive them. No retries, downtime catch-up or immediate startup execution are provided.",
     "MCP reads source and static configuration only; it never starts timers or executes handlers.",
   ];
 }

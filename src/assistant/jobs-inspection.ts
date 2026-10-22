@@ -1,16 +1,18 @@
 import path from "node:path";
 import type { SourceView } from "../tooling/source-view/types.js";
 import { ASSISTANT_SOURCE_ROOT } from "../tooling/project-index/analysis-source.js";
-import { StaticModuleGraph } from "../tooling/project-index/static-module-graph.js";
 import type { StaticConfigProjection } from "../tooling/project-index/config-projection.js";
-import { inspectJobSource } from "../lib/jobs/job-metadata.js";
+import {
+  inspectJobSource,
+  createJobStaticGraph,
+} from "../lib/jobs/job-metadata.js";
 import { inferJobName } from "../lib/jobs/job-name.js";
 import {
   isJobSourceFile,
   resolveJobsDirectory,
 } from "../lib/jobs/job-discovery.js";
 import { nextJobTime } from "../lib/jobs/schedule.js";
-import { defineJob } from "../lib/jobs/define-job.js";
+import { defineJob, validateJobLeaseTtl } from "../lib/jobs/define-job.js";
 import { validateJobsConfig } from "../lib/config-loader.js";
 import type { VextJobDefinitionInput } from "../lib/jobs/types.js";
 
@@ -89,7 +91,13 @@ export function inspectStaticJobs(
         file.path.startsWith(directory + "/") &&
         isJobSourceFile(path.posix.relative(directory, file.path), selection),
     );
-  const graph = files.length ? new StaticModuleGraph(view) : undefined;
+  const graph = files.length ? createJobStaticGraph(view) : undefined;
+  const moduleShapes: {
+    sourceFile: string;
+    state: string;
+    declarationCardinality: number;
+    reason?: string;
+  }[] = [];
   const jobs = files.flatMap((file) => {
     try {
       const inspection = inspectJobSource(
@@ -98,6 +106,13 @@ export function inspectStaticJobs(
         { graph, rootId: file.rootId },
       );
       warnings.push(...inspection.warnings);
+      moduleShapes.push({ sourceFile: file.path, ...inspection.moduleShape });
+      if (inspection.moduleShape.state === "unsupported")
+        error(
+          "VEXT_MCP_JOBS_DEFINITION_INVALID",
+          `${file.path}: ${inspection.moduleShape.reason}`,
+          file.path,
+        );
       return inspection.definitions.map((metadata) => {
         const inferredName = inferJobName(
           path.posix.relative(directory, file.path),
@@ -119,6 +134,9 @@ export function inspectStaticJobs(
           definitionFile: metadata.definitionFile,
           line: metadata.line,
           fieldStates: metadata.fieldStates,
+          moduleShapeState: metadata.moduleShapeState,
+          declarationCardinality: metadata.declarationCardinality,
+          moduleShapeReason: metadata.moduleShapeReason,
           staticState: metadata.staticState,
           reasons: metadata.reasons,
           definition: metadata.definition,
@@ -130,10 +148,34 @@ export function inspectStaticJobs(
             typeof metadata.definition.cron === "string"
               ? metadata.definition.cron
               : null,
-          interval:
-            typeof metadata.definition.interval === "number"
-              ? metadata.definition.interval
+          leaseTtl:
+            typeof metadata.definition.leaseTtl === "number"
+              ? metadata.definition.leaseTtl
               : null,
+          effectiveLeaseTtl:
+            metadata.fieldStates.leaseTtl === "unknown" ||
+            fieldStates.redis === "unknown"
+              ? null
+              : value.redis && typeof value.redis === "object"
+                ? (metadata.definition.leaseTtl ??
+                  (value.redis as { leaseTtl?: number }).leaseTtl ??
+                  30000)
+                : null,
+          effectiveTimezone:
+            metadata.fieldStates.timezone === "unknown" ||
+            fieldStates.timezone === "unknown"
+              ? null
+              : (metadata.definition.timezone ?? value.timezone ?? "UTC"),
+          coordinationMode:
+            fieldStates.redis === "unknown"
+              ? "unknown"
+              : value.redis
+                ? "redis"
+                : "auto",
+          runtimeVerified: false as const,
+          inputScope: /\.[cm]?ts$/u.test(file.path)
+            ? "source-input"
+            : "emitted-input",
           timezone:
             typeof metadata.definition.timezone === "string"
               ? metadata.definition.timezone
@@ -173,9 +215,18 @@ export function inspectStaticJobs(
           ([key]) => job.fieldStates[key] === "known",
         ),
       );
-      const scheduleKnown =
-        job.fieldStates.cron !== "unknown" &&
-        job.fieldStates.interval !== "unknown";
+      const scheduleKnown = job.fieldStates.cron !== "unknown";
+      if (job.fieldStates.leaseTtl === "known") {
+        try {
+          validateJobLeaseTtl(job.definition.leaseTtl);
+        } catch (cause) {
+          error(
+            "VEXT_MCP_JOBS_DEFINITION_INVALID",
+            `${job.sourceFile}: ${String(cause)}`,
+            job.sourceFile,
+          );
+        }
+      }
       if (scheduleKnown) {
         try {
           const definition = defineJob({
@@ -235,10 +286,9 @@ export function inspectStaticJobs(
       (fieldStates.redis === "absent" ||
         (fieldStates.redis === "known" && value.redis === undefined))
     ) {
-      const message =
-        "Active scheduled jobs in built-in Cluster require config.jobs.redis; the selected configuration omits it.";
-      error("VEXT_MCP_JOBS_CLUSTER_REDIS_REQUIRED", message);
-      prerequisites.push(message);
+      prerequisites.push(
+        "Built-in Cluster without Redis expects Master IPC coordination and the Jobs activation barrier; the actual trusted handshake is not statically verified.",
+      );
     } else if (cluster.state === "unknown" || cluster.state === "invalid")
       warnings.push(
         `cluster.enabled is ${cluster.state}; Redis prerequisites are not fully known.`,
@@ -285,6 +335,7 @@ export function inspectStaticJobs(
           : "unknown";
   return {
     jobs,
+    moduleShapes,
     fileCount: files.length,
     sourceState: warnings.length ? "partial" : "complete",
     warnings,

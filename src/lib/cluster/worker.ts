@@ -20,6 +20,7 @@ import type {
   MasterToWorkerMessage,
 } from "./ipc-types.js";
 import { checkClusterCompatibility } from "./cluster-checks.js";
+import { installBuiltinJobsWorker } from "../jobs/cluster-worker.js";
 
 /**
  * worker.ts — Cluster Worker 进程入口
@@ -168,6 +169,7 @@ export async function workerMain(
     internals: AppInternals;
   }>,
 ): Promise<void> {
+  const jobsWorker = installBuiltinJobsWorker();
   const workerId = process.env.VEXT_WORKER_ID || "?";
   const workerCount = parseInt(process.env.VEXT_WORKER_COUNT || "1", 10);
   const memoryThreshold = parseInt(
@@ -263,6 +265,7 @@ export async function workerMain(
       type: "ready",
       pid: process.pid,
       workerId: config.workerId,
+      jobs: jobsWorker.manifest,
       server: {
         host: result.serverHandle.host,
         port: result.serverHandle.port,

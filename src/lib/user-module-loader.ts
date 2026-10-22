@@ -21,7 +21,11 @@ const moduleResolverUrl = pathToFileURL(
 export async function importUserModule(
   filePath: string,
   rootDir: string,
-  options: { cache?: boolean; readRoot?: string } = {},
+  options: {
+    cache?: boolean;
+    readRoot?: string;
+    onCompiled?: (file: string, source: string) => void;
+  } = {},
 ): Promise<Record<string, unknown>> {
   const root = realpathSync.native(path.resolve(rootDir));
   const filename = realpathSync.native(path.resolve(filePath));
@@ -48,7 +52,7 @@ export async function importUserModule(
   const key = `${pathToFileURL(writeRoot).href}\n${pathToFileURL(filename).href}`;
   const load = () =>
     withProjectOwner(writeRoot, "build", [], () =>
-      loadUserModule(filename, writeRoot),
+      loadUserModule(filename, writeRoot, options.onCompiled),
     );
   if (options.cache === false) return load();
   const cached = userModuleCache.get(key);
@@ -63,6 +67,7 @@ export async function importUserModule(
 async function loadUserModule(
   filePath: string,
   rootDir: string,
+  onCompiled?: (file: string, source: string) => void,
 ): Promise<Record<string, unknown>> {
   const { build } = await import("esbuild");
   const externalSource = !isPathInside(rootDir, filePath);
@@ -90,6 +95,7 @@ async function loadUserModule(
       `[vextjs] TypeScript module compilation produced no output: ${filePath}`,
     );
   }
+  onCompiled?.(filePath, output.text);
 
   // 导出可能含函数、class 和父进程状态，必须在当前进程按原生 ESM 求值。
   return withTemporaryArtifact(

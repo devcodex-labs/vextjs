@@ -190,7 +190,7 @@ describe("versioned dependency knowledge consumers", () => {
       .matches.map((item) => `${item.summary}\n${item.body}`)
       .join("\n");
     expect(text).toContain("启动只注册未来触发点");
-    expect(text).toContain("上次未完成则跳过本次");
+    expect(text).toContain("上次未完成则消耗并跳过本次");
     expect(text).toContain("触发标记在运行租约释放后仍保留");
     expect(text).toContain("Lua 原子脚本");
   });

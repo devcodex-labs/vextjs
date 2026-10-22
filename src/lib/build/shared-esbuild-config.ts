@@ -204,11 +204,19 @@ export function createBackendEsbuildConfig(
   entryPoints: readonly string[],
   tsconfigPath?: string,
   dependencyScope?: string,
+  readValidatedSource?: (file: string) => string | undefined,
 ): Partial<BuildOptions> {
   return {
     ...createBaseEsbuildConfig(tsconfigPath),
     bundle: true,
     packages: "external",
-    plugins: [createBackendModulePlugin(srcDir, entryPoints, dependencyScope)],
+    plugins: [
+      createBackendModulePlugin(
+        srcDir,
+        entryPoints,
+        dependencyScope,
+        readValidatedSource,
+      ),
+    ],
   };
 }

@@ -28,6 +28,11 @@ import {
 } from "./shared-esbuild-config.js";
 import type { FrontendLayoutInput } from "../project/layout.js";
 import {
+  collectJobSourceSnapshot,
+  type JobSourceSnapshot,
+} from "../jobs/job-source.js";
+import type { VextJobsConfig } from "../jobs/types.js";
+import {
   formatLegacyProjectPreloadWarning,
   PROJECT_PRELOAD_FILE_PATTERN,
   PROJECT_PRELOAD_OUTPUT_DIR,
@@ -79,6 +84,9 @@ import {
  * BuildCompiler 构造选项
  */
 export interface BuildCompilerOptions {
+  /** Resolved by the CLI's existing single config evaluation. */
+  jobs?: VextJobsConfig;
+  jobSources?: JobSourceSnapshot;
   /** 已求值的前端目录配置，用于排除浏览器源；编译器不执行配置 provider。 */
   frontend?: FrontendLayoutInput;
   /** 项目根目录（绝对路径） */
@@ -160,8 +168,10 @@ const BUILD_EXTRA_IGNORE = [
 // ── BuildCompiler 类 ────────────────────────────────────────
 
 export class BuildCompiler {
-  private readonly options: Required<Omit<BuildCompilerOptions, "frontend">> &
-    Pick<BuildCompilerOptions, "frontend">;
+  private readonly options: Required<
+    Omit<BuildCompilerOptions, "frontend" | "jobs" | "jobSources">
+  > &
+    Pick<BuildCompilerOptions, "frontend" | "jobs" | "jobSources">;
 
   constructor(options: BuildCompilerOptions) {
     this.options = {
@@ -217,6 +227,14 @@ export class BuildCompiler {
   ): Promise<BuildResult> {
     const { srcDir, outDir, sourcemap, minify } = this.options;
     const startTime = Date.now();
+    const jobSources =
+      this.options.jobSources ??
+      (await collectJobSourceSnapshot(
+        this.options.rootDir,
+        srcDir,
+        this.options.jobs,
+      ));
+    await jobSources.verify();
 
     // ── 1. 扫描源文件 ──────────────────────────────────────
     const entryPoints = await this.scanEntryPoints();
@@ -260,6 +278,7 @@ export class BuildCompiler {
       needsBackendDependencyScope(this.options.rootDir, outDir)
         ? path.join(outDir, BACKEND_DEPENDENCY_SCOPE)
         : undefined,
+      jobSources.read,
     );
 
     // ── 3. 执行编译 ────────────────────────────────────────
@@ -377,6 +396,7 @@ export class BuildCompiler {
         "[vextjs] Compiler inputs changed during build; retry before using these outputs.",
       );
     // 预加载的完整打包输入闭包尚未接入时，不声明该构建的 freshness。
+    await jobSources.verify();
     await transaction.commit(outputs, {
       inputDigest:
         before.complete && preloadBuildCount === 0 ? before.digest : undefined,

@@ -353,6 +353,14 @@ const TEST_DEFAULTS: Partial<VextConfig> = {
 export async function createTestApp(
   options: CreateTestAppOptions = {},
 ): Promise<TestApp> {
+  return buildTestApp(options, false);
+}
+
+// Private construction seam: Jobs must be attached before necessary ready hooks run.
+async function buildTestApp(
+  options: CreateTestAppOptions,
+  deferReady: boolean,
+): Promise<TestApp> {
   const {
     config: userConfig = {},
     plugins: shouldLoadPlugins = false,
@@ -602,7 +610,7 @@ export async function createTestApp(
     // ── 8. onReady 生命周期 ──────────────────────────────
     // Match bootstrap: plugins/services that register app.onReady must run
     // before the first test request (B08 env lifecycle / ready hooks).
-    await internals.runReady();
+    if (!deferReady) await internals.runReady();
 
     // ── 9. 构造 TestRequest ──────────────────────────────
     //
@@ -636,7 +644,8 @@ export async function createTestApp(
 export async function createTestJobScheduler(
   options: CreateTestJobSchedulerOptions,
 ): Promise<TestJobScheduler> {
-  const test = await createTestApp({ ...options, routes: false });
+  let clock = new Date(options.now ?? new Date());
+  const test = await buildTestApp({ ...options, routes: false }, true);
   try {
     const jobs: VextLoadedJob[] = (
       Array.isArray(options.jobs)
@@ -655,10 +664,25 @@ export async function createTestJobScheduler(
     const scheduler = await createScheduledJobs(test.app, jobs, {
       rootDir: options.rootDir ?? process.cwd(),
       timers: false,
+      now: () => new Date(clock),
+      onFailure: () => {
+        void testInternals
+          .get(test.app)!
+          .shutdown(undefined, { skipExit: true });
+      },
     });
     testInternals.get(test.app)!.setScheduledJobs(scheduler);
-    scheduler.start(options.now ?? new Date());
-    return { app: test.app, tick: scheduler.tick, close: test.close };
+    await testInternals.get(test.app)!.runReady();
+    return {
+      app: test.app,
+      async tick(now) {
+        if (!Number.isFinite(now.getTime()))
+          throw new Error("[vextjs] Job tick requires a valid Date.");
+        clock = new Date(now);
+        await scheduler.tick(new Date(clock));
+      },
+      close: test.close,
+    };
   } catch (error) {
     await test.close();
     throw error;

@@ -772,7 +772,7 @@ async function createFixtureProject(): Promise<string> {
   return dir;
 }
 
-it("exposes C34 Jobs prerequisites and production errors through real MCP calls", async () => {
+it("exposes C34 expected Master IPC prerequisites through real MCP calls", async () => {
   rootDir = await createFixtureProject();
   await writeFile(
     join(rootDir, "src/config/default.ts"),
@@ -798,12 +798,12 @@ it("exposes C34 Jobs prerequisites and production errors through real MCP calls"
       status: "ok",
       data: {
         frameworkSupport: "supported",
-        projectState: "partial",
+        projectState: "enabled",
         runtimeVerified: false,
       },
     });
     expect(JSON.stringify(capability.structuredContent)).toContain(
-      "require config.jobs.redis",
+      "Master IPC",
     );
     const check = await client.callTool({
       name: "vext_project_check",
@@ -811,9 +811,9 @@ it("exposes C34 Jobs prerequisites and production errors through real MCP calls"
     });
     expect(check.structuredContent).toMatchObject({
       status: "ok",
-      data: { staticVerdict: "invalid", runtimeVerified: false },
+      data: { staticVerdict: "valid", runtimeVerified: false },
     });
-    expect(JSON.stringify(check.structuredContent)).toContain(
+    expect(JSON.stringify(check.structuredContent)).not.toContain(
       "VEXT_MCP_JOBS_CLUSTER_REDIS_REQUIRED",
     );
   } finally {

@@ -22,7 +22,7 @@ export function defineJob(
     "docs",
     "enabled",
     "cron",
-    "interval",
+    "leaseTtl",
     "timezone",
     "handler",
   ]);
@@ -50,19 +50,10 @@ export function defineJob(
       definition.tags.some((tag) => typeof tag !== "string"))
   )
     fail("tags must be an array of strings");
-  if ((definition.cron === undefined) === (definition.interval === undefined))
-    fail("requires exactly one of cron or interval");
-  if (
-    definition.interval !== undefined &&
-    (!Number.isSafeInteger(definition.interval) || definition.interval < 1)
-  )
-    fail("interval must be a positive safe integer in milliseconds");
-  if (definition.interval !== undefined && definition.timezone !== undefined)
-    fail("timezone is only supported with cron");
+  validateJobLeaseTtl(definition.leaseTtl, "defineJob() leaseTtl");
   validateJobTimezone(definition.timezone);
-  if (definition.cron !== undefined) {
-    if (typeof definition.cron !== "string" || !definition.cron.trim())
-      fail("cron must be a non-empty string");
+  {
+    validateJobCron(definition.cron);
     try {
       new Cron(definition.cron, {
         paused: true,
@@ -128,4 +119,35 @@ export function validateJobTimezone(
 
 function fail(message: string): never {
   throw new VextJobDefinitionError(`[vextjs] defineJob() ${message}.`);
+}
+
+/** Reject Croner's date/ISO overload before invoking its calendar parser. */
+export function validateJobCron(cron: unknown): asserts cron is string {
+  if (typeof cron !== "string" || !cron.trim())
+    fail("cron must be a non-empty string");
+  const expression = cron.trim();
+  const macros = new Set([
+    "@yearly",
+    "@annually",
+    "@monthly",
+    "@weekly",
+    "@daily",
+    "@midnight",
+    "@hourly",
+  ]);
+  const fields = expression.split(/\s+/u).length;
+  if (!macros.has(expression) && (fields < 5 || fields > 7))
+    fail(
+      "cron must be a five, six or seven field Cron expression or a supported Cron macro",
+    );
+}
+
+export function validateJobLeaseTtl(value: unknown, field = "leaseTtl"): void {
+  if (
+    value !== undefined &&
+    (!Number.isSafeInteger(value) || (value as number) < 1000)
+  )
+    throw new VextJobDefinitionError(
+      `[vextjs] ${field} must be a safe integer >= 1000 ms.`,
+    );
 }

@@ -444,7 +444,13 @@ export async function bootstrap(
     );
 
     internals!.setScheduledJobs(
-      await prepareScheduledJobs(app, rootDir, srcDir),
+      await prepareScheduledJobs(app, rootDir, srcDir, (error) => {
+        app!.logger.error(
+          { error: error.message },
+          "[vextjs] Jobs coordination lost; shutting down",
+        );
+        void internals!.shutdown(serverHandle ?? undefined);
+      }),
     );
 
     // ── 步骤 ⑤: router-loader ────────────────────────────
@@ -1334,11 +1340,12 @@ async function startClusterMaster(rootDir: string): Promise<void> {
       restartCount: worker.restartCount,
     }));
 
+  let jobsActive = false;
   master.on("worker-ready", (event) => {
     void patchRuntimeSnapshotSafe(rootDir, {
       runtimeIdentity,
       summary: {
-        state: "ready",
+        state: jobsActive ? "ready" : "starting",
         host: master.getListenAddress()?.host ?? config.host ?? "0.0.0.0",
         port: master.getListenAddress()?.port ?? config.port,
         cluster: true,
@@ -1374,7 +1381,11 @@ async function startClusterMaster(rootDir: string): Promise<void> {
       void patchRuntimeSnapshotSafe(rootDir, {
         runtimeIdentity,
         summary: {
-          state: master.getReadyWorkerCount() > 0 ? "ready" : "degraded",
+          state: jobsActive
+            ? master.getReadyWorkerCount() > 0
+              ? "ready"
+              : "degraded"
+            : "starting",
           workers: master.getReadyWorkerCount(),
           totalWorkers: master.getTargetWorkerCount(),
           connections: master.getConnectionSnapshot(),
@@ -1388,26 +1399,51 @@ async function startClusterMaster(rootDir: string): Promise<void> {
     void patchRuntimeSnapshotSafe(rootDir, {
       runtimeIdentity,
       summary: {
-        state: "ready",
+        state: jobsActive
+          ? master.getReadyWorkerCount() > 0
+            ? "ready"
+            : "degraded"
+          : "starting",
         workers: master.getReadyWorkerCount(),
         totalWorkers: master.getTargetWorkerCount(),
         connections: master.getConnectionSnapshot(),
       },
       workers: snapshotWorkers(),
-      reload: { status: "success", ...event },
+      reload: {
+        status: event.replaced === event.total ? "success" : "failed",
+        ...event,
+      },
       event: { type: "reload-complete", ...event },
     });
   });
 
-  await startupProfiler.time("start.listen", () => master.start(), {
-    phase: "listen",
-    detail: { cluster: true, workers: workerCount },
-  });
+  try {
+    await startupProfiler.time("start.listen", () => master.start(), {
+      phase: "listen",
+      detail: { cluster: true, workers: workerCount },
+    });
+  } catch (error) {
+    await patchRuntimeSnapshotSafe(rootDir, {
+      runtimeIdentity,
+      summary: {
+        state: "failed",
+        cluster: true,
+        workers: master.getReadyWorkerCount(),
+      },
+      workers: snapshotWorkers(),
+      event: {
+        type: "startup-failed",
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
+    throw error;
+  }
 
   // Terminal capacity loss during startup already owns fatal shutdown; do not
   // overwrite its failed snapshot or tell the CLI parent this instance is ready.
   if (!master.isRunning()) return;
 
+  jobsActive = true;
   const readyWorkers = master.getReadyWorkerCount();
   await patchRuntimeSnapshotSafe(rootDir, {
     runtimeIdentity,

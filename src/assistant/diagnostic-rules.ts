@@ -26,11 +26,6 @@ export const ASSISTANT_DIAGNOSTIC_RULES: Readonly<
   ...PROJECT_DIAGNOSTIC_RULES,
   VEXT_MCP_JOBS_CONFIG_INVALID: rule("jobs", "standard", "deterministic"),
   VEXT_MCP_JOBS_DEFINITION_INVALID: rule("jobs", "standard", "deterministic"),
-  VEXT_MCP_JOBS_CLUSTER_REDIS_REQUIRED: rule(
-    "jobs",
-    "standard",
-    "deterministic",
-  ),
   VEXT_MCP_JOBS_SOURCE_ONLY_GLOB: rule("jobs", "standard", "review"),
   VEXT_MCP_JOBS_EVIDENCE_INCOMPLETE: {
     ...rule("jobs", "standard", "review"),

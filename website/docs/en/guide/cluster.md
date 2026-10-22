@@ -530,7 +530,7 @@ services:
 
 ## Jobs and Cluster
 
-HTTP Cluster Workers register scheduled timers after readiness and coordinate through `config.jobs.redis`. Active jobs without Redis fail at startup; empty directories or entirely disabled jobs do not require Redis. Namespace is generated automatically from package name, profile and runtime mode; matching replicas need no manual value. All replicas share the same Redis target and schedule definition. Each point is admitted once and same-job overlap is skipped; business side effects still require idempotency. See [Jobs](/guide/jobs).
+Jobs is Cron-only, with one default SDK Job per selected file. Trusted built-in Cluster uses Master IPC without Redis and Redis when jobs.redis is configured. Both modes require the actual Master handshake, appReady, matching effective manifests and activation ACKs; HTTP ready is separate from JobsActive. Rolling replacement verifies the candidate, obtains the old generation's closed-admission receipt or actual exit, then commits its slot and activates the replacement. Old committed ownership remains until settlement or actual exit; drain cannot force-stop handlers. Independent processes/containers/hosts explicitly share Redis. Namespace comes from package/profile/mode. Per-job leaseTtl overrides the global TTL; LeaseLost permanently quarantines all admissions in that Worker, and reconnect cannot revive them. Business side effects still need idempotency. See [Jobs](/guide/jobs).
 
 ## FAQ
 

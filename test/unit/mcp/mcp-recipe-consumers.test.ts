@@ -73,7 +73,7 @@ beforeAll(async () => {
           : {}),
         ...(recipe.name === "job-handler"
           ? {
-              interval: 1000,
+              cron: "* * * * * *",
             }
           : {}),
       };
@@ -142,7 +142,7 @@ beforeAll(async () => {
         name: "scheduled",
         options: {
           language,
-          interval: 1000,
+          cron: "* * * * * *",
           handler:
             "ctx.signal.throwIfAborted(); return ctx.scheduledAt.toISOString();",
         },
@@ -304,7 +304,7 @@ export default defineRoutes(app => {
       const definition = (await evaluate(job.content)) as ReturnType<
         typeof defineJob
       >;
-      expect(definition.interval).toBe(1000);
+      expect(definition.cron).toBe("* * * * * *");
       expect(Object.isFrozen(definition)).toBe(true);
     },
   );

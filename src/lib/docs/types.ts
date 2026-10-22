@@ -144,7 +144,14 @@ export interface VextJobDetails {
   schedulingEnabled?: boolean;
   enabled?: boolean;
   cron?: string;
-  interval?: number;
+  leaseTtl?: number;
+  effectiveLeaseTtl?: number;
+  coordinationMode?: "auto" | "redis";
+  moduleShapeState?: "known" | "unsupported" | "unknown";
+  declarationCardinality?: number;
+  moduleShapeReason?: string;
+  runtimeVerified?: false;
+  inputScope?: "source-input" | "emitted-input";
   timezone?: string;
 }
 

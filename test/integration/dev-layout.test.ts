@@ -502,7 +502,7 @@ describe("built dev worker with dynamic directory configuration", () => {
       await write("src/utils/job-value.js", `export const value = "v1";`);
       await write(
         "src/tasks/heartbeat.js",
-        `import { defineJob } from "vextjs"; import { value } from "../utils/job-value.js"; export default defineJob({ interval: 100, handler() { process.env.VEXT_SCHEDULED_PROBE = value; } });`,
+        `import { defineJob } from "vextjs"; import { value } from "../utils/job-value.js"; export default defineJob({ cron: "* * * * * *", handler() { process.env.VEXT_SCHEDULED_PROBE = value; } });`,
       );
       const first = await start();
       await waitForText(`http://127.0.0.1:${port}/job-value`, "v1");

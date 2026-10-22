@@ -254,7 +254,7 @@ export const VEXT_MCP_CAPABILITIES: VextMcpCatalogItem[] = [
   capability(
     "C34",
     "Job",
-    "静态识别随应用启动的 cron/interval 定时任务、Redis 触发去重与运行租约、测试 helper 和文档入口；不提供队列、重试或停机补跑。",
+    "静态识别一文件一任务的有限 Cron 声明、自动 Local/内置 Cluster Master IPC/Redis 协调、单任务 leaseTtl、测试 helper 和文档入口；静态结果不证明实际握手、激活或运行；不提供队列、重试或停机补跑。",
   ),
 ];
 

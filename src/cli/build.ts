@@ -2,6 +2,7 @@ import path from "node:path";
 import { withProjectOwner } from "../lib/project/owner.js";
 import { detectProject } from "./utils/detect-project.js";
 import { BuildCompiler } from "../lib/build/build-compiler.js";
+import { collectJobSourceSnapshot } from "../lib/jobs/job-source.js";
 import { loadConfig } from "../lib/config-loader.js";
 import { detectProjectLanguage } from "../lib/build/project-language.js";
 import {
@@ -178,11 +179,18 @@ async function executeBuild(
   );
 
   try {
+    const jobSources = await collectJobSourceSnapshot(
+      project.rootDir,
+      project.srcDir,
+      config.jobs,
+    );
     const frontendBuild = await executeBuildStages(
       project,
       { ...options, configProfile: resolvedConfigProfile.profile },
       config,
+      jobSources,
     );
+    await jobSources.verify();
     await completeBuild(
       project.rootDir,
       buildIdentity,
@@ -216,6 +224,7 @@ async function executeBuildStages(
   project: ReturnType<typeof detectProject>,
   options: BuildCommandOptions,
   config: Awaited<ReturnType<typeof loadConfig>>,
+  jobSources: Awaited<ReturnType<typeof collectJobSourceSnapshot>>,
 ): Promise<BuildFrontendClientResult | undefined> {
   const outDir = path.resolve(project.rootDir, options.outdir);
   const frontend =
@@ -279,6 +288,8 @@ async function executeBuildStages(
     sourcemap: options.sourcemap,
     minify: options.minify,
     frontend,
+    jobs: config.jobs,
+    jobSources,
   });
 
   try {

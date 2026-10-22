@@ -639,7 +639,13 @@ async function devBootstrapOwned(
     );
 
     internals!.setScheduledJobs(
-      await prepareScheduledJobs(app, projectRoot, outDir),
+      await prepareScheduledJobs(app, projectRoot, outDir, (error) => {
+        app.logger.error(
+          { error: error.message },
+          "[vext dev] Jobs coordination lost; shutting down",
+        );
+        exitAfterShutdown();
+      }),
     );
 
     // ── 步骤 7: 加载路由 ─────────────────────────────────
@@ -1211,8 +1217,7 @@ async function devBootstrapOwned(
       await Promise.allSettled([...activeReloads]);
       const failures: unknown[] = [];
       for (const close of [
-        () => serverHandle.close(),
-        () => internals!.shutdown(undefined, { skipExit: true }),
+        () => internals!.shutdown(serverHandle, { skipExit: true }),
         () => compiler!.dispose(),
         () => frontendDevEvents.close(),
       ]) {

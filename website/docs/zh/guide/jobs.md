@@ -2,7 +2,7 @@
 
 Jobs 用于随应用启动的定时工作，例如清理过期数据、刷新统计、定期同步业务数据。把业务放在 Service，Job 负责按计划调用；它复用已经就绪的应用、插件和 `app.services`。
 
-每个任务选择 **cron 或固定间隔**。无需单独启动调度器或 Worker；启动后只等待未来触发点，不提供任务队列、自动重试、停机补跑或启动立即执行。完整字段参考见 [Jobs API](/zh/api/jobs)，行为规则见[定时任务契约](/zh/specification/jobs)。
+每个任务显式提供 **Cron**，一个选中文件一个默认 SDK Job。无需单独启动调度器或 Worker；应用就绪及协调屏障通过后只等待未来触发点，不提供任务队列、自动重试、停机补跑或启动立即执行。完整字段参考见 [Jobs API](/zh/api/jobs)，行为规则见[定时任务契约](/zh/specification/jobs)。
 
 ## 创建第一个任务
 
@@ -13,7 +13,7 @@ import { defineJob } from "vextjs";
 
 export default defineJob({
   name: "heartbeat",
-  interval: 60000,
+  cron: "* * * * *",
   async handler({ name, scheduledAt, signal, logger }) {
     signal.throwIfAborted();
     logger.info({ name, scheduledAt }, "heartbeat");
@@ -44,30 +44,59 @@ src/jobs/
 
 默认扫描 `.ts/.js/.mjs/.cjs/.mts/.cts`，忽略下划线开头的**文件名**、声明文件及 `.test/.spec` 文件；默认不扫描 `.tsx/.jsx`。名称按相对任务目录的文件路径去扩展名、去末尾 `/index`、把 `/` 转为 `.`；根 `index.ts` 对应 `index`。它不会像 Service 那样把 kebab-case 转为 camelCase。
 
-可以在一个文件导出多个任务：
+每个选中文件仅导出一个默认任务；普通 helper、类型和常量可以共存：
 
 ```typescript
 // src/jobs/billing/index.ts
 import { defineJob } from "vextjs";
 
-export default defineJob({ interval: 60000, handler() {} });
-export const daily = defineJob({ cron: "0 9 * * *", handler() {} });
+export default defineJob({ cron: "* * * * *", handler() {} });
+export function helper(value: number) {
+  return value + 1;
+}
 ```
 
-以上名称分别是 `billing`、`billing.daily`。`name` 覆盖推导名称，允许 ASCII 字母、数字与 `_ . : -`，必须非空且全局唯一；关闭的定义也参与名称冲突检查。建议为需要 Redis 协调的业务显式设置稳定名称，避免移动文件改变身份。
+以上名称为 `billing`。`name` 覆盖推导名称，允许 ASCII 字母、数字与 `_ . : -`，必须非空且全局唯一；关闭的定义也参与冲突检查。为需要 Redis 协调的业务设置稳定名称，可避免移动文件改变身份。其他任务使用独立文件。
 
 JavaScript/ESM 使用相同导出方式；原生 CommonJS 可写成：
 
 ```javascript
 // src/jobs/cleanup.cjs
 const { defineJob } = require("vextjs");
-module.exports = defineJob({ interval: 60000, handler() {} });
-// 多任务也可使用 exports.daily = defineJob(...)
+module.exports = defineJob({ cron: "* * * * *", handler() {} });
+// 普通本地 helper 可以共存；exports.daily = defineJob(...) 会被拒绝。
 ```
 
-相对模块的默认或命名转导出可被运行时加载；静态 Docs/MCP 可以解析同一声明源码根内的安全 ESM 转导出，无法解析的包装函数、`export *`、动态 CommonJS 转导出或越界依赖会标记证据不完整。不要把“静态未解析”解释成“没有可运行任务”。
+允许有限相对默认转导出，例如 `export { default } from "../definitions/report.js"`；入口壳和最终定义源均须符合声明规则。缺图、循环、越界或超预算显示 unknown，真实启动失败关闭。用户 getter/Proxy、动态导出和 `export *` 不支持；不能只凭 `__esModule` 标记获得编译投影豁免。
 
-每个被选中的文件必须至少导出一个 `defineJob()`；普通对象或只有工具函数的文件会导致启动错误。把辅助模块放在 Jobs 目录外，或使用 `_helpers.ts` 等被忽略的文件名。`enabled: false` 只关闭该任务的调度，模块仍导入、定义仍校验；顶层不要发起业务调用或创建独立定时器。全局 `jobs.enabled: false` 才跳过整个任务目录的发现。
+每个被选中的文件恰有一个默认 `defineJob()`；普通对象、named-only、数组及不透明默认工厂拒绝启动。把纯辅助模块放在 Jobs 目录外或用 `_helpers.ts`。`enabled: false` 仍校验字段、TTL、声明基数和重名，只免除调度与未来点要求。全局 `jobs.enabled: false` 跳过发现。顶层不要发起业务调用或自建 Timer，框架不是任意 JavaScript 副作用沙箱。
+
+### 允许与拒绝的声明样例
+
+```typescript
+// 允许：SDK改名绑定、不可变Job值别名、动态字段。
+import { defineJob as task } from "vextjs";
+const report = task({ cron: readCron(), handler() {} });
+const alias = report;
+export default alias;
+```
+
+`import * as sdk from "vextjs"; export default sdk.defineJob(...)` 也允许。动态字段在 Docs/MCP 中保持 unknown，由真实启动求值校验。
+
+```typescript
+// 各行分别是不允许的默认/附加形式：
+export default makeJob();
+export default flag ? defineJob(a) : defineJob(b);
+const job = defineJob(a);
+export { job };
+export default job;
+export default defineJob(a);
+function unused() {
+  return defineJob(b);
+}
+```
+
+未调用函数内另行 `require("vextjs")` 的第二 SDK 声明同样计数。用户同对象 named alias（含 `__esModule`、`"module.exports"`）也拒绝；原生 CJS 合成字段和完整编译器投影只在格式与绑定可证明时处理。框架构建在优化前检查原始输入，不能先 tree-shake 掉第二处声明；无 src 部署只证明当前 emitted-input，不反推不可得的历史源文件。
 
 ### 自定义目录与过滤
 
@@ -88,7 +117,7 @@ export default {
 
 **过滤器匹配实际文件，不随编译自动转换。** `include: ["**/*.ts"]` 能发现源码，却会漏掉构建后的 `task.js`。使用 `**/*.{ts,js}` 等包含实际输出扩展的规则，或保留默认值；MCP 在生产目标看到明显的源码扩展过滤时会提示，但仍需检查构建输出。
 
-## cron、interval 与时区
+## cron 与时区
 
 ### cron 表达式
 
@@ -115,17 +144,11 @@ cron 由 Croner 解析；完整扩展语法以所安装 Croner 版本为准。�
 
 夏令时会产生不存在或重复的本地时间，由 Croner 计算。当前依赖下，在 `America/New_York` 为 `30 1 * * *` 从 `2026-11-01T05:29:59Z` 计算得到 `05:30Z`，再从该点计算得到次日 `06:30Z`，不是当日重复的第二次 01:30。春季缺失时间也受计算起点影响：`30 2 * * *` 从 `2026-03-07T08:00Z` 得到次日 `07:30Z`（当地 03:30），而从 `2026-03-08T07:00Z` 计算则得到次日 `06:30Z`。需要稳定绝对时间时选 UTC；涉及本地时间的业务应为所用地区和边界日期验证计划点，不能假定每个自然日都恰好一次。
 
-### 固定间隔
+### 计划类别与未来点
 
-`interval` 单位为毫秒，必须是正安全整数；不能同时提供 `cron`，也不能提供任务级 `timezone`。下一触发点公式是：
+只接受五、六、七字段 Cron，或 `@yearly/@annually/@monthly/@weekly/@daily/@midnight/@hourly`。拒绝 interval、Date 和 ISO 日期字符串。七字段可使用固定年份；启用任务在准备与实际激活时都要有严格未来点，最后一个计划点执行后自然停止。关闭的任务仍须语法合法。
 
-```text
-(Math.floor(currentTimeMs / interval) + 1) * interval
-```
-
-例如 `interval: 60000`，应用在 12:00:20 就绪，则等待 12:01:00；即使正好在 12:01:00 就绪，也只等 12:02:00。不会立即执行，也不是从就绪时间每隔 60 秒。副本使用相同间隔和同步时钟才能得到相同计划点。
-
-某个已注册的 12:01 触发稍晚到 12:01:02、仍未跨过下一周期时可以执行；如果事件循环到 12:02 或更晚才恢复，旧点被跳过，直接安排未来点。启动、重启或停机恢复也只选择未来点。无效 cron/时区、互斥调度错误，以及启用任务没有可表示的未来触发点都会在启动阶段报错。
+例如每分钟 Cron 在 12:00:20 就绪后等待 12:01:00，正好在 12:01:00 就绪则等待 12:02:00。已注册的 12:01 触发稍晚到 12:01:02、未跨下一周期时可以执行；跨周期则跳过。启动、重启和停机恢复只选择未来点；onReady 期间经过的点不补跑。
 
 ## 调用 Service 与协作取消
 
@@ -182,7 +205,7 @@ import { defineJob } from "vextjs";
 
 export default defineJob({
   name: "refresh-status",
-  interval: 60000,
+  cron: "* * * * *",
   async handler({ app, signal, scheduledAt, logger }) {
     const count = await app.services.remoteStatus.refresh(signal);
     logger.info({ count, scheduledAt }, "Status refresh completed");
@@ -199,7 +222,7 @@ Job 上下文包含 `app/name/scheduledAt/signal/logger`，没有 `req/res` 或�
 | 部署方式                       | Jobs Redis 配置           | 使用者需要做什么                                                                 |
 | ------------------------------ | ------------------------- | -------------------------------------------------------------------------------- |
 | 单应用进程                     | 可不配                    | 进程内防重叠；若要与其他副本协调，配置共享 Redis                                 |
-| 内置应用 Cluster，存在启用任务 | 必须                      | 缺配置时启动报错；各 Worker 使用同一目标、namespace、任务名及调度                |
+| 内置应用 Cluster，存在启用任务 | 可不配                    | 无 Redis 使用 Master IPC；配置后使用 Redis；均需实际握手、清单一致和激活 ACK     |
 | 内置 Cluster，无任务或全部关闭 | 不要求                    | 不建立 Jobs Redis 连接；配置结构仍应有效                                         |
 | PM2/多个独立进程/容器/多机     | 应显式配置                | 框架无法自动识别外部副本，不配置则每个进程独立执行                               |
 | 单机或多机连接 Redis Cluster   | 使用兼容的 Cluster client | “应用 Cluster”与“Redis Cluster”是两件事；后者解决 Redis 分片，不自动开启应用协调 |
@@ -292,7 +315,7 @@ Redis 初始化检查 PING 与 Lua EVAL；运行脚本还需要 TIME、GET、SET
 
 ### 租约、触发标记与运维
 
-`leaseTtl` 默认 30000 毫秒、最小 1000；运行中约每 TTL/3 续期，不是任务超时，也无需按业务全程时长设置。运行结束按 owner 释放租约；续租失败请求取消。Redis 不可用时跳过当前点，不降级为本地执行；恢复后只等未来点。Redis 使用服务器时间判断触发点是否已到达、是否过期，应用时钟偏差会造成拒绝或遗漏。
+有效 `leaseTtl` 为任务字段 > 全局 `jobs.redis.leaseTtl` > 30000 毫秒，安全整数且至少 1000，仅 Redis 使用。运行中约 TTL/3 续期，单次操作预算 min(2000,TTL/3)，保守期限从发送前单调时钟计起。迟到/失败续租或过期导致 Worker 永久 LeaseLost，关闭全部新准入、Abort 并进入关闭/替换，重连不复活资格。普通 drain 仍让旧 Held 续租直到结算或共享截止；未结算不提前 DEL。Redis TIME 裁决计划窗口，秒级偏差以 RTT/偏差区间限频诊断，不自动校时。
 
 默认逻辑前缀与**实际 key**不同：
 
@@ -309,14 +332,14 @@ Redis 初始化检查 PING 与 Lua EVAL；运行脚本还需要 TIME、GET、SET
 
 ## 重叠、失败与关闭
 
-| 情况                          | 行为                                                                                      |
-| ----------------------------- | ----------------------------------------------------------------------------------------- |
-| 同任务上次未结束              | 跳过本次点，不排队；不同任务可并行                                                        |
-| handler 抛异常                | 记录 `scheduled job failed`，下一未来周期继续，不自动重试                                 |
-| 事件循环阻塞跨周期 / 应用停机 | 跳过已错过的点，不补跑                                                                    |
-| Redis claim 出错              | 记录协调不可用，不降级本地；下一未来周期再尝试协调                                        |
-| 租约续期失败                  | 记录 `scheduled job lease unavailable; cancellation requested` 并 abort handler 的 signal |
-| 应用关闭                      | 先停止新触发，再请求取消，在 `shutdown.timeout` 总预算内等待，然后清理依赖                |
+| 情况                          | 行为                                                                       |
+| ----------------------------- | -------------------------------------------------------------------------- |
+| 同任务上次未结束              | 跳过本次点，不排队；不同任务可并行                                         |
+| handler 抛异常                | 记录 `scheduled job failed`，下一未来周期继续，不自动重试                  |
+| 事件循环阻塞跨周期 / 应用停机 | 跳过已错过的点，不补跑                                                     |
+| Redis claim 出错              | 当前点失败关闭，不降级本地；未失租时下一未来周期可再申请                   |
+| 租约续期失败/迟到/过期        | Worker 全部新准入永久隔离、Abort、关闭/替换；重连不复活                    |
+| 应用关闭                      | 先停止新触发，再请求取消，在 `shutdown.timeout` 总预算内等待，然后清理依赖 |
 
 取得触发资格后崩溃可能丢失当次任务。网络分区、Redis 状态丢失或 handler 忽略取消都不能保证业务副作用恰好一次；需要可靠投递的业务使用专门的队列模块。执行历史、告警或进度由业务存储/监控实现，handler 返回值不持久化。
 
@@ -347,7 +370,7 @@ import { defineJob } from "vextjs";
  */
 export default defineJob({
   name: "refresh-status",
-  interval: 60000,
+  cron: "* * * * *",
   description: "周期读取远端状态",
   tags: ["operations"],
   docs: {
@@ -363,15 +386,15 @@ export default defineJob({
 
 摘要优先级是 JSDoc 摘要 > `docs.summary` > `docs.description` > `description` > 生成的默认摘要；描述是 JSDoc 描述 > `docs.description` > `description`。标签合并定义 `tags`、`docs.tags` 与 `jobs` 并去重。转导出条目保留发现文件及真实定义位置。
 
-启动后打开项目 `/docs`（若修改了 path 则使用对应地址），选择 Jobs 分类。详情展示名称、cron、interval 毫秒单位、声明/有效 cron 时区、开关、解析状态；支持按调度字段搜索。未知字段显示未知，不能用推导名称冒充动态实际名称，也不能把未知开关解释为默认启用。
+启动后打开项目 `/docs` 的 Jobs 分类。详情展示名称、Cron、声明/有效时区、任务/有效 Redis TTL、预计协调模式、开关、模块形状、声明基数与字段解析状态。unknown 保持未知，不用推导名冒充实际动态名称；静态结果始终 runtimeVerified:false。
 
-静态工具识别来自 `vextjs` 的 `defineJob` import/require 及别名；读取明确字面量和可证明不可变的常量，在已声明源码根内解析安全 ESM 导入/转导出。动态调用、包装函数、不可解析展开、可变绑定、循环/越界依赖等保留部分证据和原因，不通过执行业务模块来补齐。文档源覆盖了什么，与运行时发现了什么、是否正在执行，是三个不同问题。
+静态工具识别来自 `vextjs` 的 `defineJob` import/require 及别名；读取明确字面量和可证明不可变的常量，在已声明源码根内解析有限导入/转导出。动态字段和不可解析展开保留字段 unknown；不透明默认工厂、额外 SDK 声明或 Job 命名别名属于 unsupported。缺图、循环、越界、超预算或有效值不稳定保留形状 unknown 与原因。工具不执行业务模块来补齐证据。文档来源、运行时发现清单与实际执行状态分别验证。
 
 ### 使用 MCP 检查
 
 通过已连接的宿主调用 `vext_project_inspect`，选择 `section: "jobs"`；通过 `vext_capability_check` 查询 `capability: "C34"`，再使用 `vext_project_check` 的 `profile: "standard"`、`configTarget: "production"` 检查生产目标，必要时用 `all` 比较开发与生产。
 
-结果区分框架支持、项目声明状态、静态缺失证据及启动前提。无任务或关闭的项目不报告为 Jobs 已启用；已知 Cluster 缺 Redis、无效定义/时区和重复名称给出诊断。`runtimeVerified: false` 表示工具没有启动应用、连接 Redis 或执行 handler。随后由宿主运行构建、真实启动和测试验证，不能把源码完整或 Docs 列表当作运行证明。
+结果区分框架支持、项目声明、静态缺失证据与启动前提。无任务/关闭项目不报告已启用；内置 Cluster 无 Redis 显示预计 Master IPC，其实际握手与屏障保持未核验。无效定义/时区和重名给出诊断；形状 known/unsupported/unknown 与 fieldStates 分开。`runtimeVerified:false` 不证明启动、连接或 handler 执行，须做宿主真实验收。
 
 ## 测试与验收
 
@@ -388,7 +411,7 @@ const scheduler = await createTestJobScheduler({
   now: new Date(0),
   jobs: {
     sample: defineJob({
-      interval: 1000,
+      cron: "* * * * * *",
       handler() {
         runs++;
       },
@@ -422,7 +445,7 @@ helper 使用真实调度/重叠规则，但不扫描任务、不注册真实定
 | 症状                      | 常见原因                                                         | 检查动作                                                                    |
 | ------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | 启动报定义/名称错误       | 无 `defineJob` 导出、无效 cron/interval/时区、重名（含关闭定义） | 按文件与字段报错修正；工具模块移出 Jobs 或使用下划线文件名                  |
-| Cluster 启动缺 Redis      | 有启用任务但无 `jobs.redis`                                      | 配共享 Redis，或明确关闭调度；仅设 URL 环境变量不够                         |
+| Cluster Jobs 未激活       | 握手失败、清单不一致或激活ACK缺失                                | 检查实际内置启动链与Master日志；外部独立副本显式共享Redis                   |
 | Redis 初始化失败          | 目标空、连接/认证/PING/EVAL 不可用                               | 核对 client/URL 优先级与启动目标，验收 Lua 命令权限；日志不打印凭据         |
 | 项目启动了却未执行        | 全局/单任务关闭、未到未来点、NODE_ENV=test、文件不在选取范围     | 检查最终 profile、开关、实际目录、glob 和计划时区                           |
 | 开发可用，生产无任务      | include 仅 `.ts` 或编译未复制任务                                | 检查构建根任务文件；包含输出扩展，保留实际文件 glob 语义                    |

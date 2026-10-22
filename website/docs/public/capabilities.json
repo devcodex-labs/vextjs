@@ -35,7 +35,7 @@
     },
     {
       "id": "application-scheduled-jobs",
-      "label": "Application-started cron or interval tasks with optional shared Redis coordination and automatic namespace; no queue, retry, downtime catch-up or immediate startup execution",
+      "label": "Cron-only, one default SDK Job per file; automatic Local/built-in Master IPC/Redis coordination, activation barriers and per-job Redis leaseTtl; static inspection never proves runtime execution; no queue, retry, catch-up or immediate startup execution",
       "documentationRoute": "/guide/jobs"
     }
   ],

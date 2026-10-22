@@ -87,7 +87,8 @@ describe("Worker stopping state", () => {
     worker.emit("message", { type: "ready" });
     await expect(ready).rejects.toThrow("stopped before ready");
     expect(meta.state).toBe("stopping");
-    expect(terminate).toHaveBeenCalledExactlyOnceWith(worker);
+    expect(terminate).not.toHaveBeenCalled();
+    expect(runtime.preparedWorkers.has(worker)).toBe(true);
   });
   it("rechecks readiness after the ready promise before activating a slot", async () => {
     const master = new ClusterMaster();
@@ -97,10 +98,15 @@ describe("Worker stopping state", () => {
       process: { pid: 123, killed: false },
       isDead: () => false,
       isConnected: () => true,
-      send: vi.fn(() => true),
+      send: vi.fn((message: { type: string }) => {
+        if (message.type === "shutdown")
+          queueMicrotask(() => worker.emit("exit", 0, null));
+        return true;
+      }),
     });
     const fork = vi.spyOn(cluster, "fork").mockReturnValue(worker as never);
     vi.spyOn(runtime, "waitForWorkerReady").mockImplementation(async () => {
+      runtime.preparedWorkers.add(worker);
       runtime.workers.get(1).state = "stopping";
     });
     const terminate = vi
@@ -114,7 +120,11 @@ describe("Worker stopping state", () => {
       );
       expect(runtime.slots.owner(0)).toBeUndefined();
       expect(observer).not.toHaveBeenCalled();
-      expect(terminate).toHaveBeenCalledExactlyOnceWith(worker);
+      expect(worker.send).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "shutdown" }),
+        expect.any(Function),
+      );
+      expect(terminate).not.toHaveBeenCalled();
     } finally {
       fork.mockRestore();
     }

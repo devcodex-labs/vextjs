@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import { performance } from "node:perf_hooks";
+import { validateJobLeaseTtl } from "./define-job.js";
 import { resolveModuleDefault } from "../interop.js";
 import { assertRedisTarget, resolveRedisUrl } from "../redis/config.js";
 import { resolveVextRedisKeyPrefix } from "../redis/namespace.js";
@@ -20,13 +22,14 @@ const CLAIM = `
 local clock = redis.call('TIME')
 local now = tonumber(clock[1]) * 1000 + math.floor(tonumber(clock[2]) / 1000)
 local point = tonumber(ARGV[1])
-if point > now or now >= tonumber(ARGV[2]) then return 0 end
+if point > now then return {-1, now} end
+if now >= tonumber(ARGV[2]) then return {-2, now} end
 local last = tonumber(redis.call('GET', KEYS[1]) or '-1')
-if point <= last then return 0 end
+if point <= last then return {0, now} end
 redis.call('SET', KEYS[1], ARGV[1])
-if ARGV[5] == '1' or redis.call('EXISTS', KEYS[2]) == 1 then return 0 end
+if ARGV[5] == '1' or redis.call('EXISTS', KEYS[2]) == 1 then return {0, now} end
 redis.call('SET', KEYS[2], ARGV[3], 'PX', ARGV[4])
-return 1`;
+return {1, now}`;
 const RENEW = `
 if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
 return redis.call('PEXPIRE', KEYS[1], ARGV[2])`;
@@ -35,17 +38,23 @@ if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
 return redis.call('DEL', KEYS[1])`;
 
 export interface JobLease {
-  renew(): Promise<boolean>;
+  readonly ttl?: number;
+  valid(): boolean;
+  /** Synchronous last gate for an IPC permit. It may be consumed only once. */
+  start?(): boolean;
+  readonly signal?: AbortSignal;
+  renew?(): Promise<boolean>;
   release(): Promise<void>;
 }
 
 export interface JobCoordinator {
-  ttl: number;
+  ttl?: number;
   claim(
     name: string,
     scheduledAt: Date,
     expiresAt: Date,
     skip: boolean,
+    leaseTtl?: number,
   ): Promise<JobLease | null>;
   close(): void;
 }
@@ -53,13 +62,17 @@ export interface JobCoordinator {
 export async function createJobCoordinator(
   config: NonNullable<VextJobsConfig["redis"]>,
   rootDir: string,
+  observe?: (event: {
+    job: string;
+    reason: string;
+    rttMs: number;
+    offsetMinMs: number;
+    offsetMaxMs: number;
+  }) => void,
 ): Promise<JobCoordinator> {
   assertRedisTarget(config, "config.jobs.redis");
   const ttl = config.leaseTtl ?? 30000;
-  if (!Number.isSafeInteger(ttl) || ttl < 1000)
-    throw new Error(
-      "[vextjs] config.jobs.redis.leaseTtl must be a safe integer >= 1000 ms.",
-    );
+  validateJobLeaseTtl(ttl, "config.jobs.redis.leaseTtl");
   const owned = !config.client;
   let client: RedisClient;
   if (owned) {
@@ -106,10 +119,30 @@ export async function createJobCoordinator(
     module: "job",
   });
   let closed = false;
+  const inFlight = new Set<string>();
   return {
     ttl,
-    async claim(name, scheduledAt, expiresAt, skip) {
-      if (closed) return null;
+    async claim(name, scheduledAt, expiresAt, skip, leaseTtl = ttl) {
+      validateJobLeaseTtl(leaseTtl);
+      if (closed || inFlight.has(name)) return null;
+      const effectiveTtl = leaseTtl;
+      const budget = Math.min(2000, Math.floor(effectiveTtl / 3));
+      const started = performance.now();
+      if (!Number.isFinite(started))
+        throw new Error("[vextjs] Jobs monotonic clock is unavailable");
+      const wallStarted = Date.now();
+      let validUntil = started + effectiveTtl;
+      let lost = false;
+      let lastMono = started;
+      const monotonic = () => {
+        const value = performance.now();
+        if (!Number.isFinite(value) || value < lastMono) lost = true;
+        lastMono = value;
+        return value;
+      };
+      const status = (result: unknown) =>
+        Number(Array.isArray(result) ? result[0] : result);
+      let settled = false;
       const tag = createHash("sha256")
         .update(prefix)
         .update("\0")
@@ -120,35 +153,131 @@ export async function createJobCoordinator(
       const marker = `${base}:last`;
       const running = `${base}:running`;
       const owner = randomUUID();
-      const result = await bounded(
-        client.eval(
-          CLAIM,
-          2,
-          marker,
-          running,
-          scheduledAt.getTime(),
-          expiresAt.getTime(),
-          owner,
-          ttl,
-          skip ? "1" : "0",
-        ),
-        Math.min(2000, Math.floor(ttl / 3)),
-      );
-      if (Number(result) !== 1) return null;
+      inFlight.add(name);
+      let abandoned = false;
+      let raw: Promise<unknown>;
+      try {
+        raw = Promise.resolve(
+          client.eval(
+            CLAIM,
+            2,
+            marker,
+            running,
+            scheduledAt.getTime(),
+            expiresAt.getTime(),
+            owner,
+            effectiveTtl,
+            skip ? "1" : "0",
+          ),
+        );
+      } catch (error) {
+        inFlight.delete(name);
+        throw error;
+      }
+      // Keep one unresolved command per Job even after our local timeout.
+      // A late success can only release its own token, never restore admission.
+      void raw
+        .then(
+          async (result) => {
+            inFlight.delete(name);
+            if (status(result) === 1 && abandoned && !closed)
+              await bounded(client.eval(RELEASE, 1, running, owner), budget);
+          },
+          () => {
+            inFlight.delete(name);
+          },
+        )
+        .catch(() => {});
+      let result: unknown;
+      try {
+        result = await bounded(raw, budget);
+        const now = monotonic();
+        if (Array.isArray(result) && Number.isFinite(Number(result[1]))) {
+          const serverNow = Number(result[1]);
+          observe?.({
+            job: name,
+            reason:
+              status(result) === -1
+                ? "server-clock-before-point"
+                : status(result) === -2
+                  ? "server-window-expired"
+                  : status(result) === 1
+                    ? "granted"
+                    : "consumed-or-busy",
+            rttMs: now - started,
+            offsetMinMs: serverNow - Date.now(),
+            offsetMaxMs: serverNow - wallStarted,
+          });
+        }
+        if (
+          closed ||
+          lost ||
+          now < started ||
+          now >= started + budget ||
+          now >= validUntil
+        ) {
+          abandoned = true;
+          if (status(result) === 1 && !closed)
+            void bounded(client.eval(RELEASE, 1, running, owner), budget).catch(
+              () => {},
+            );
+          return null;
+        }
+      } catch (error) {
+        abandoned = true;
+        throw error;
+      }
+      if (status(result) !== 1) return null;
       return {
+        ttl: effectiveTtl,
+        valid() {
+          const now = monotonic();
+          if (now < started || now >= validUntil) lost = true;
+          return !closed && !lost && !settled;
+        },
         async renew() {
-          if (closed) return false;
-          return (
-            Number(
-              await bounded(
-                client.eval(RENEW, 1, running, owner, ttl),
-                Math.min(2000, Math.floor(ttl / 3)),
-              ),
-            ) === 1
-          );
+          const renewalStart = monotonic();
+          if (
+            closed ||
+            lost ||
+            settled ||
+            renewalStart < started ||
+            renewalStart >= validUntil
+          ) {
+            lost = true;
+            return false;
+          }
+          const priorDeadline = validUntil;
+          try {
+            const renewed = await bounded(
+              client.eval(RENEW, 1, running, owner, effectiveTtl),
+              budget,
+            );
+            const now = monotonic();
+            if (
+              closed ||
+              lost ||
+              settled ||
+              Number(renewed) !== 1 ||
+              now < renewalStart ||
+              now >= renewalStart + budget ||
+              now >= priorDeadline
+            ) {
+              lost = true;
+              return false;
+            }
+            validUntil = renewalStart + effectiveTtl;
+            return true;
+          } catch (error) {
+            lost = true;
+            throw error;
+          }
         },
         async release() {
-          if (!closed) await bounded(client.eval(RELEASE, 1, running, owner));
+          if (settled) return;
+          settled = true;
+          if (!closed)
+            await bounded(client.eval(RELEASE, 1, running, owner), budget);
         },
       };
     },

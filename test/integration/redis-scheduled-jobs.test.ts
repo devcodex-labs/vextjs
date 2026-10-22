@@ -69,6 +69,63 @@ async function withRedis(
 }
 
 describe("Redis scheduled jobs", () => {
+  it("uses per-Job TTL on one connection with global/default fallback and stable key identity", async () => {
+    await withRedis(async (client, config, coordinator, keys) => {
+      const at = new Date(Date.now() - 10),
+        expires = new Date(Date.now() + 60000);
+      const short = await coordinator.claim(
+        "ttl-short",
+        at,
+        expires,
+        false,
+        1000,
+      );
+      const long = await coordinator.claim(
+        "ttl-long",
+        at,
+        expires,
+        false,
+        4000,
+      );
+      expect(short!.ttl).toBe(1000);
+      expect(long!.ttl).toBe(4000);
+      expect(await client.pttl(keys("ttl-short")[1]!)).toBeGreaterThan(500);
+      expect(await client.pttl(keys("ttl-long")[1]!)).toBeGreaterThan(3500);
+      await delay(350);
+      expect(await long!.renew!()).toBe(true);
+      expect(await client.pttl(keys("ttl-long")[1]!)).toBeGreaterThan(3500);
+      await short!.release();
+      await long!.release();
+      expect(
+        await coordinator.claim("ttl-short", at, expires, false, 5000),
+      ).toBeNull();
+      const fallback = await coordinator.claim(
+        "ttl-global",
+        at,
+        expires,
+        false,
+      );
+      expect(fallback!.ttl).toBe(config.leaseTtl);
+      keys("ttl-global");
+      await fallback!.release();
+      const defaults = await createJobCoordinator(
+        { client, namespace: config.namespace },
+        process.cwd(),
+      );
+      try {
+        const lease = await defaults.claim("ttl-default", at, expires, false);
+        keys("ttl-default");
+        expect(lease!.ttl).toBe(30000);
+        expect(await client.pttl(keys("ttl-default")[1]!)).toBeGreaterThan(
+          29000,
+        );
+        await lease!.release();
+      } finally {
+        defaults.close();
+      }
+      expect(await client.ping()).toBe("PONG");
+    });
+  });
   it("automatically shares namespaces across replicas and isolates projects/profiles/modes", async () => {
     await withRedis(async (client, _config, _coordinator, keys) => {
       const root = await mkdtemp(
@@ -225,7 +282,7 @@ describe("Redis scheduled jobs", () => {
         false,
       );
       await client.set(running!, "replacement-owner", "PX", 10000);
-      expect(await lease!.renew()).toBe(false);
+      expect(await lease!.renew!()).toBe(false);
       await lease!.release();
       expect(await client.get(running!)).toBe("replacement-owner");
     });
@@ -237,7 +294,7 @@ describe("Redis scheduled jobs", () => {
       let finish!: () => void;
       const definition = defineJob({
         name: "long",
-        interval: 1000,
+        cron: "* * * * * *",
         handler() {
           executions++;
           return new Promise<void>((resolve) => {
@@ -296,7 +353,7 @@ describe("Redis scheduled jobs", () => {
         jobs: [
           defineJob({
             name: "outage",
-            interval: 1000,
+            cron: "* * * * * *",
             handler() {
               executions++;
             },

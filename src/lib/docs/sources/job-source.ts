@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { existsSync } from "node:fs";
 import {
   inspectJobSource,
+  createJobStaticGraph,
   type StaticJobDefinition,
 } from "../../jobs/job-metadata.js";
 import { inferJobName } from "../../jobs/job-name.js";
@@ -10,11 +11,11 @@ import {
   resolveJobsDirectory,
 } from "../../jobs/job-discovery.js";
 import type { VextJobsConfig } from "../../jobs/types.js";
-import { parseSourceSyntax } from "../../source-syntax.js";
+import { parseSourceSyntax, walkSourceSyntax } from "../../source-syntax.js";
 import type { SourceView } from "../../../tooling/source-view/types.js";
 import { collectSourceView } from "../../../tooling/source-view/collect.js";
-import { sourceModuleReferences } from "../../../tooling/project-index/module-path.js";
-import { StaticModuleGraph } from "../../../tooling/project-index/static-module-graph.js";
+import { jobModuleReferences } from "../../jobs/job-module-path.js";
+import type { StaticModuleGraph } from "../../../tooling/project-index/static-module-graph.js";
 import type { VextCodeDocItem, VextCodeDocsSourceConfig } from "../types.js";
 import { parseJSDocSymbols } from "./jsdoc-parser.js";
 import {
@@ -66,12 +67,18 @@ export async function loadJobCodeDocs(
         path: toPosixRelative(options.srcDir, file),
         role: "jobs",
       })),
+      limits: {
+        maxFiles: 2048,
+        maxFileBytes: 2 * 1024 * 1024,
+        maxTotalBytes: 32 * 1024 * 1024,
+      },
       dependencies(input) {
         const program = parseSourceSyntax(
           input.path,
           Buffer.from(input.bytes).toString("utf8"),
         );
-        return program.body.flatMap((statement) => {
+        const specifiers = new Set<string>();
+        for (const statement of program.body) {
           if (
             ![
               "ImportDeclaration",
@@ -81,12 +88,23 @@ export async function loadJobCodeDocs(
             !("source" in statement) ||
             !statement.source
           )
-            return [];
-          const candidates = sourceModuleReferences(
-            [root],
-            input,
-            statement.source.value,
-          );
+            continue;
+          if (typeof statement.source.value === "string")
+            specifiers.add(statement.source.value);
+        }
+        walkSourceSyntax(program, (node) => {
+          if (
+            node.type === "CallExpression" &&
+            node.callee.type === "Identifier" &&
+            node.callee.name === "require" &&
+            node.arguments.length === 1 &&
+            node.arguments[0]?.type === "Literal" &&
+            typeof node.arguments[0].value === "string"
+          )
+            specifiers.add(node.arguments[0].value);
+        });
+        return [...specifiers].flatMap((specifier) => {
+          const candidates = jobModuleReferences([root], input, specifier);
           const selected = candidates.find((ref) =>
             existsSync(join(options.srcDir, ref.path)),
           );
@@ -94,7 +112,7 @@ export async function loadJobCodeDocs(
         });
       },
     });
-    graph = new StaticModuleGraph(view);
+    graph = createJobStaticGraph(view);
   } catch (error) {
     return files.map((file) =>
       unresolvedItem(toPosixRelative(options.srcDir, file), [String(error)]),
@@ -118,6 +136,10 @@ export async function loadJobCodeDocs(
           "No statically proven job export. Check the source and verify application startup.",
         job: {
           name: null,
+          moduleShapeState: inspection.moduleShape.state,
+          declarationCardinality: inspection.moduleShape.declarationCardinality,
+          moduleShapeReason: inspection.moduleShape.reason,
+          runtimeVerified: false,
           parseState: "partial",
           parseNotes: inspection.warnings,
         },
@@ -192,10 +214,24 @@ export async function loadJobCodeDocs(
               ? definition.enabled
               : undefined,
           cron: string(definition.cron),
-          interval:
-            typeof definition.interval === "number"
-              ? definition.interval
+          leaseTtl:
+            typeof definition.leaseTtl === "number"
+              ? definition.leaseTtl
               : undefined,
+          effectiveLeaseTtl:
+            options.jobsConfig?.redis && fieldStates.leaseTtl !== "unknown"
+              ? typeof definition.leaseTtl === "number"
+                ? definition.leaseTtl
+                : (options.jobsConfig.redis.leaseTtl ?? 30000)
+              : undefined,
+          coordinationMode: options.jobsConfig?.redis ? "redis" : "auto",
+          moduleShapeState: metadata.moduleShapeState,
+          declarationCardinality: metadata.declarationCardinality,
+          moduleShapeReason: metadata.moduleShapeReason,
+          runtimeVerified: false,
+          inputScope: /\.(?:ts|mts|cts)$/u.test(sourceFile)
+            ? "source-input"
+            : "emitted-input",
           timezone: string(definition.timezone),
           effectiveTimezone: effectiveTimezone(metadata, options.jobsConfig),
           schedulingEnabled:
@@ -236,6 +272,13 @@ function unresolvedItem(
     sourceFile,
     summary:
       "Job source evidence is unavailable; verify source boundaries and application startup.",
-    job: { name: null, parseState: "partial", parseNotes: warnings },
+    job: {
+      name: null,
+      parseState: "partial",
+      parseNotes: warnings,
+      moduleShapeState: "unknown",
+      moduleShapeReason: warnings.join("; "),
+      runtimeVerified: false,
+    },
   };
 }

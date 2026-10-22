@@ -1,5 +1,6 @@
 import { SocketDispatcher } from "./socket-dispatcher.js";
 import { WorkerSlots } from "./worker-slots.js";
+import { JobsArbiter } from "./jobs-arbiter.js";
 import {
   SOCKET_WORKER_CONTEXT_ENV,
   SOCKET_HANDOFF_POLICY,
@@ -178,6 +179,9 @@ export class ClusterMaster extends EventEmitter {
   private workers = new Map<number, WorkerMeta>();
   private nextWorkerId = 1;
   private readonly slots = new WorkerSlots();
+  private readonly jobs: JobsArbiter;
+  private readonly exitedWorkers = new WeakSet<ClusterWorker>();
+  private readonly preparedWorkers = new WeakSet<ClusterWorker>();
   private dispatcher?: SocketDispatcher;
 
   /** 窗口内的重启时间戳（用于频率保护） */
@@ -267,6 +271,10 @@ export class ClusterMaster extends EventEmitter {
       healthCheck,
       reload,
     };
+    this.jobs = new JobsArbiter(
+      (worker, slot) => this.slots.owner(slot) === worker.id,
+      this.config.reload.readyTimeout,
+    );
   }
 
   // ════════════════════════════════════════════════════════
@@ -389,6 +397,23 @@ export class ClusterMaster extends EventEmitter {
       }
     }
 
+    try {
+      await this.jobs.activateInitial();
+    } catch (error) {
+      this.startupFailed = true;
+      this.jobs.stop();
+      const exits: Promise<void>[] = [];
+      for (const [id] of this.workers) {
+        const worker = cluster.workers?.[id];
+        if (!worker) continue;
+        exits.push(this.disposeCandidate(worker));
+      }
+      await Promise.allSettled(exits);
+      this.isStarting = false;
+      this.cleanup();
+      throw error;
+    }
+
     // ── 注册 OS 信号处理 ──────────────────────────────────
     this.registerSignals();
 
@@ -424,6 +449,7 @@ export class ClusterMaster extends EventEmitter {
   async gracefulShutdown(trigger: string, exitCode = 0): Promise<void> {
     if (this.isShuttingDown) return;
     this.isShuttingDown = true;
+    this.jobs.stop();
     this.dispatcher?.beginShutdown();
     for (const timer of this.pendingRestarts) clearTimeout(timer);
     this.pendingRestarts.clear();
@@ -453,7 +479,13 @@ export class ClusterMaster extends EventEmitter {
       }
     }
 
-    await Promise.allSettled(promises);
+    const exits = await Promise.allSettled(promises);
+    if (exits.some((result) => result.status === "rejected")) {
+      exitCode = 1;
+      console.error(
+        "[cluster] worker exit receipt unknown after SIGKILL; shutdown is incomplete",
+      );
+    }
 
     this.cleanup();
 
@@ -465,7 +497,11 @@ export class ClusterMaster extends EventEmitter {
         error instanceof Error ? error.message : String(error),
       );
     }
-    console.log("[cluster] all workers stopped, master exiting");
+    console.log(
+      exits.every((result) => result.status === "fulfilled")
+        ? "[cluster] all workers stopped, master exiting"
+        : "[cluster] master exiting with incomplete worker cleanup",
+    );
     process.exit(exitCode);
   }
 
@@ -681,6 +717,7 @@ export class ClusterMaster extends EventEmitter {
     } = {},
   ): Promise<ClusterWorker> {
     this.activeForks++;
+    let candidate: ClusterWorker | undefined;
     try {
       const nextId = this.nextWorkerId++;
       const slotId = options.slotId ?? nextId - 1;
@@ -702,6 +739,9 @@ export class ClusterMaster extends EventEmitter {
             })
           : "",
       });
+      candidate = worker;
+      worker.once("exit", () => this.exitedWorkers.add(worker));
+      this.jobs.register(worker, slotId, generation);
 
       const meta: WorkerMeta = {
         id: worker.id,
@@ -738,17 +778,33 @@ export class ClusterMaster extends EventEmitter {
         !worker.isConnected() ||
         (owner !== undefined && owner !== options.replaceWorkerId)
       ) {
-        this.terminateUnreadyWorker(worker);
         throw new Error(
           `worker ${worker.id} cannot activate affinity slot: not ready, already owned or shutting down`,
         );
       }
+      // A ready candidate cannot replace the old generation until old admissions
+      // are synchronously closed in both Master and Worker (or actual exit).
+      if (owner !== undefined) {
+        const oldWorker = cluster.workers?.[owner];
+        if (oldWorker) await this.jobs.drain(oldWorker);
+      }
+      if (
+        this.isShuttingDown ||
+        worker.isDead() ||
+        !worker.isConnected() ||
+        (this.slots.owner(slotId) !== owner &&
+          this.slots.owner(slotId) !== undefined)
+      )
+        throw new Error(
+          `[cluster] worker ${worker.id} slot changed during Jobs drain`,
+        );
       // One synchronous commit; candidates never add an extra routable slot.
       this.slots.activate(slotId, worker.id);
       if (owner !== undefined) {
         const old = this.workers.get(owner);
         if (old) old.state = "draining";
       }
+      if (this.jobs.isInitialized) await this.jobs.activate(worker);
       this.ownedStartupWorkerIds.delete(worker.id);
       this.capacityLossEmitted = false;
 
@@ -758,6 +814,18 @@ export class ClusterMaster extends EventEmitter {
       } satisfies ClusterMasterEvents["worker-ready"]);
 
       return worker;
+    } catch (error) {
+      if (candidate && !this.exitedWorkers.has(candidate)) {
+        try {
+          await this.disposeCandidate(candidate);
+        } catch (cleanupError) {
+          console.error(
+            "[cluster] candidate exit receipt unknown:",
+            cleanupError,
+          );
+        }
+      }
+      throw error;
     } finally {
       this.activeForks--;
       this.checkAllDead();
@@ -800,9 +868,10 @@ export class ClusterMaster extends EventEmitter {
         ) {
           return;
         }
+        this.preparedWorkers.add(worker);
         if (this.workers.get(worker.id)?.state === "stopping") {
           settled = true;
-          this.terminateUnreadyWorker(worker);
+          // forkWorker owns cleanup; appReady candidates must get onClose.
           cleanup();
           reject(new Error(`worker ${worker.id} stopped before ready`));
           return;
@@ -815,13 +884,21 @@ export class ClusterMaster extends EventEmitter {
           (reported?.host !== endpoint.host || reported.port !== endpoint.port)
         ) {
           settled = true;
-          this.terminateUnreadyWorker(worker);
+          // forkWorker owns graceful cleanup of this prepared candidate.
           cleanup();
           reject(
             new Error(
               `worker ${worker.id} did not initialize the Master socket endpoint`,
             ),
           );
+          return;
+        }
+        try {
+          this.jobs.ready(worker, (msg as { jobs?: unknown }).jobs);
+        } catch (error) {
+          settled = true;
+          cleanup();
+          reject(error);
           return;
         }
         settled = true;
@@ -883,6 +960,24 @@ export class ClusterMaster extends EventEmitter {
     }
   }
 
+  private async disposeCandidate(worker: ClusterWorker): Promise<void> {
+    if (this.exitedWorkers.has(worker)) return;
+    this.jobs.retire(worker);
+    const meta = this.workers.get(worker.id);
+    if (meta) meta.state = "draining";
+    const exited = this.waitForWorkerExit(
+      worker,
+      this.config.reload.shutdownTimeout,
+    );
+    if (this.preparedWorkers.has(worker) && worker.isConnected())
+      this.sendControl(worker, {
+        type: "shutdown",
+        timeout: this.config.reload.shutdownTimeout,
+      });
+    else this.terminateUnreadyWorker(worker);
+    await exited;
+  }
+
   /** 注册一次 cluster 全局 Worker exit 监听器。 */
   private registerWorkerExitListener(): void {
     if (this.workerExitListenerRegistered) return;
@@ -921,6 +1016,7 @@ export class ClusterMaster extends EventEmitter {
    *   - request-restart: Worker 主动请求重启（如内存超阈值）
    */
   private handleWorkerMessage(worker: ClusterWorker, msg: unknown): void {
+    if (this.jobs.handle(worker, msg)) return;
     if (typeof msg !== "object" || msg === null) return;
 
     const message = msg as WorkerToMasterMessage;
@@ -1046,6 +1142,7 @@ export class ClusterMaster extends EventEmitter {
     code: number | null,
     signal: string | null,
   ): void {
+    this.exitedWorkers.add(worker);
     const meta = this.workers.get(worker.id);
     const wasOwnedStartupCandidate = this.ownedStartupWorkerIds.delete(
       worker.id,
@@ -1303,11 +1400,14 @@ export class ClusterMaster extends EventEmitter {
     worker: ClusterWorker,
     timeout: number,
   ): Promise<void> {
-    return new Promise<void>((resolve) => {
+    if (this.exitedWorkers.has(worker)) return Promise.resolve();
+    return new Promise<void>((resolve, reject) => {
       let resolved = false;
+      let receiptTimeout: ReturnType<typeof setTimeout> | undefined;
       const done = () => {
         if (!resolved) {
           resolved = true;
+          clearTimeout(receiptTimeout);
           resolve();
         }
       };
@@ -1328,7 +1428,17 @@ export class ClusterMaster extends EventEmitter {
             // 进程可能已经退出
           }
         }
-        done();
+        // Sending SIGKILL does not prove process exit or release Jobs ownership.
+        receiptTimeout = setTimeout(() => {
+          if (resolved) return;
+          resolved = true;
+          reject(
+            new Error(
+              `worker ${worker.id} actual exit receipt timed out after SIGKILL`,
+            ),
+          );
+        }, 5000);
+        receiptTimeout.unref();
       }, timeout);
 
       // 不阻止进程退出

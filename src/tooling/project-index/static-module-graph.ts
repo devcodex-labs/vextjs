@@ -159,7 +159,10 @@ function shadowed(name: string, ancestors: readonly Node[]): boolean {
 export class StaticModuleGraph {
   private readonly modules = new Map<string, StaticModule>();
 
-  constructor(private readonly view: SourceView) {
+  constructor(
+    private readonly view: SourceView,
+    private readonly moduleReferences: typeof sourceModuleReferences = sourceModuleReferences,
+  ) {
     for (const record of view.list())
       if (/\.[cm]?[jt]sx?$/u.test(record.path))
         this.module(record.rootId, record.path);
@@ -456,7 +459,7 @@ export class StaticModuleGraph {
       const exportedName = (name: string) => `\0export:${name}`;
       const linkImport = (local: string, binding: ImportBinding) => {
         if (binding.source === "vextjs") return;
-        const file = sourceModuleReferences(
+        const file = this.moduleReferences(
           this.view.roots(),
           { rootId: module.rootId, path: module.path },
           binding.source,
@@ -524,7 +527,7 @@ export class StaticModuleGraph {
     binding: ImportBinding,
   ): StaticExpression {
     const { module } = expression;
-    const file = sourceModuleReferences(
+    const file = this.moduleReferences(
       this.view.roots(),
       { rootId: module.rootId, path: module.path },
       binding.source,

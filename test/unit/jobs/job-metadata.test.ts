@@ -14,9 +14,9 @@ describe("static scheduled job metadata", () => {
       "sample.ts",
       `
       import { defineJob as task } from "vextjs";
-      const everyMinute = 60000;
-      const privateTask = task({ interval: 1000, handler() {} });
-      const main = task({ interval: everyMinute, handler() { const metadata = { name: "wrong", cron: "wrong", timezone: "wrong" }; } });
+      const everyMinute = "* * * * *";
+      const privateTask = task({ cron: "* * * * * *", handler() {} });
+      const main = task({ cron: everyMinute, handler() { const metadata = { name: "wrong", cron: "wrong", timezone: "wrong" }; } });
       export default main;
       export const cleanup = task({ name: "stable", cron: "0 9 * * *", timezone: "UTC", handler() {} });
     `,
@@ -27,12 +27,19 @@ describe("static scheduled job metadata", () => {
         definition,
       })),
     ).toEqual([
-      { exportName: "default", definition: { interval: 60000 } },
+      { exportName: "default", definition: { cron: "* * * * *" } },
       {
         exportName: "cleanup",
         definition: { name: "stable", cron: "0 9 * * *", timezone: "UTC" },
       },
     ]);
+    expect(
+      definitions.every(
+        (definition) =>
+          definition.moduleShapeState === "unsupported" &&
+          definition.declarationCardinality === 3,
+      ),
+    ).toBe(true);
     expect(inferJobName("billing/index.ts", "default")).toBe("billing");
     expect(inferJobName("billing/index.ts", "cleanup")).toBe("billing.cleanup");
   });
@@ -40,10 +47,10 @@ describe("static scheduled job metadata", () => {
     expect(
       inspectJobDefinitions(
         "sample.ts",
-        `import { defineJob } from "vextjs"; export default defineJob({ interval: computeInterval(), enabled: process.env.ENABLED, handler() {} });`,
+        `import { defineJob } from "vextjs"; export default defineJob({ cron: computeCron(), enabled: process.env.ENABLED, handler() {} });`,
       )[0]!.definition,
     ).toEqual({
-      interval: { static: "dynamic" },
+      cron: { static: "dynamic" },
       enabled: { static: "dynamic" },
     });
   });
@@ -51,25 +58,25 @@ describe("static scheduled job metadata", () => {
     expect(
       inspectJobDefinitions(
         "single.cjs",
-        `const { defineJob } = require("vextjs"); module.exports = defineJob({ interval: 1000, handler() {} });`,
+        `const { defineJob } = require("vextjs"); module.exports = defineJob({ cron: "* * * * * *", handler() {} });`,
       )[0]?.definition,
-    ).toEqual({ interval: 1000 });
+    ).toEqual({ cron: "* * * * * *" });
     expect(
       inspectJobDefinitions(
         "sample.cjs",
         `
         const { defineJob } = require("vextjs");
         Object.defineProperty(exports, "__esModule", { value: true });
-        const interval = 60000;
-        exports.default = defineJob({ interval, handler() {} });
+        const cron = "* * * * *";
+        exports.default = defineJob({ cron, handler() {} });
         module.exports.daily = defineJob({ cron: "0 9 * * *", handler() {} });
-        exports.hourly = defineJob({ interval: 3600000, handler() {} });
+        exports.hourly = defineJob({ cron: "0 * * * *", handler() {} });
       `,
       ).map(({ exportName, definition }) => ({ exportName, definition })),
     ).toEqual([
-      { exportName: "default", definition: { interval: 60000 } },
+      { exportName: "default", definition: { cron: "* * * * *" } },
       { exportName: "daily", definition: { cron: "0 9 * * *" } },
-      { exportName: "hourly", definition: { interval: 3600000 } },
+      { exportName: "hourly", definition: { cron: "0 * * * *" } },
     ]);
   });
   it("reads namespace imports and CommonJS factory aliases without evaluating require", () => {
@@ -79,20 +86,20 @@ describe("static scheduled job metadata", () => {
         `
       const { defineJob: task } = require("vextjs");
       const vext = require("vextjs");
-      exports.first = task({ interval: 1000, handler() {} });
-      exports.second = vext.defineJob({ interval: 2000, handler() {} });
-      exports.third = require("vextjs").defineJob({ interval: 3000, handler() {} });
+      exports.first = task({ cron: "* * * * * *", leaseTtl: 1000, handler() {} });
+      exports.second = vext.defineJob({ cron: "* * * * * *", leaseTtl: 2000, handler() {} });
+      exports.third = require("vextjs").defineJob({ cron: "* * * * * *", leaseTtl: 3000, handler() {} });
     `,
-      ).map(({ definition }) => definition.interval),
+      ).map(({ definition }) => definition.leaseTtl),
     ).toEqual([1000, 2000, 3000]);
     expect(
       inspectJobDefinitions(
         "named.mjs",
-        `import * as vext from "vextjs"; export default vext.defineJob({ interval: 1000, handler() {} });`,
-      )[0]?.definition.interval,
+        `import * as vext from "vextjs"; export default vext.defineJob({ cron: "* * * * * *", leaseTtl: 1000, handler() {} });`,
+      )[0]?.definition.leaseTtl,
     ).toBe(1000);
   });
-  it("documents only exported jobs with their own schedules and docs tags", async () => {
+  it("documents one default job and ordinary helpers with docs tags", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "vext-scheduled-docs-"));
     try {
       await mkdir(path.join(root, "jobs"));
@@ -100,22 +107,24 @@ describe("static scheduled job metadata", () => {
         path.join(root, "jobs", "sample.ts"),
         `
         import { defineJob } from "vextjs";
-        const privateTask = defineJob({ interval: 1000, handler() {} });
-        export default defineJob({ interval: 60000, docs: { summary: "Default task", tags: ["maintenance"] }, handler() {} });
-        export const daily = defineJob({ cron: "0 9 * * *", timezone: "UTC", handler() {} });
+        export default defineJob({ cron: "* * * * *", leaseTtl: 60000, docs: { summary: "Default task", tags: ["maintenance"] }, handler() {} });
+        export function helper(n) { return n+1; }
       `,
       );
       const items = await loadJobCodeDocs({ srcDir: root, source: true });
-      expect(items).toHaveLength(2);
+      expect(items).toHaveLength(1);
       expect(items[0]).toMatchObject({
         id: "job:sample#default",
         summary: "Default task",
         tags: ["jobs", "maintenance"],
-        job: { name: "sample", interval: 60000 },
-      });
-      expect(items[1]).toMatchObject({
-        id: "job:sample.daily#daily",
-        job: { name: "sample.daily", cron: "0 9 * * *", timezone: "UTC" },
+        job: {
+          name: "sample",
+          cron: "* * * * *",
+          leaseTtl: 60000,
+          moduleShapeState: "known",
+          declarationCardinality: 1,
+          runtimeVerified: false,
+        },
       });
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -138,7 +147,7 @@ it("inherits runtime selection by field and permits explicit Docs overrides", as
   const root = await mkdtemp(path.join(tmpdir(), "vext-jobs-doc-inherit-"));
   try {
     await mkdir(path.join(root, "tasks", "_group"), { recursive: true });
-    const task = `import {defineJob} from "vextjs"; export default defineJob({interval:1000,handler(){}});`;
+    const task = `import {defineJob} from "vextjs"; export default defineJob({cron:"* * * * * *",handler(){}});`;
     for (const file of [
       "active.ts",
       "excluded.ts",
@@ -189,7 +198,7 @@ it("shows opaque field states and bounded re-export definition locations in Docs
     );
     await writeFile(
       path.join(root, "shared/task.ts"),
-      'import {defineJob} from "vextjs"; export default defineJob({name:getName(),interval:1000,handler(){}});',
+      'import {defineJob} from "vextjs"; export default defineJob({name:getName(),cron:"* * * * * *",handler(){}});',
     );
     const [item] = await loadJobCodeDocs({ srcDir: root, source: true });
     expect(item).toMatchObject({
@@ -198,7 +207,7 @@ it("shows opaque field states and bounded re-export definition locations in Docs
       job: {
         name: null,
         inferredName: "facade",
-        interval: 1000,
+        cron: "* * * * * *",
         parseState: "partial",
         fieldStates: { name: "unknown", enabled: "absent" },
       },

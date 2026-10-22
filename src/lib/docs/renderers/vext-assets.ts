@@ -2562,7 +2562,14 @@ export const VEXT_DOCS_APP_JS: string = `
     appendTableSection(parent, "Scheduled job (static declaration)", ["Property", "Value"], [
       ["Name", job.name == null ? "unknown; inferred path label: " + (job.inferredName || doc.sourceFile || "") : job.name],
       ["Cron", declared("cron", job.cron)],
-      ["Interval (milliseconds)", declared("interval", job.interval)],
+      ["Lease TTL (milliseconds)", declared("leaseTtl", job.leaseTtl)],
+      ["Effective Redis lease TTL", job.effectiveLeaseTtl == null ? "unknown / Redis not selected" : job.effectiveLeaseTtl],
+      ["Coordination", job.coordinationMode || "unknown"],
+      ["Module shape", job.moduleShapeState || "unknown"],
+      ["Shape reason", job.moduleShapeReason || "none"],
+      ["Declaration count", job.declarationCardinality == null ? "unknown" : job.declarationCardinality],
+      ["Input scope", job.inputScope || "unknown"],
+      ["Runtime verified", "false"],
       ["Declared timezone", declared("timezone", job.timezone)],
       ["Effective cron timezone (task > config > UTC)", job.effectiveTimezone || "unknown / not applicable"],
       ["Task enabled", declared("enabled", job.enabled)],
@@ -4595,7 +4602,7 @@ export const VEXT_DOCS_APP_JS: string = `
       item.plugin && Array.isArray(item.plugin.extensions) ? item.plugin.extensions.join(" ") : "",
       item.middleware && item.middleware.name,
       item.middleware && item.middleware.type,
-      item.job && [item.job.name, item.job.inferredName, item.job.cron, item.job.interval, item.job.timezone, item.job.effectiveTimezone, item.job.enabled, item.job.parseState, (item.job.parseNotes || []).join(" ")].join(" "),
+      item.job && [item.job.name, item.job.inferredName, item.job.cron, item.job.leaseTtl, item.job.effectiveLeaseTtl, item.job.moduleShapeState, item.job.coordinationMode, item.job.timezone, item.job.effectiveTimezone, item.job.enabled, item.job.parseState, (item.job.parseNotes || []).join(" ")].join(" "),
       Array.isArray(item.tags) ? item.tags.join(" ") : "",
     ], state.query));
   };

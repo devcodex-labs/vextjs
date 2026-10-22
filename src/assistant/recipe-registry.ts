@@ -333,7 +333,7 @@ export const VEXT_RECIPE_DEFINITIONS: readonly VextRecipeDefinition[] = [
   recipe(
     "RCP-17",
     "job-handler",
-    "生成随应用就绪后自动运行的 cron/interval 定时任务；不启动进程。",
+    "生成一文件一任务的 Cron 定时任务；必须明确 cron，就绪及协调屏障后运行；不启动进程。",
     "backend",
     {
       jobName: text(120),
@@ -342,7 +342,7 @@ export const VEXT_RECIPE_DEFINITIONS: readonly VextRecipeDefinition[] = [
       enabled: bool,
       handler: code,
       cron: text(250),
-      interval: positive,
+      leaseTtl: positive,
       timezone: text(100),
     },
   ),

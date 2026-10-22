@@ -83,6 +83,7 @@ export function createBackendModulePlugin(
   srcDir: string,
   entryPoints: readonly string[],
   dependencyScope?: string,
+  readValidatedSource?: (file: string) => string | undefined,
 ): Plugin {
   const outputs = new Map<string, string>();
   const resolving = Symbol("vext-backend-resolve");
@@ -124,7 +125,7 @@ export function createBackendModulePlugin(
       build.onLoad({ filter: /\.(?:ts|mts|cts|js|mjs|cjs)$/i }, (args) => ({
         contents: preserveRuntimeImports(
           args.path,
-          readFileSync(args.path, "utf8"),
+          readValidatedSource?.(args.path) ?? readFileSync(args.path, "utf8"),
           dependencyScope !== undefined,
         ),
         loader: /\.(?:ts|mts|cts)$/iu.test(args.path) ? "ts" : "js",

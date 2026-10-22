@@ -1,4 +1,4 @@
-import { validateJobTimezone } from "./jobs/define-job.js";
+import { validateJobTimezone, validateJobLeaseTtl } from "./jobs/define-job.js";
 /**
  * config-loader.ts — 配置加载器
  *
@@ -2086,9 +2086,7 @@ export function validateJobsConfig(value: unknown, path: string): void {
         throw new Error(`[vextjs] ${path}.redis.${key} is not supported.`);
     validateRedisStoreFields(redis, `${path}.redis`);
     if (redis.leaseTtl !== undefined) {
-      validatePositiveInteger(redis.leaseTtl, `${path}.redis.leaseTtl`);
-      if ((redis.leaseTtl as number) < 1000)
-        throw new Error(`[vextjs] ${path}.redis.leaseTtl must be >= 1000 ms.`);
+      validateJobLeaseTtl(redis.leaseTtl, `${path}.redis.leaseTtl`);
     }
   }
 }

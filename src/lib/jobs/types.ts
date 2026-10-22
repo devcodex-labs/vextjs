@@ -27,14 +27,15 @@ interface JobDefinitionBase {
   tags?: string[];
   docs?: VextJobDocsConfig;
   enabled?: boolean;
+  /** Redis lease duration in milliseconds; not a handler timeout. */
+  leaseTtl?: number;
   handler: VextJobHandler;
 }
 
-export type VextJobDefinitionInput = JobDefinitionBase &
-  (
-    | { cron: string; interval?: never; timezone?: string }
-    | { interval: number; cron?: never; timezone?: never }
-  );
+export type VextJobDefinitionInput = JobDefinitionBase & {
+  cron: string;
+  timezone?: string;
+};
 
 export type VextJobDefinition = VextJobDefinitionInput & {
   readonly [VEXT_JOB_SYMBOL]: true;
@@ -46,7 +47,7 @@ export interface VextJobsConfig {
   include?: string[];
   exclude?: string[];
   timezone?: string;
-  /** Optional in one process; required for active tasks in built-in Cluster. */
+  /** Optional shared coordination across independent applications. */
   redis?: {
     url?: string;
     uri?: string;
