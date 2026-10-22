@@ -137,7 +137,7 @@ export default function Page(props) {
   );
   await write(
     "src/scheduled/heartbeat.mjs",
-    `import {defineJob} from "vextjs"; export default defineJob({name:"heartbeat",interval:86400000,handler(){}});`,
+    `import {defineJob} from "vextjs"; export default defineJob({name:"heartbeat",cron:"0 0 * * *",handler(){}});`,
   );
   await write(
     "src/scheduled/disabled.mjs",
@@ -145,7 +145,7 @@ export default function Page(props) {
   );
   await write(
     "src/scheduled/dynamic.mjs",
-    `import {defineJob} from "vextjs"; const chooseName=()=>"runtime-name"; export default defineJob({name:chooseName(),interval:1000,enabled:false,handler(){}});`,
+    `import {defineJob} from "vextjs"; const chooseName=()=>"runtime-name"; export default defineJob({name:chooseName(),cron:"* * * * *",enabled:false,handler(){}});`,
   );
   const build = spawnSync(
     process.execPath,
@@ -335,9 +335,45 @@ export default function Page(props) {
       page.locator(".vext-docs-code-item").filter({
         has: page.getByRole("heading", { name: title, exact: true }),
       });
-    assert.match(await article("jobs.heartbeat").innerText(), /86400000/);
-    assert.match(await article("jobs.heartbeat").innerText(), /milliseconds/);
-    assert.match(await article("jobs.heartbeat").innerText(), /complete/);
+    const property = (title, name) =>
+      article(title)
+        .getByRole("row")
+        .filter({ has: page.getByRole("cell", { name, exact: true }) })
+        .getByRole("cell")
+        .nth(1);
+    assert.equal(
+      await property("jobs.heartbeat", "Cron").innerText(),
+      "0 0 * * *",
+    );
+    assert.equal(
+      await property("jobs.heartbeat", "Parse state").innerText(),
+      "complete",
+    );
+    assert.equal(
+      await property("jobs.heartbeat", "Module shape").innerText(),
+      "known",
+    );
+    assert.equal(
+      await property("jobs.heartbeat", "Declaration count").innerText(),
+      "1",
+    );
+    assert.equal(
+      await property("jobs.heartbeat", "Runtime verified").innerText(),
+      "false",
+    );
+    assert.equal(
+      await property(
+        "jobs.heartbeat",
+        "Effective cron timezone (task > config > UTC)",
+      ).innerText(),
+      "UTC",
+    );
+    assert.equal(
+      await article("jobs.heartbeat")
+        .getByRole("cell", { name: "Interval", exact: true })
+        .count(),
+      0,
+    );
     assert.equal(
       await article("jobs.heartbeat")
         .getByRole("button", { name: "Send", exact: true })
@@ -349,7 +385,10 @@ export default function Page(props) {
       await article("jobs.disabled-daily").innerText(),
       /Asia\/Shanghai/,
     );
-    assert.match(await article("jobs.disabled-daily").innerText(), /false/);
+    assert.equal(
+      await property("jobs.disabled-daily", "Task enabled").innerText(),
+      "false",
+    );
     await page.getByRole("button", { name: "dynamic", exact: true }).click();
     assert.match(
       await article("jobs.dynamic (name unknown)").innerText(),
@@ -359,7 +398,7 @@ export default function Page(props) {
       await article("jobs.dynamic (name unknown)").innerText(),
       /partial/,
     );
-    await page.locator("#vext-docs-search").fill("86400000");
+    await page.locator("#vext-docs-search").fill("0 0 * * *");
     await page
       .getByRole("button", { name: "heartbeat", exact: true })
       .waitFor();
@@ -369,7 +408,7 @@ export default function Page(props) {
     );
     assert.deepEqual(errors, []);
     observations.push({
-      case: "Jobs Docs inherited discovery, schedule units, disabled/dynamic metadata and search",
+      case: "Jobs Docs inherited discovery, Cron-only declarations, disabled/dynamic metadata and search",
       status: "PASS",
     });
     await page.screenshot({ path: path.join(output, "docs-jobs.png") });
