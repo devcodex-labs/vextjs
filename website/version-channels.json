@@ -1,5 +1,5 @@
 {
-  "stable": "2.0.0",
+  "stable": "2.1.0",
   "next": "2.1.0",
-  "channel": "next"
+  "channel": "stable"
 }

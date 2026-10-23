@@ -870,7 +870,7 @@ These options belong at the CLI entry point: `vext --help` and `vext --version`.
 ```bash
 # View version
 vext --version
-# Sample output from the current package: vextjs v2.0.0; check your installed version
+# Sample output from the current package: vextjs v2.1.0; check your installed version
 
 # View help
 vext --help
