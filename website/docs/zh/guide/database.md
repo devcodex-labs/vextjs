@@ -424,7 +424,7 @@ export default {
 } satisfies VextUserConfig;
 ```
 
-公开类型 `VextMonSQLizeOptions` 直接从固定的 `monsqlize@3.3.0`
+公开类型 `VextMonSQLizeOptions` 直接从固定的 `monsqlize@3.3.3`
 `MonSQLizeOptions` 中取型；运行时使用同一 allowlist：
 
 - `schemaDsl`
@@ -432,8 +432,13 @@ export default {
 - `sync`、`transaction`
 - `findMaxLimit`、`findMaxSkip`
 - `requireCursorSecret`、`cursorSecretWarning`、`cursorTypes`、
-  `cursorValueNormalizer`
+  `cursorValueNormalizer`、`cursorValueNormalizerVersion`
 - `log`、`countQueue`、`autoIndex`、`cacheAutoInvalidate`、`writePathPolicy`
+
+配置自定义 `cursorValueNormalizer` 时，请同时设置稳定且非空的
+`cursorValueNormalizerVersion`，并在 normalizer 输出变化时更新它。未设置时查询仍会执行，
+但分页/书签缓存会被绕过，`prewarmBookmarks()` 会以 `INVALID_ARGUMENT` 拒绝，深跳页可能触发
+`jump.maxHops`。
 
 Vext 会在调用 MonSQLize 构造函数前拒绝未知字段，以及这些由 Vext 管理的字段：
 `type`、`databaseName`、`database`、`config`、`cache`、`logger`、
@@ -786,7 +791,7 @@ symbol。需要 MonSQLize 专属类或类型时，请直接从 `monsqlize` 导�
 ### 手动注册的类型化 descriptor（3.3.0）
 
 MonSQLize 3.3.0 可以从对象字面量 schema 推导 Model 文档类型。应用代码需要导入
-这一包级 API 时，应将与 Vext 所用版本兼容的 `monsqlize` 声明为应用的直接依赖，并确认解析为同一份 Model registry，而不是依赖包管理器碰巧提升传递依赖。这里的 3.3.0 是当前仓库核对的上游版本，不是要求固定 Vext 的安装版本。请先一次性注册 descriptor，再通过原始实例获取 Model：
+这一包级 API 时，应将与 Vext 所用版本兼容的 `monsqlize` 声明为应用的直接依赖，并确认解析为同一份 Model registry，而不是依赖包管理器碰巧提升传递依赖。这里的 3.3.3 是当前仓库核对的上游版本，不是要求固定 Vext 的安装版本。请先一次性注册 descriptor，再通过原始实例获取 Model：
 
 ```typescript
 import { defineModel, Model } from "monsqlize";

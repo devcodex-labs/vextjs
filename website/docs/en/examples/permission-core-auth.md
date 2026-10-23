@@ -19,7 +19,7 @@ Vext separates authentication from route authorization:
 
 The npm release `permission-core@3.0.4`, checked on 2026-09-25, declares
 `vextjs: 0.3.26` and `monsqlize: 3.1.0` as peers; this repository uses
-Vext 2.0.0 and MonSQLize 3.3.0. The upstream main branch's version
+Vext 2.0.0 and MonSQLize 3.3.3. The upstream main branch's version
 declarations are not the npm release's declarations. These numbers record a
 compatibility check; they do not instruct users to pin an old Vext install.
 

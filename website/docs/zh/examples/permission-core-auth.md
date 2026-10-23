@@ -10,7 +10,7 @@ Vext 的认证与路由保护是分层的：
 
 ## 1. 先确认依赖兼容性
 
-2026-09-25 核对的 npm 发布包 `permission-core@3.0.4` 声明 `vextjs: 0.3.26`、`monsqlize: 3.1.0` 为 peer；当前 Vext 仓库使用框架 2.0.0、MonSQLize 3.3.0。上游 main 的版本声明不等同于 npm 发布包。这些数字是核对记录，不是要求固定安装旧版 Vext。
+2026-09-25 核对的 npm 发布包 `permission-core@3.0.4` 声明 `vextjs: 0.3.26`、`monsqlize: 3.1.0` 为 peer；当前 Vext 仓库使用框架 2.0.0、MonSQLize 3.3.3。上游 main 的版本声明不等同于 npm 发布包。这些数字是核对记录，不是要求固定安装旧版 Vext。
 
 先在应用目录检查实际解析结果：
 

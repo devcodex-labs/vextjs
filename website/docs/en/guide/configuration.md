@@ -977,7 +977,7 @@ export default {
 
 Providing a nonempty `database` object activates Vext's built-in MonSQLize
 lifecycle. There is no `database.enabled` off switch: omission, `null`, or
-an empty object skips it. The repository currently checks MonSQLize 3.3.0;
+an empty object skips it. The repository currently checks MonSQLize 3.3.3;
 this does not pin the Vext installation version. The lifecycle includes
 connection normalization, logger bridging, model loading, raw `app.db`
 mounting, and shutdown cleanup. Use the first-class fields for

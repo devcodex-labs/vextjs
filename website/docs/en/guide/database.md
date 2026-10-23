@@ -424,15 +424,21 @@ export default {
 ```
 
 The public `VextMonSQLizeOptions` type is picked directly from the pinned
-`monsqlize@3.3.0` `MonSQLizeOptions`. The runtime uses the same allowlist:
+`monsqlize@3.3.3` `MonSQLizeOptions`. The runtime uses the same allowlist:
 
 - `schemaDsl`
 - `poolFallback`, `maxPoolsCount`
 - `sync`, `transaction`
 - `findMaxLimit`, `findMaxSkip`
 - `requireCursorSecret`, `cursorSecretWarning`, `cursorTypes`,
-  `cursorValueNormalizer`
+  `cursorValueNormalizer`, `cursorValueNormalizerVersion`
 - `log`, `countQueue`, `autoIndex`, `cacheAutoInvalidate`, `writePathPolicy`
+
+When you set a custom `cursorValueNormalizer`, also set a stable, non-empty
+`cursorValueNormalizerVersion` and change it whenever the normalizer's output
+changes. Without it, queries still run but page/bookmark caches are bypassed,
+`prewarmBookmarks()` rejects with `INVALID_ARGUMENT`, and deep jumps may hit
+`jump.maxHops`.
 
 Vext rejects unknown keys and these Vext-owned keys before the MonSQLize
 constructor runs: `type`, `databaseName`, `database`, `config`, `cache`,
@@ -813,7 +819,7 @@ MonSQLize 3.3.0 can infer a Model document type from an object-literal schema.
 If application code imports this package-level API, declare a compatible
 `monsqlize` version as a direct application dependency and confirm that it
 resolves to the same Model registry as Vext, instead of relying on accidental
-dependency hoisting. Version 3.3.0 identifies the upstream version checked in
+dependency hoisting. Version 3.3.3 identifies the upstream version checked in
 this repository; it does not pin the Vext installation version. Register the
 descriptor once before resolving it from the raw instance:
 

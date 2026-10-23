@@ -887,7 +887,7 @@ export default {
 
 ### 数据库配置 (`database`)
 
-提供非空 `database` 时，会启用 Vext 内置的 `monsqlize@3.3.0` 生命周期；当前没有database.enabled关闭开关，未配置、null或空对象才会跳过。生命周期包括连接归一化、
+提供非空 `database` 时，会启用 Vext 内置的 `monsqlize@3.3.3` 生命周期；当前没有database.enabled关闭开关，未配置、null或空对象才会跳过。生命周期包括连接归一化、
 日志桥接、Model 加载、挂载原始 `app.db` 以及关闭清理。这些由
 Vext 管理的能力继续使用一等字段配置。`database.monsqlizeOptions` 是带类型且
 经过运行时校验的高级 allowlist 入口；受保护或未知字段会在上游构造函数运行前失败。
