@@ -279,6 +279,32 @@ for (const job of ["ci", "docs-build"]) {
 requireTokens("release publication guard", releaseJobBlock("publish"), [
   "if: github.event_name == 'push' && github.ref_type == 'tag'",
 ]);
+const releasePublish = releaseJobBlock("publish");
+requireTokens(
+  "release publish Redis service",
+  indentedBlock(indentedBlock(releasePublish, "services:", 4), "redis:", 6),
+  [
+    "image: redis:7-alpine",
+    "6379:6379",
+    '--health-cmd "redis-cli ping"',
+    "--health-interval 10s",
+    "--health-timeout 5s",
+    "--health-retries 5",
+  ],
+);
+requireTokens(
+  "release publish final preflight Redis target",
+  indentedBlock(
+    indentedBlock(
+      releasePublish,
+      "- name: Run final non-publishing preflight",
+      6,
+    ),
+    "env:",
+    8,
+  ),
+  ["VEXT_TEST_REDIS_URL: redis://127.0.0.1:6379"],
+);
 const releaseCi = releaseJobBlock("ci");
 const releaseRedis = indentedBlock(
   indentedBlock(releaseCi, "services:", 4),
