@@ -1,9 +1,5 @@
 # Quick start
 
-:::tip Release and source scope
-Published stable package: `v2.0.0`. This documentation is being revised against the current repository source, which may describe behavior not yet in that package. General install commands do not pin a version. After installing, run `npm ls vextjs` and check the matching release notes before relying on a version-specific feature.
-:::
-
 Prerequisites: Node.js `^20.19.0 || >=22.12.0`, npm, and a writable project directory. Check with `node --version` and `npm --version`. The create commands below are alternatives; do not run them in sequence against the same target directory.
 
 ## Method 1: Use scaffolding (recommended)

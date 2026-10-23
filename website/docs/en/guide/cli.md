@@ -1,9 +1,5 @@
 # CLI commands
 
-:::tip Release and source scope
-Published stable package: `v2.0.0`. This page also describes changes in the current repository source that may not yet be published. Check the installed package version before using a version-specific command; general installation commands do not pin a version.
-:::
-
 The `vext` CLI covers project creation, development, builds, production startup, and operations. This page starts with a verifiable lifecycle, then documents individual commands. MCP extensions follow the core lifecycle.
 
 Prerequisites: Node.js satisfying the installed package's `^20.19.0 || >=22.12.0` range and npm. Run `create` from the intended parent directory; run other commands from the directory containing the application's `package.json`. Only subcommands that declare `--root` accept it. Check the actual installed version with `npx vextjs --version`; sample output illustrates format, not a required pinned version.
@@ -850,7 +846,7 @@ Scheduled jobs automatically start after readiness under `vext start` / `vext de
 
 `vext_project_check` runs bounded static diagnostics for missing directories, missing route response schemas, deprecated `docs.tags`, incomplete service dependency analysis, database `cursorSecret` choices, missing Redis stores or environment variables, SVG upload review, frontend form/API boundaries, and placeholder tests. It returns `diagnostics`, `totalBySeverity`, `affectedConsumers`, and `generatedState`; suggested commands remain host-executed. `vext_runtime_inspect` reads the framework-managed `.vext/runtime/snapshots/<instanceId>.json` snapshot. MCP does not start services, execute Jobs, or read raw logs; `vext mcp sync` owns host configuration writes.
 
-The `jobs` section of `vext_project_inspect` reads names, cron / interval, enabled state, timezone and Redis configuration statically. It returns startup and deployment guidance without running handlers or timers.
+The `jobs` section of `vext_project_inspect` statically reads task names, Cron, timezone, leaseTtl, switches and Jobs Redis summaries. It identifies expected built-in IPC or configured Redis prerequisites without running handlers or timers. Unknown fields stay unresolved; static guidance does not prove actual startup, connectivity or execution.
 
 In monorepos, source ownership is checked against actual workspace members, shared package declarations, package exports/sourceExports, and consumer dependencies. Adjacent services are not read automatically. Explicit external models, locales, and frontend source directories are read-only when their paths can be proven. Names or shared declarations alone grant no cross-root write permission.
 

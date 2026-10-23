@@ -373,9 +373,9 @@ Services are instantiated and attached one by one in filename order, not first i
 This avoids an initialization timing problem, but does not remove circular dependencies. After loading, the framework analyzes service accesses in source, including recognizable method-body dependencies, and reports cycles. Dynamic access or inheritance may only yield an incomplete-analysis warning; that is not proof of no cycle. Extract shared logic or reverse an edge to resolve a cycle; see the [Architecture Specification](/specification/architecture).
 :::
 
-### `src/jobs/` — Background job entry {#jobs}
+### `src/jobs/` — Scheduled task directory {#jobs}
 
-Scheduled jobs live in `src/jobs/**`, with `config.jobs.dir` supporting custom layouts. `vext start` / `vext dev` registers future points after readiness. Testing helpers use explicitly supplied definitions. See [Jobs](/guide/jobs).
+Cron tasks live in `src/jobs/**`, or a src-relative directory selected by `config.jobs.dir`. Each selected file has one default Job. `vext start` / `vext dev` schedules future points after necessary initialization and the deployment's activation requirements. Test helpers use supplied definitions without scanning. See [Jobs](/guide/jobs).
 
 ### `src/utils/` — Shared helper functions
 

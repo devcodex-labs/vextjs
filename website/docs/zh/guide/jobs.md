@@ -1,14 +1,12 @@
 # 定时任务 Jobs
 
-Jobs 用于随应用运行的定时工作，例如清理过期数据、刷新统计、同步业务数据。你在任务目录创建文件，写明 Cron，再在 handler 中调用已有 Service；不需要单独启动调度器。
+Jobs 用于随应用运行的 Cron 定时任务，例如清理过期数据、生成日报或同步业务数据。任务文件负责计划，Service 负责业务；启动应用后，框架自动发现任务并等待未来计划点。
 
-默认启用，单个应用进程和一个内置 Cluster 都无需 Redis。多个独立应用副本需要共同协调时，再配置共享 Redis。Jobs 不提供任务队列、自动重试、停机补跑或启动立即执行。
-
-本页按创建、业务调用、配置、部署和排错介绍使用方式。完整字段见 [Jobs API](/zh/api/jobs)，执行保证与限制见[定时任务契约](/zh/specification/jobs)。
+默认启用。一个应用进程和一个内置 Cluster 都无需 Redis；多个独立应用需要共同协调时，再显式配置共享 Jobs Redis。Jobs 不提供任务队列、自动重试、停机补跑或启动立即执行。
 
 ## 创建第一个任务
 
-前提：已有能正常启动的 VextJS 应用。在默认目录创建文件：
+前提：已有能正常启动的 VextJS 应用。在默认目录创建：
 
 ```typescript
 // src/jobs/heartbeat.ts
@@ -22,469 +20,396 @@ export default defineJob({
 });
 ```
 
-只需必填的 `cron` 和 `handler`，无需新增全局 Jobs 配置。此例用于确认调度已运行；生产业务放在后文的 Service。
+只需必填的 `cron` 和 `handler`，无需补写全局 Jobs 配置。
 
-1. 使用应用已有的开发启动脚本，例如已经定义 dev 脚本时执行 `npm run dev`。
-2. 等待应用完成必要初始化，查看 Jobs 激活信息中的 discovered、enabled 数量。
-3. 等待下一个 5 秒计划点，查看 `Heartbeat job executed` 与框架执行结果日志。
+1. 执行项目已有的开发命令，例如 `npm run dev`。
+2. 等待必要初始化完成，检查 Jobs 日志中的 discovered、enabled 数量和协调模式。
+3. 等待下一个 5 秒计划点，查看 `Heartbeat job executed` 和框架完成日志。
 
-这里的六字段 Cron 包含秒。任务等待**下一个未来点**，不会启动即执行；`scheduledAt` 表示计划时间，不是 handler 实际开始时间。启动失败时先修正报错，不以 HTTP 可访问代替任务已就绪。
+这里的六字段 Cron 包含秒。任务不会启动即执行；`scheduledAt` 是计划时间，实际开始可能稍晚。HTTP 已监听不等于 Jobs 已激活或 handler 已执行。构建后使用项目已有的 `npm run build`、`npm start`，框架从构建输出发现相应任务。
 
-开发环境也会执行任务。如果不希望开发机运行真实业务任务，使用[按环境启停](#按环境启停与全局配置)中的全局开关。构建后按应用已有的 build/start 脚本运行，任务目录映射到构建输出根。
-
-## 发现、导出与名称
-
-默认目录与名称示例：
-
-```text
-src/jobs/
-├── heartbeat.ts            → heartbeat
-├── cleanup.mjs             → cleanup
-├── _helpers.ts             → 忽略
-├── types.d.ts              → 忽略
-├── cleanup.test.ts         → 忽略
-├── _internal/task.ts       → _internal.task（目录不被忽略）
-└── billing/
-    ├── close-invoice.ts    → billing.close-invoice
-    └── index.ts           → billing
-```
-
-默认扫描 `.ts/.js/.mjs/.cjs/.mts/.cts`，忽略下划线开头的**文件名**、声明文件及 `.test/.spec` 文件；默认不扫描 `.tsx/.jsx`。名称按相对任务目录的文件路径去扩展名、去末尾 `/index`、把 `/` 转为 `.`；根 `index.ts` 对应 `index`。它不会像 Service 那样把 kebab-case 转为 camelCase。
-
-每个选中文件仅导出一个默认任务；普通 helper、类型和常量可以共存：
-
-```typescript
-// src/jobs/billing/index.ts
-import { defineJob } from "vextjs";
-
-export default defineJob({ cron: "* * * * *", handler() {} });
-export function helper(value: number) {
-  return value + 1;
-}
-```
-
-以上名称为 `billing`。`name` 覆盖推导名称，允许 ASCII 字母、数字与 `_ . : -`，必须非空且全局唯一；关闭的定义也参与冲突检查。为需要 Redis 协调的业务设置稳定名称，可避免移动文件改变身份。其他任务使用独立文件。
-
-JavaScript/ESM 使用相同导出方式；原生 CommonJS 可写成：
-
-```javascript
-// src/jobs/cleanup.cjs
-const { defineJob } = require("vextjs");
-module.exports = defineJob({ cron: "* * * * *", handler() {} });
-// 普通本地 helper 可以共存；exports.daily = defineJob(...) 会被拒绝。
-```
-
-允许项目源码内的有限相对默认转导出，入口和被引用的定义文件都需要符合声明规则：
-
-```typescript
-// src/jobs/report.ts
-export { default } from "../job-definitions/report.js";
-```
-
-```typescript
-// src/job-definitions/report.ts
-import { defineJob } from "vextjs";
-
-export default defineJob({ cron: "0 9 * * *", handler() {} });
-```
-
-定义文件位于任务发现目录外，因此不会被重复当作独立任务。依赖缺失、循环引用或越出允许的项目源码范围时，应修正声明后重新启动；不要用动态导出或工厂隐藏任务来源。
-
-每个被选中的文件恰有一个默认 `defineJob()`；普通对象、仅命名导出、数组及不透明默认工厂拒绝启动。把纯辅助模块放在 Jobs 目录外或用 `_helpers.ts`。`enabled: false` 仍校验字段、TTL、任务声明数量和重名，只免除调度与未来点要求。全局 `jobs.enabled: false` 跳过发现。业务调用放在handler中，避免导入任务文件时就执行业务；不要另外创建自己的定时器。
-
-### 允许与拒绝的声明样例
-
-允许动态字段，前提是默认任务声明形式明确。下面是一个完整文件，缺省环境变量时每分钟执行：
-
-```typescript
-// src/jobs/report.ts
-import { defineJob as task } from "vextjs";
-
-const report = task({
-  cron: process.env.REPORT_CRON ?? "* * * * *",
-  handler({ logger }) {
-    logger.info("Report job executed");
-  },
-});
-const alias = report;
-export default alias;
-```
-
-SDK namespace 调用也允许，例如下面这个独立文件：
-
-```typescript
-// src/jobs/heartbeat.ts
-import * as sdk from "vextjs";
-
-export default sdk.defineJob({
-  cron: "*/5 * * * * *",
-  handler() {},
-});
-```
-
-以下每个代码块是**独立的拒绝例**，不要合并到同一文件。拒绝与普通动态字段不同：它们使默认声明形式不明确，或者出现额外任务声明。
-
-工厂返回任务不属于允许的默认声明形式：
-
-```typescript
-// src/jobs/factory.ts — 拒绝
-import { defineJob } from "vextjs";
-
-function makeJob() {
-  return defineJob({ cron: "* * * * *", handler() {} });
-}
-export default makeJob();
-```
-
-同一任务再作命名导出会被拒绝；普通命名 helper 仍然允许：
-
-```typescript
-// src/jobs/alias.ts — 拒绝
-import { defineJob } from "vextjs";
-
-const job = defineJob({ cron: "* * * * *", handler() {} });
-export { job };
-export default job;
-```
-
-未调用函数中的第二处 SDK 声明也会计数：
-
-```typescript
-// src/jobs/extra.ts — 拒绝
-import { defineJob } from "vextjs";
-
-export default defineJob({ cron: "* * * * *", handler() {} });
-function unused() {
-  return defineJob({ cron: "* * * * *", handler() {} });
-}
-```
-
-条件选择默认任务、数组、普通对象、named-only Job、用户 getter/Proxy 及后续改变导出也不支持。推荐始终采用直接默认声明或上述不可变别名，把变化保留在 cron、enabled 等字段值中。字段值仍会在启动时校验。
-
-### 自定义目录与过滤
-
-```typescript
-// 合并到 src/config/default.ts
-import type { VextUserConfig } from "vextjs";
-export default {
-  jobs: {
-    dir: "tasks",
-    include: ["**/*.{ts,js,mts,mjs,cts,cjs}"],
-    exclude: ["experiments/**"],
-    timezone: "UTC",
-  },
-} satisfies VextUserConfig;
-```
-
-`dir: "tasks"` 对应 `src/tasks`，生产映射为编译根下的 `tasks`，例如 `dist/tasks`。不要加 `src/` 前缀、绝对路径或 `..`。`include` 替换默认规则，`exclude` 追加到内置忽略规则；匹配基准为任务目录。`include: []` 表示不发现任务。
-
-**过滤器匹配实际文件，不随编译自动转换。** `include: ["**/*.ts"]` 能发现源码，却会漏掉构建后的 `task.js`。使用 `**/*.{ts,js}` 等包含实际输出扩展的规则，或保留默认值；部署前检查实际构建输出。
+开发环境也会运行任务；不希望开发机执行业务时，使用后文的[环境开关](#按环境启停与全局配置)。
 
 ## 调用 Service 与协作取消
 
-下面示例定期遍历多个远端端点，更新当前进程的 Service 内存快照。外部接口约定为 JSON `{ "status": "..." }`；启动前设置 `STATUS_ENDPOINTS` 为以逗号分隔的实际 URL。这个快照不会在重启后保留，也不会自动共享给其他 Worker。生产业务需要共享或持久化结果时，在 Service 内接入项目自己的数据层，Job 只负责调用该 Service。
+Job 可以直接调用已就绪的 `app.services`。下面两份文件演示完整的 Service 接入，不依赖外部接口或数据库：
 
 ```typescript
-// src/services/remote-status.ts
+// src/services/order.ts
 import type { VextApp } from "vextjs";
 
-export default class RemoteStatusService {
-  private latest = new Map<string, string>();
+export default class OrderService {
   constructor(private app: VextApp) {}
 
-  async refresh(signal: AbortSignal) {
-    const endpoints = (process.env.STATUS_ENDPOINTS ?? "")
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean);
-    if (!endpoints.length) throw new Error("Set STATUS_ENDPOINTS");
-    for (const endpoint of endpoints) {
-      signal.throwIfAborted();
-      const response = await fetch(endpoint, { signal });
-      if (!response.ok) throw new Error(`Status HTTP ${response.status}`);
-      const result: unknown = await response.json();
-      signal.throwIfAborted();
-      if (
-        !result ||
-        typeof result !== "object" ||
-        !("status" in result) ||
-        typeof result.status !== "string"
-      ) {
-        throw new Error("Invalid status response");
-      }
-      this.latest.set(endpoint, result.status);
-    }
-    this.app.logger.info(
-      { count: this.latest.size },
-      "Remote statuses refreshed",
-    );
-    return this.latest.size;
-  }
-
-  snapshot() {
-    return Object.fromEntries(this.latest);
+  async cleanup(signal: AbortSignal) {
+    signal.throwIfAborted();
+    this.app.logger.info("Order cleanup service invoked");
   }
 }
 ```
 
-按[服务类型生成](/zh/guide/services)运行 `npm exec -- vext typegen`，使 `app.services.remoteStatus` 获得项目生成的类型，再添加：
+这个演示 Service **只记录调用成功，不会删除订单**。在真实项目中，用已有 `order.cleanup()` 的业务实现替换它；数据库操作、事务和业务幂等由 Service 负责。
+
+先按[服务类型生成](/zh/guide/services)执行 `npm exec -- vext typegen`，确保项目生成的类型包含 `app.services.order`，再创建：
 
 ```typescript
-// src/jobs/refresh-status.ts
+// src/jobs/order/cleanup.ts
 import { defineJob } from "vextjs";
 
 export default defineJob({
-  name: "refresh-status",
-  cron: "* * * * *",
+  cron: "0 3 * * *",
+  timezone: "Asia/Shanghai",
   async handler({ app, signal, scheduledAt, logger }) {
-    const count = await app.services.remoteStatus.refresh(signal);
-    logger.info({ count, scheduledAt }, "Status refresh completed");
+    await app.services.order.cleanup(signal);
+    logger.info({ scheduledAt }, "Order cleanup invocation completed");
   },
 });
 ```
 
-Job 上下文包含 `app/name/scheduledAt/signal/logger`，没有 `req/res` 或当前用户。`scheduledAt` 是计划点而非实际开始时间；返回值不会形成运行记录。HTTP 路由也可复用这个 Service，但需要由路由处理请求参数及响应。
+此任务每天上海时间 03:00 调用 Service。首次运行仍等待未来计划点；验证接入时可暂用 `*/5 * * * * *`，观察两条业务日志后改回业务计划。
 
-单个端点请求失败会结束本轮，已经更新的快照不会回滚；下一未来周期重新遍历端点，没有自动重试。示例返回当前缓存条目数，不代表一次原子批量更新。需要事务、检查点或逐项失败记录时，应由业务Service实现。
+入口检查一次 `signal` 只能取消尚未开始的工作。长任务应在循环及异步步骤之间持续检查，把 `signal` 传给支持取消的 I/O；驱动不支持时使用其原生取消能力。框架无法强行中断忽略取消的函数，也不能撤销已经发生的副作用。
 
-**入口检查一次 signal 不能让整个长任务支持取消。** 在批处理循环中持续检查，把 signal 传给支持它的网络/流式 I/O，并在异步步骤后检查。驱动不支持取消时应使用其原生取消/超时能力或缩小工作批次；框架无法强行中断忽略 signal 的函数。重要副作用应以业务唯一键或事务实现幂等，不将 Redis 调度去重等同业务幂等。
+## Job 完整配置
+
+<a id="job-options"></a>
+
+| 字段          | 类型       | 必填 | 默认值                           | 用途与何时配置                                                        |
+| ------------- | ---------- | ---- | -------------------------------- | --------------------------------------------------------------------- |
+| `name`        | `string`   | 否   | 任务相对路径推导                 | 稳定任务标识；需要 Redis 协调的任务建议显式设置，避免移动文件改变身份 |
+| `description` | `string`   | 否   | 无                               | 业务用途描述，也是文档摘要/描述的回退                                 |
+| `tags`        | `string[]` | 否   | 无                               | 文档分类和检索，与 `docs.tags` 合并去重                               |
+| `docs`        | `object`   | 否   | 无                               | 文档元数据，见下表；不影响调度                                        |
+| `enabled`     | `boolean`  | 否   | `true`                           | 单任务开关；关闭后仍导入模块、校验定义并检查重名                      |
+| `cron`        | `string`   | 是   | 无                               | 显式 Cron 计划，支持 5/6/7 字段及下述宏；没有默认表达式               |
+| `timezone`    | `string`   | 否   | `jobs.timezone` 或 `UTC`         | 任务业务时区，必须是有效 IANA 时区                                    |
+| `leaseTtl`    | `number`   | 否   | `jobs.redis.leaseTtl` 或 `30000` | Redis 租约毫秒数，安全整数且至少 `1000`；Local/IPC 中不使用但仍校验   |
+| `handler`     | `function` | 是   | 无                               | 同步或异步业务入口，返回值不保存；异常记录后等待未来周期，不自动重试  |
+
+<a id="job-docs"></a>
+
+| 字段               | 类型       | 默认值 | 文档用途                                             |
+| ------------------ | ---------- | ------ | ---------------------------------------------------- |
+| `docs.summary`     | `string`   | 无     | 摘要回退值，JSDoc 摘要优先                           |
+| `docs.description` | `string`   | 无     | 文档描述，优先于顶层 `description`，JSDoc 描述仍优先 |
+| `docs.tags`        | `string[]` | 无     | 与顶层 `tags` 和 `jobs` 分类合并去重                 |
+
+例如，以下是**替换上面任务文件**的完整配置，不是在同一文件追加第二个 Job。它依赖已注册的 `order` Service：
+
+```typescript
+// src/jobs/order/cleanup.ts
+import { defineJob } from "vextjs";
+
+export default defineJob({
+  name: "order.cleanup",
+  description: "清理过期订单",
+  tags: ["orders"],
+  docs: {
+    summary: "订单定期清理",
+    description: "调用 order Service 的清理业务",
+    tags: ["maintenance"],
+  },
+  enabled: true,
+  cron: "0 3 * * *",
+  timezone: "Asia/Shanghai",
+  leaseTtl: 60_000,
+  async handler({ app, signal }) {
+    await app.services.order.cleanup(signal);
+  },
+});
+```
+
+`leaseTtl` 不是 handler 超时：Redis 模式执行期间会续租，任务可以运行超过 TTL。任务级值覆盖全局 Redis TTL；只在需要区别于默认租约策略时设置。
+
+### handler 上下文
+
+<a id="job-context"></a>
+
+| 字段          | 含义与用法                                                                      |
+| ------------- | ------------------------------------------------------------------------------- |
+| `app`         | 已就绪的应用，访问 `app.services` 和插件扩展；没有 HTTP 的 `req/res` 或当前用户 |
+| `name`        | 加载后有效任务名，可用于日志或业务标识                                          |
+| `scheduledAt` | 当前计划点的 `Date`，不是实际开始时间；可用于延迟监控或业务幂等键               |
+| `signal`      | 应用关闭、协调失效等情况下请求协作取消；长任务持续检查                          |
+| `logger`      | 应用 logger；框架还会独立记录任务状态和耗时                                     |
 
 ## cron 与时区
 
 ### cron 表达式
 
-```typescript
-import { defineJob } from "vextjs";
-export default defineJob({
-  name: "daily-summary",
-  cron: "0 9 * * *",
-  timezone: "Asia/Shanghai",
-  async handler({ scheduledAt, signal, logger }) {
-    signal.throwIfAborted();
-    logger.info({ scheduledAt }, "daily summary");
-  },
-});
-```
+| 格式   | 字段顺序                     | 示例与含义                                                |
+| ------ | ---------------------------- | --------------------------------------------------------- |
+| 五字段 | 分、时、日、月、星期         | `0 3 * * *`：每天 03:00；`*/5 * * * *`：每五分钟          |
+| 每分钟 | 五字段                       | `* * * * *`：每分钟第 0 秒                                |
+| 六字段 | 秒、分、时、日、月、星期     | `*/5 * * * * *`：每五秒；`0 */5 * * * *`：每五分钟第 0 秒 |
+| 七字段 | 秒、分、时、日、月、星期、年 | `0 0 9 1 1 * 2027`：2027 年 1 月 1 日 09:00               |
+| 工作日 | 五字段，星期 1–5             | `0 9 * * 1-5`：周一至周五 09:00                           |
 
-| 格式   | 字段顺序                     | 例子                                                         |
-| ------ | ---------------------------- | ------------------------------------------------------------ |
-| 五字段 | 分、时、日、月、星期         | `0 9 * * *`：每天 09:00                                      |
-| 六字段 | 秒、分、时、日、月、星期     | `0 */5 * * * *`：每五分钟第 0 秒；`*/30 * * * * *`：每半分钟 |
-| 七字段 | 秒、分、时、日、月、星期、年 | `0 0 9 1 1 * 2027`：2027年1月1日09:00                        |
-| 工作日 | 五字段，星期 1–5             | `0 9 * * 1-5`：周一至周五 09:00                              |
+支持 `@yearly`、`@annually`、`@monthly`、`@weekly`、`@daily`、`@midnight`、`@hourly`；`@daily` 表示有效时区的每天午夜。日历扩展由所安装 Croner 解析，例如 `0 0 L * *`（每月最后一天）、`0 0 1W * *`（最接近每月 1 日的工作日）、`0 9 * * MON#2`（每月第二个周一）。工作日表达式不包含节假日日历。
 
-五字段没有秒；七字段最后一项是年份。支持 `@yearly`、`@annually`、`@monthly`、`@weekly`、`@daily`、`@midnight`、`@hourly`；例如 `@daily` 表示所用时区每天午夜。范围、列表、步长等合法扩展由当前 Croner 解析，不能把一次性 ISO 时间当作 Cron。
+**日期与星期同时填写时，默认 OR。** `0 0 1 * MON` 匹配每月 1 日或周一；`0 0 1 * +MON` 使用显式 `+` 表示同时满足。以 UTC 的 2026 年 1 月 2 日为起点，前者下次为 1 月 5 日，后者为 6 月 1 日。
 
-常用日历扩展包括 `0 0 L * *`（每月最后一天午夜）、`0 0 1W * *`（靠近每月1日的工作日）、`0 9 * * MON#2`（每月第二个周一09:00）。这些表达式仍按有效时区计算；发布前核对下一计划点，避免把工作日规则当成节假日日历。
+时区优先级为 **Job.timezone > jobs.timezone > UTC**。`Asia/Shanghai` 的 09:00 对应 UTC 01:00；日志 ISO 时间中的 `Z` 表示 UTC。
 
-**同时填写日期和星期时，默认按 OR 匹配。** `0 0 1 * MON` 是每月1日或每周一的午夜；如果只想在“恰逢周一的每月1日”执行，使用 `0 0 1 * +MON`，以 `+` 明确 AND。以UTC、2026年1月2日为计算起点，前者下次为1月5日，后者为6月1日；不要把普通星期字段误读成同时满足。
-
-cron 由 Croner 解析；完整扩展语法以所安装 Croner 版本为准。时区优先级为 **任务 `timezone` > `jobs.timezone` > `UTC`**，必须是有效 IANA 时区。`Asia/Shanghai` 的 09:00 对应 UTC 01:00；日志中的 ISO 时间含 `Z`，应按时区换算。
-
-夏令时会产生不存在或重复的本地时间，由 Croner 计算。当前依赖下，在 `America/New_York` 为 `30 1 * * *` 从 `2026-11-01T05:29:59Z` 计算得到 `05:30Z`，再从该点计算得到次日 `06:30Z`，不是当日重复的第二次 01:30。春季缺失时间也受计算起点影响：`30 2 * * *` 从 `2026-03-07T08:00Z` 得到次日 `07:30Z`（当地 03:30），而从 `2026-03-08T07:00Z` 计算则得到次日 `06:30Z`。需要稳定绝对时间时选 UTC；涉及本地时间的业务应为所用地区和边界日期验证计划点，不能假定每个自然日都恰好一次。
+夏令时可能使本地时刻缺失或重复，实际计划由所用 Croner 计算。当前依赖中，纽约 `30 1 * * *` 从 `2026-11-01T05:29:59Z` 计算得到 `05:30Z`，下一点为次日 `06:30Z`，不会当日再执行第二次 01:30。春季 `30 2 * * *` 从 `2026-03-07T08:00Z` 计算得到次日 `07:30Z`（当地 03:30），从 `2026-03-08T07:00Z` 计算则得到次日 `06:30Z`。涉及 DST 的业务应验证地区、起点和边界日期；需要固定绝对时间可选 UTC。
 
 ### 计划类别与未来点
 
-只接受五、六、七字段 Cron，或 `@yearly/@annually/@monthly/@weekly/@daily/@midnight/@hourly`。拒绝 interval、Date 和 ISO 日期字符串。七字段可使用固定年份；启用任务在准备与实际激活时都要有严格未来点，最后一个计划点执行后自然停止。关闭的任务仍须语法合法。
+只接受 Cron 字符串，拒绝 `interval`、Date 和 ISO 一次性日期，不提供毫秒固定间隔。启用任务在准备和实际激活时都必须有严格未来点；有限年份计划执行完最后一点后自然停止。关闭任务仍校验 Cron 语法，但无需未来点。
 
-例如每分钟 Cron 在 12:00:20 就绪后等待 12:01:00，正好在 12:01:00 就绪则等待 12:02:00。已注册的 12:01 触发稍晚到 12:01:02、未跨下一周期时可以执行；跨周期则跳过。启动、重启和停机恢复只选择未来点；onReady 期间经过的点不补跑。
+例如每分钟任务在 12:00:20 就绪，等待 12:01:00；正好在 12:01:00 就绪则等待 12:02:00。已经注册的 12:01 点稍晚到 12:01:02、仍未跨下一窗口时可执行；跨周期则跳过。启动、重启、故障恢复和 onReady 等待期间经过的历史点均不补跑。
 
-## 按环境启停与全局配置
+## 发现、导出与名称
 
-全局配置写在已有配置文件的 jobs 属性中。默认值适合标准目录；通常只需要补充业务时区：
+任务目录只需要真实的任务文件，例如：
 
-```typescript
-// src/config/default.ts — 合并到已有配置
-export default { jobs: { timezone: "Asia/Shanghai" } };
+```text
+src/jobs/
+├── heartbeat.ts          → heartbeat
+└── order/
+    ├── cleanup.ts        → order.cleanup
+    └── daily-summary.ts  → order.daily-summary
 ```
 
-| 参数          | 默认值            | 何时设置                      |
-| ------------- | ----------------- | ----------------------------- |
-| jobs.enabled  | true              | 整个应用不运行任务            |
-| jobs.dir      | jobs              | 改变任务源码目录，路径相对src |
-| jobs.include  | 六种JS/TS模块扩展 | 缩小发现范围，需兼顾生产扩展  |
-| jobs.exclude  | []                | 追加排除文件或目录            |
-| jobs.timezone | UTC               | 设置多数任务共用的业务时区    |
-| jobs.redis    | 不配置            | 让独立应用副本共享协调        |
+默认递归扫描 `.ts/.js/.mjs/.cjs/.mts/.cts`。每个选中文件恰有一个默认 `defineJob()`；普通 helper、类型、常量可以共存，业务辅助模块通常放在任务目录外。
 
-开发环境也会运行任务。整体关闭的配置：
+忽略规则单独说明：下划线开头的**文件名**、声明文件、`.test/.spec` 模块不会被选中；下划线目录本身不自动忽略，`.tsx/.jsx` 也不在默认包含范围。
 
-```typescript
-// src/config/development.ts — 合并到已有配置
-export default { jobs: { enabled: false } };
-```
+显式 `name` 优先，否则按相对任务目录的路径去扩展名、去末尾 `/index`、把路径分隔符转为点；根 `index.ts` 名为 `index`，`order/index.ts` 名为 `order`。不会把 kebab-case 转为 camelCase。名称允许 ASCII 字母、数字及 `_ . : -`，必须非空、全局唯一；关闭定义也参与重名检查。
 
-全局关闭跳过任务发现和导入，配置结构仍需合法。单个 Job 的 `enabled:false` 只关闭该任务的调度，仍加载和校验定义、名称及声明形式；如果目的是避免导入某个文件，应调整发现范围。
+<a id="允许与拒绝的声明样例"></a>
 
-当前生效值按项目配置合并决定，见[配置](/zh/guide/configuration)。不要把开发覆盖误认为生产开关；普通开发任务修改及已加载依赖变化会冷重启以应用新定义。
+一个文件不能通过多个命名 Job 注册多个任务，也不能返回任务数组或用工厂隐藏默认声明。普通辅助导出允许。JavaScript/ESM 同样默认导出；CommonJS 使用等价形式：
 
-## 选择部署方式
-
-| 部署方式                      | 最少需要的配置                  | 协调范围                              |
-| ----------------------------- | ------------------------------- | ------------------------------------- |
-| 单个应用进程                  | 无需 Redis                      | 当前进程内，同名任务不重叠            |
-| 一个内置 Cluster              | 配置 cluster 即可，无需 Redis   | 同一个内置 Cluster 的 Worker 自动协调 |
-| 多个独立进程、PM2、容器或多机 | 每个副本显式配置共享 Jobs Redis | 同一 Redis 协调域和任务身份           |
-
-一个内置 Cluster 的生产配置：
-
-```typescript
-// src/config/production.ts — 合并到已有配置
-export default {
-  cluster: { enabled: true, workers: 2 },
-  jobs: { timezone: "Asia/Shanghai" },
-};
-```
-
-不需要为 Jobs 填写 Worker ID、内部通信或仲裁参数。多个容器各自运行一个内置 Cluster，仍然是多个独立应用，应采用下面的共享 Redis 配置。
-
-### 多个独立副本共享 Redis
-
-```typescript
-// src/config/production.ts — 每个副本使用同一协调配置
-export default {
-  jobs: {
-    timezone: "Asia/Shanghai",
-    redis: {
-      url: "redis://127.0.0.1:6379/0",
-      namespace: "billing-production",
-    },
-  },
-};
-```
-
-前提是 Redis 已部署且每个副本都能访问同一目标。127.0.0.1 只适用于本机示例；跨主机或容器时换成各副本实际可访问的共享地址。各副本保持任务名、Cron、时区、TTL 和有效前缀一致。
-
-仅设置 Redis 环境变量不会开启 Jobs Redis。若已有 `VEXT_REDIS_URL` 或 `REDIS_URL`，可用 `jobs: { redis: {} }` 显式启用。提供的 client 优先于 url，其后为 uri、VEXT_REDIS_URL、REDIS_URL；显式空 url 不会继续回退。完整字段与错误条件见 [Redis 配置参考](/zh/api/jobs#redis-配置)。
-
-默认 namespace 根据包名、配置 profile 和运行模式自动生成，相同应用副本通常不必手填。额外业务隔离时设置 namespace；非空 keyPrefix 则完整覆盖生成前缀。改任务名或前缀会改变协调身份，滚动发布期间应保持一致。
-
-普通接入优先用 URL。已有客户端及 Redis Cluster 的资源管理见[部署](/zh/guide/deployment)，参数和关闭归属见 [Jobs API](/zh/api/jobs#redis-配置)。
-
-### 调整单个任务的租约
-
-通常保留默认值即可。有效值为 **任务 leaseTtl > jobs.redis.leaseTtl > 30000 毫秒**；必须是安全整数且至少 1000。只有 Redis 模式使用，但其他模式和 disabled 任务也会校验字段。
-
-```typescript
-// src/jobs/heartbeat.ts
-import { defineJob } from "vextjs";
-
-export default defineJob({
+```javascript
+// src/jobs/heartbeat.cjs — 用于 CommonJS 项目，不与上面的 TS 文件并存
+const { defineJob } = require("vextjs");
+module.exports = defineJob({
   cron: "*/5 * * * * *",
-  leaseTtl: 60_000,
   handler({ logger }) {
     logger.info("Heartbeat job executed");
   },
 });
 ```
 
-此任务仍每5秒到一个计划点，Redis 租约为60秒；正常运行会续租，任务可以执行超过60秒。TTL不是执行频率、业务超时或自动重试设置。无特殊需求时不要为每个任务重复填写。
+有限的相对默认转导出、默认别名及其他精确声明约束见 [API 的定义规则](/zh/api/jobs#定义规则)。业务放在 handler 中，不要在模块顶层执行业务或私建定时器。
+
+### 自定义目录与过滤
+
+把配置片段合并到已有 `src/config/default.ts`：
 
 ```typescript
-// src/config/production.ts — 全局默认和关闭预算示例
+export default {
+  jobs: {
+    dir: "tasks",
+    include: ["**/*.{ts,js,mjs,cjs,mts,cts}"],
+    exclude: ["experiments/**"],
+  },
+};
+```
+
+`dir` 相对 `src`，此例发现 `src/tasks/**`，构建后对应输出根下的 `tasks`。不要写 `src/tasks`、绝对路径或 `..`。`include` **替换**默认包含，`exclude` 在内置忽略上**追加**排除。它们匹配实际文件名，不会把 `**/*.ts` 自动改成生产的 `.js`；需要同时匹配源码与输出时包含两者。`include: []` 不发现任务。
+
+## 按环境启停与全局配置
+
+<a id="jobs-options"></a>
+
+| 参数            | 类型       | 默认值                             | 配置作用                                                |
+| --------------- | ---------- | ---------------------------------- | ------------------------------------------------------- |
+| `jobs.enabled`  | `boolean`  | `true`                             | 关闭整个应用的任务发现和调度；配置结构仍校验            |
+| `jobs.dir`      | `string`   | `"jobs"`                           | 相对 `src` 的目录，递归扫描；不能越出项目边界           |
+| `jobs.include`  | `string[]` | `["**/*.{ts,js,mjs,cjs,mts,cts}"]` | 替换默认匹配，兼顾生产输出扩展；空数组无任务            |
+| `jobs.exclude`  | `string[]` | `[]`                               | 追加排除，无法重新纳入内置忽略文件                      |
+| `jobs.timezone` | `string`   | `"UTC"`                            | 多数任务共用的有效 IANA 时区，单任务可覆盖              |
+| `jobs.redis`    | `object`   | 不配置                             | 显式开启共享 Redis 协调；未配置时按部署方式用 Local/IPC |
+
+完整配置可以写成下面的**配置片段**，合并到项目现有配置；通常只需设置与默认值不同的字段：
+
+```typescript
+// src/config/default.ts
+export default {
+  jobs: {
+    enabled: true,
+    dir: "jobs",
+    include: ["**/*.{ts,js,mjs,cjs,mts,cts}"],
+    exclude: ["experiments/**"],
+    timezone: "Asia/Shanghai",
+  },
+};
+```
+
+开发机整体关闭：
+
+```typescript
+// src/config/development.ts
+export default { jobs: { enabled: false } };
+```
+
+只关闭一个任务，在其定义中设置 `enabled: false`。全局关闭跳过任务发现和模块导入；单任务关闭仍导入、校验定义、TTL 和名称。两者都不跳过配置合法性校验。配置按现有 [profile 合并规则](/zh/guide/configuration)生效，开发覆盖不会自动关闭生产任务。
+
+## 选择部署方式
+
+| 部署方式                               | 最少配置                                  | 协调范围                                           |
+| -------------------------------------- | ----------------------------------------- | -------------------------------------------------- |
+| 一个应用进程                           | 不配置 Redis                              | 当前进程内，同名任务不重叠                         |
+| 一个内置 Cluster                       | 配置 `cluster` 即可                       | 当前 Master 管理的 Worker 自动通过 Master IPC 协调 |
+| 多个独立进程、PM2 应用、容器或多机副本 | 需要共享协调时，每副本显式配置 Jobs Redis | 同一 Redis 目标、有效前缀及任务身份                |
+
+例如一个内置 Cluster 开启 4 个 Worker：
+
+```typescript
+// src/config/production.ts — 合并到现有配置
+export default {
+  cluster: { enabled: true, workers: 4 },
+  jobs: { timezone: "Asia/Shanghai" },
+};
+```
+
+不需要 Redis、Worker ID 或内部 IPC 配置。所有 Worker 完成必要初始化，Master 核对实际就绪集合的任务定义后，逐个激活 Jobs；每个 Worker 获得激活后才允许调度。Master 收齐有效激活确认后报告整体就绪，单个已激活 Worker 可能更早注册 Timer。任务清单不一致或启动失败时按错误排查，不会降级为各 Worker 独立执行。
+
+### 多个独立副本共享 Redis
+
+多个容器各自运行一个内置 Cluster，仍属于多个独立应用，需要共享协调时使用 Redis。把以下片段合并到每个副本的配置：
+
+```typescript
+// src/config/production.ts
+export default {
+  jobs: {
+    redis: { url: process.env.VEXT_REDIS_URL },
+  },
+};
+```
+
+在各副本启动环境中设置指向同一实际共享服务的 `VEXT_REDIS_URL`，例如 `redis://redis.internal:6379/0`；`redis.internal` 是示意主机名，替换为实际地址。`127.0.0.1` 仅适合同一台机器的测试，不能表示不同主机共用 Redis。框架不因存在环境变量就自动开启 Redis；需要显式 `jobs.redis` 对象。已有环境 URL 时，也可使用：
+
+```typescript
+export default { jobs: { redis: {} } };
+```
+
+<a id="redis-options"></a>
+
+| 参数                   | 类型             | 默认值/优先级                       | 配置作用与适用情况                                         |
+| ---------------------- | ---------------- | ----------------------------------- | ---------------------------------------------------------- |
+| `jobs.redis.client`    | ioredis 兼容对象 | 无，优先于地址                      | 接入调用方管理的客户端；调用方负责连接选项、错误处理和关闭 |
+| `jobs.redis.url`       | `string`         | 无，高于 `uri` 与环境变量           | 常用 Redis URL；Jobs 创建并关闭连接                        |
+| `jobs.redis.uri`       | `string`         | 无，低于 `url`                      | URL 别名，通常只填一种                                     |
+| `jobs.redis.namespace` | `string`         | 根据项目包名、profile、运行模式生成 | 同一应用副本通常省略；共用 Redis 的不同业务需隔离时设置    |
+| `jobs.redis.keyPrefix` | `string`         | 根据 namespace 生成                 | 完整逻辑前缀覆盖，优先于 namespace；通常不必填写           |
+| `jobs.redis.leaseTtl`  | `number`         | `30000` 毫秒                        | Redis 默认运行租约，可由任务覆盖；安全整数且至少 `1000`    |
+
+连接优先级为 **client > url > uri > VEXT_REDIS_URL > REDIS_URL**。无效 `client` 不回退 URL；显式空 `url` 不会继续取环境变量。有启用任务但没有可用 Redis 地址/客户端，或连接初始化失败时拒绝启动。
+
+默认 namespace 组合包名、`VEXT_CONFIG`（缺省 `default`）和 `NODE_ENV`（缺省 `production`），标准 CLI 提供 profile/运行模式；默认逻辑前缀为 `vext:<namespace>:job:`。自动值适合同一应用的普通副本，不需要到处配置。不同包名、profile 或运行模式默认隔离；如果有意让不同项目共享任务协调，可显式设置同一 namespace：
+
+```typescript
+// 两个应用均需设置相同的真实 Redis 地址及稳定任务名/定义
 export default {
   jobs: {
     redis: {
-      url: "redis://127.0.0.1:6379/0",
+      url: process.env.VEXT_REDIS_URL,
       namespace: "billing-production",
       leaseTtl: 30_000,
     },
   },
-  shutdown: { timeout: 20 },
 };
 ```
 
-`leaseTtl` 的单位是毫秒，`shutdown.timeout` 的单位是秒；后者是整个应用关闭流水线共用的预算，不是每个任务各等20秒，也不能强行终止忽略取消的业务代码。
+同一协调域中的副本须保持 Redis 目标、有效前缀、任务名、Cron、有效时区和 TTL 一致。移动任务文件、改变任务名/namespace/keyPrefix 会改变身份，混合部署可能两边都执行。Jobs 不自动复用 cache、Session 或限流的 Redis 配置。传入客户端、Redis Cluster、权限和旧键运维见[进阶部署](/zh/guide/deployment#jobs-使用已有客户端或-redis-cluster)。
+
+### 调整单个任务的租约
+
+有效租约优先级为 **Job.leaseTtl > jobs.redis.leaseTtl > 30000 ms**。在已有任务定义中设置 `leaseTtl: 60_000` 即覆盖上例全局的 30 秒；未设置的任务继续继承。无需为调整 TTL 修改任务名或 Redis 前缀。
+
+执行期间自动续租，长任务不必将 TTL 设成全部执行时长。Local/IPC 模式不使用 Redis TTL，但仍要求字段合法。TTL 不能用来强制结束任务；`shutdown.timeout` 是**秒**，表示整个应用共享的关闭预算，也不是每个 Job 各自的执行超时。
 
 ## 重叠、失败与关闭
 
-| 情况                          | 行为                                                                       |
-| ----------------------------- | -------------------------------------------------------------------------- |
-| 同任务上次未结束              | 跳过本次点，不排队；不同任务可并行                                         |
-| handler 抛异常                | 记录 `scheduled job failed`，下一未来周期继续，不自动重试                  |
-| 事件循环阻塞跨周期 / 应用停机 | 跳过已错过的点，不补跑                                                     |
-| Redis领取执行资格失败         | 跳过当前点，不降级各自执行；未失租时下一未来周期可再申请                   |
-| 租约续期失败/过晚/过期        | 该Worker停止新任务、请求取消并关闭或替换；重连不会恢复原资格               |
-| 应用关闭                      | 先停止新触发，再请求取消，在 `shutdown.timeout` 总预算内等待，然后清理依赖 |
+| 情况                            | 框架行为与业务处理                                                         |
+| ------------------------------- | -------------------------------------------------------------------------- |
+| 上次同名任务未结束              | 跳过本次点，不排队；其他任务仍可并行                                       |
+| handler 抛异常                  | 记录失败，后续未来周期继续；不自动重试                                     |
+| 跨周期延迟、停机                | 跳过旧点，只考虑未来点，不补跑                                             |
+| Redis 申请资格失败              | 跳过该点，不降级；未失租的健康实例可尝试未来点                             |
+| Redis 续租失败、过晚或到期      | 该 Worker 停止全部新任务、请求取消并关闭/替换；重连不恢复原 Worker 的资格  |
+| 应用关闭                        | 先停止触发与新准入，再请求取消、在共享预算内等待，最后清理协调器及业务依赖 |
+| 内置 Cluster 的 Master 通道丢失 | 停止新任务并请求取消、关闭，不退回 Local                                   |
 
-取得触发资格后崩溃可能丢失当次任务。网络分区、Redis 状态丢失或 handler 忽略取消都不能保证业务副作用恰好一次；需要可靠投递的业务使用专门的队列模块。执行历史、告警或进度由业务存储/监控实现，handler 返回值不持久化。
+同一健康协调域里，同名任务同一计划点最多取得一次执行资格。取得资格后崩溃可能漏掉这次工作，快速完成或租约过期不会把已消费点变成可重新执行的任务。内置 IPC 状态不跨新的 Master 持久化；网络分区、Redis 状态丢失或业务忽略取消也不能保证副作用恰好一次。关键业务使用唯一键、事务等幂等措施；可靠投递、历史和进度由业务存储或独立队列承担。
 
-修改任务文件会使开发进程冷重启，旧定时器先关闭。已加载的任务依赖发生变化时，软重载会升级为冷重启，重新加载处理器；自定义目录也遵循此行为。
+存在启用 Jobs 时，必要 `onReady` 失败会阻止启动并清理，避免任务调用未就绪依赖；无启用 Jobs 时保持原有日志隔离。观察性的 `app:ready` 回调不等同于必要初始化。开发中任务文件及已加载的相关依赖改变会冷重启，旧调度器先关闭，自定义任务目录也遵循此规则。
 
 ## 查看任务文档
 
-如果应用已开启项目文档，启动后可在 `/docs` 查看 Jobs 条目。默认扫描范围逐字段继承 `jobs.dir/include/exclude`，不必重复配置；显式文档字段仅覆盖对应扫描项。
+应用已开启项目文档时，启动后直接访问 `/docs` 的 Jobs 分组；Jobs 文档源默认开启，不用再配置 `openapi.docs.code.jobs: true`。扫描范围默认逐字段继承 `jobs.dir/include/exclude`。
 
-只关闭任务文档，可把下面内容合并到已有配置：
+只关闭 Jobs 文档，将以下片段合并到现有配置：
 
 ```typescript
-// src/config/default.ts
 export default {
   openapi: { docs: { code: { jobs: false } } },
 };
 ```
 
-这不会停止实际任务。需要停止任务时使用 `jobs.enabled` 或单个任务的 `enabled`。disabled 定义也可以出现在文档中，无法静态读取的动态值保留未知；看到条目不代表任务正在运行或执行过。
+可选地改变文档扫描目录，不改变实际任务发现或执行资格：
 
-任务描述、标签及 `docs.summary/description/tags` 的完整字段、展示优先级和文档来源配置见 [API 参考](/zh/api/jobs#任务文档配置)。
+```typescript
+export default {
+  openapi: {
+    docs: { code: { jobs: { dir: "documented-jobs" } } },
+  },
+};
+```
+
+这个例子仅覆盖文档 `dir`，`include/exclude` 仍分别继承运行时配置。禁用任务可以展示，动态未知值保留未知，静态条目始终不证明已启动、已连接或已执行（`runtimeVerified: false`）。
+
+摘要依次取 JSDoc 摘要、`docs.summary`、`docs.description`、`description`、默认摘要；描述取 JSDoc 描述、`docs.description`、`description`。标签合并顶层 `tags`、`docs.tags` 和 `jobs`。MCP 检查及 Recipe 同样只提供静态证据，生成任务必须显式提供 Cron；MCP 不运行 handler 或启动定时器。完整文档源字段见 [API](/zh/api/jobs#任务文档配置)。
 
 ## 测试与观察
 
-普通 `createTestApp()` 不自动加载 src/jobs；应用在 NODE_ENV=test 时也不创建真实任务定时器。测试业务逻辑可以直接调用 Service；测试计划点和重叠规则则显式传入定义及受控时钟：
+测试调度逻辑时，使用受控时钟而非等待真实时间：
 
 ```typescript
+import assert from "node:assert/strict";
 import { defineJob } from "vextjs";
 import { createTestJobScheduler } from "vextjs/testing";
 
-let runs = 0;
+let executions = 0;
 const scheduler = await createTestJobScheduler({
-  services: false,
-  middlewares: false,
-  now: new Date(0),
+  now: new Date("2026-01-01T00:00:00Z"),
   jobs: {
-    sample: defineJob({
+    heartbeat: defineJob({
       cron: "* * * * * *",
       handler() {
-        runs++;
+        executions += 1;
       },
     }),
   },
 });
 try {
-  await scheduler.tick(new Date(1000));
-  await scheduler.tick(new Date(1000));
-  if (runs !== 1) throw new Error("Unexpected duplicate trigger");
+  await scheduler.tick(new Date("2026-01-01T00:00:01Z"));
+  assert.equal(executions, 1);
 } finally {
   await scheduler.close();
 }
 ```
 
-helper 使用真实调度/重叠规则，但不扫描项目目录、不创建真实定时器，也不证明实际多进程部署已协调。完整选项见[测试 API](/zh/api/testing-api#createtestjobscheduler)。
+helper 显式接收定义和初始时钟，只通过 `tick()` 驱动，不扫描项目任务、不创建真实 Timer；普通 `createTestApp()` 也不自动加载 Jobs。完整选项见[测试 API](/zh/api/testing-api#createtestjobscheduler)。
 
-在实际应用中，先确认 Jobs 激活，再观察至少一个未来点。日志中的 `name`、`scheduledAt`、`nextRunAt` 分别帮助识别任务、本次计划点和下一计划点；下一点不代表届时一定执行成功。检查业务结果时同时查看 Service 的成功/失败日志。
+然后用项目实际启动方式验证至少一个未来计划点。一个内置 Cluster 的 IPC 需要真实 Master/Worker 验证；独立副本共享 Redis 需要真实 Redis 集成验证，helper 不能替代它们。用真实 Redis 时使用真实计划时间，不用 1970 年的受控时钟申请资格。
 
-框架日志还包含当前协调模式、进程/Worker、startedAt实际开始时间、durationMs耗时及开始/完成/失败/跳过状态。用实际开始时间与scheduledAt比较可观察延迟；发现clock-skew诊断时同步宿主时钟，框架不会自动校时。
-
-上线前按实际部署方式验证：单进程观察一次完整执行；内置 Cluster 在多个 Worker 下检查同名同点资格及滚动行为；独立副本用同一 Redis 和定义检查共享协调。受控测试中的1970年时间只适用于测试时钟，不能用于真实 Redis 时间验收。
+启动日志包含发现/启用/禁用数量和 mode；执行日志包含 name、scheduledAt、PID/Worker、startedAt、duration、status 和 skipReason。`nextRunAt` 只是按当前配置计算的下一计划时间，不承诺必然执行。Redis 时钟偏差诊断给出 RTT 与偏差区间，不会修改系统时钟；各副本仍应保持时钟同步。
 
 ## 故障排查
 
-| 症状                     | 首先检查                                             | 处理方式                                  |
-| ------------------------ | ---------------------------------------------------- | ----------------------------------------- |
-| 启动后没有立即执行       | 下一个未来计划点                                     | 等待计划点；没有启动立即运行开关          |
-| 到时间没有业务日志       | Jobs是否激活、discovered/enabled、日志级别           | 核对开关和文件范围；日志过滤不等于未运行  |
-| 开发能运行，生产没有任务 | 实际产物目录、扩展和profile                          | 部署正确产物，include兼顾输出扩展         |
-| 启动报定义错误           | 报错文件、Cron/时区、handler及默认声明               | 修正后重启；disabled不是定义免检          |
-| 报任务重名               | 显式名和路径推导名，包含disabled定义                 | 消除冲突；helper移出发现范围              |
-| 执行时间相差8小时        | 是否使用UTC、Job是否覆盖全局时区                     | 设置业务IANA时区，不只改服务器时区        |
-| 某周期被跳过             | 同名上次是否结束、是否错过窗口                       | 优化业务批次或调整Cron；不排队、不补跑    |
-| 内置Cluster任务未就绪    | Worker启动错误、定义/配置一致性、必要初始化          | 修复原因恢复就绪，不用加Redis掩盖启动失败 |
-| 多个独立副本各自执行     | 是否显式开启Jobs Redis，共享目标/前缀/任务名是否一致 | 统一有效配置和定义，保持时钟同步          |
-| Redis启动失败            | client/地址优先级、连接与权限                        | 修复后重启；不会自动降级为每个副本各跑    |
-| Redis重连后不再启动任务  | 是否已经失租并取消或关闭                             | 恢复或替换实例；重连不自动恢复原实例资格  |
-| onReady失败后任务不运行  | 必要Service或插件初始化错误                          | 有启用任务时修复初始化后重启              |
-| 停机时任务未立刻停止     | 业务是否持续消费signal、共享关闭预算                 | 使用可取消I/O及业务幂等；无法强停任意JS   |
-| 文档有条目但任务未执行   | 静态扫描范围、开关和实际运行日志                     | 文档存在不证明已经启动或执行              |
-| 辅助依赖更新未生效       | 是否确实触发冷重启                                   | 核对开发重启日志，必要时重新启动应用      |
+| 现象                             | 检查与处理                                                                    |
+| -------------------------------- | ----------------------------------------------------------------------------- |
+| 没有发现任务                     | 检查 `jobs.enabled`、相对 `src` 的目录、include/exclude 和生产实际扩展名      |
+| 任务发现但一直未运行             | 检查单任务开关、Cron/时区、是否尚未到未来点、必要初始化和 Worker 激活错误     |
+| 单个内置 Cluster 要求填写 Redis  | Jobs 本身不要求；核对是否显式设置了 `jobs.redis` 或实际存在多个独立应用       |
+| 独立副本重复执行                 | 检查共享 Redis/有效前缀、稳定任务名、profile/运行模式，以及是否存在混合旧定义 |
+| 长任务某些点没有执行             | 同名重叠会跳过；TTL 自动续租，不是任务执行时限                                |
+| Redis 故障后 Worker 不再接受任务 | 若已失租，应完成关闭/替换或重启；单纯重连不恢复原资格                         |
+| 静态 Docs/MCP 只有 unknown       | 简化为可识别默认定义，检查依赖与动态字段；不要把静态未知解释成实际失败或成功  |
+| 改了 Job 却仍运行旧逻辑          | 确认开发冷重启完成；生产重新构建并按实际部署方式替换进程                      |
 
-继续查阅 [Jobs API](/zh/api/jobs)中的完整参数与错误条件，或[定时任务契约](/zh/specification/jobs)中的执行保证。
+进一步查阅 [API](/zh/api/jobs)、[执行契约](/zh/specification/jobs)、[部署](/zh/guide/deployment)和[测试](/zh/guide/testing#测试-jobs)。

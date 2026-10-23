@@ -25,6 +25,10 @@ import {
   collectPublicSurface,
   validatePublicSurface,
 } from "./verify-public-surface.mjs";
+import {
+  collectJobsDocumentation,
+  verifyJobsDocumentation,
+} from "./documentation-jobs-contract.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(scriptDir, "..", "..");
@@ -1380,61 +1384,12 @@ function verifyFrontendSeoAndNoHydrationDocumentationContract() {
     'link: "/zh/frontend/seo-sitemap"',
   ]);
 
-  if (stableReleaseDocumentation) {
-    requireTokens("website/docs/en/guide/quick-start.md", [
-      "Published stable package:",
-      `\`v${packageVersion}\``,
-      "current repository source",
-    ]);
-    requireTokens("website/docs/en/guide/cli.md", [
-      "Published stable package:",
-      `\`v${packageVersion}\``,
-      "current repository source",
+  // Installation and version queries remain documented. User guides do not
+  // require package/source warnings in stable or candidate channels.
+  for (const locale of ["en", "zh"])
+    requireTokens(`website/docs/${locale}/guide/cli.md`, [
       `vextjs v${packageVersion}`,
     ]);
-    requireTokens("website/docs/zh/guide/quick-start.md", [
-      "已发布稳定包：",
-      `\`v${packageVersion}\``,
-      "仓库当前源码",
-    ]);
-    requireTokens("website/docs/zh/guide/cli.md", [
-      "已发布稳定包：",
-      `\`v${packageVersion}\``,
-      "仓库当前源码",
-      `vextjs v${packageVersion}`,
-    ]);
-    for (const locale of ["en", "zh"]) {
-      for (const page of ["quick-start.md", "cli.md"]) {
-        forbidTokens(`website/docs/${locale}/guide/${page}`, [
-          "currently previews",
-          "当前预览",
-          "until 2.0.0 is published",
-          "2.0.0 正式发布前",
-        ]);
-      }
-    }
-  } else {
-    requireTokens("website/docs/en/guide/quick-start.md", [
-      "Version channel",
-      "`stable`",
-      "`next`",
-    ]);
-    requireTokens("website/docs/en/guide/cli.md", [
-      "Version channel",
-      "`stable`",
-      "`next`",
-    ]);
-    requireTokens("website/docs/zh/guide/quick-start.md", [
-      "版本通道",
-      "`stable`",
-      "`next`",
-    ]);
-    requireTokens("website/docs/zh/guide/cli.md", [
-      "版本通道",
-      "`stable`",
-      "`next`",
-    ]);
-  }
 }
 
 function verifyExecutableExampleDocumentationContract() {
@@ -3077,6 +3032,18 @@ if (renderedOnly) {
     ),
   );
   verifyMarkdownTables();
+  failures.push(
+    ...verifyJobsDocumentation({
+      root,
+      documents: stageVerification
+        ? undefined
+        : new Map(
+            [...collectJobsDocumentation(root)].filter(
+              ([file]) => file === verification.sourcePath,
+            ),
+          ),
+    }),
+  );
   verifyWebsiteNavigationContract();
   verifyCliDocs();
   verifySharedFoundationDocumentationContract();

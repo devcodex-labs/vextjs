@@ -289,7 +289,7 @@ export default definePlugin({
 
 ## Job docs source
 
-Vext Docs can include Job entries when `openapi.docs.code.jobs` is enabled. These entries are separate from OpenAPI operations because jobs are not HTTP endpoints. The source inherits `jobs.dir/include/exclude`; explicit Docs fields override individually, and disabled definitions remain visible. Details show schedule units, timezones, switches and static parse state without treating unknown fields as defaults or proving runtime execution. See [Scheduled Jobs](/guide/jobs#documentation-and-mcp) for configuration and JSDoc examples.
+With project Docs enabled, the Jobs source defaults on: open `/docs` without adding `openapi.docs.code.jobs: true`. Jobs are not HTTP endpoints, so their entries are separate from OpenAPI operations. Selection inherits `jobs.dir/include/exclude` individually; an explicit Docs field overrides only that selection field without changing runtime discovery or eligibility. Disabling the source does not stop Jobs; disabled definitions may appear. Unknown values stay unknown and static entries prove neither startup nor execution. See [Scheduled Jobs](/guide/jobs#documentation-and-mcp).
 
 ## Document configuration
 

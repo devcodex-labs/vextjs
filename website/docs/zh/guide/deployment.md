@@ -896,7 +896,9 @@ Vext Cluster reload 不更新 Master 自身配置，也不会替你发布镜像�
 // src/config/production.ts — 合并到已有配置
 import { Redis } from "ioredis";
 
-const client = new Redis("redis://127.0.0.1:6379/0", { lazyConnect: true });
+const url = process.env.VEXT_REDIS_URL;
+if (!url) throw new Error("Set VEXT_REDIS_URL");
+const client = new Redis(url, { lazyConnect: true });
 client.on("error", (error) => {
   console.error("Jobs Redis connection error", error.name);
 });
@@ -928,6 +930,21 @@ export default definePlugin({
 使用分片Redis Cluster时，在配置中导入ioredis的Cluster，以实际节点列表创建Cluster客户端代替Redis实例，其余配置与清理方式相同；不要把应用内置Cluster和Redis Cluster混为同一种配置。客户端须提供兼容的ping/eval能力，调用方管理认证、TLS、错误处理和关闭。不要设置会再次改写Jobs脚本键的客户端keyPrefix，隔离使用jobs.redis.namespace/keyPrefix。
 
 连接成功不代表复杂权限或故障切换已经验收，应按实际Redis目标测试。传入客户端不会由Jobs关闭；URL创建的Jobs连接则由Jobs管理。完整字段见[Jobs API](/zh/api/jobs#redis-配置)。
+
+配置在插件执行前已经确定；不要在 setup 中替换 jobs.redis。使用 bootstrap provider 时也不能把客户端实例作为 JSON-like 补丁返回。初始化探测 PING/EVAL，实际脚本还需要 TIME、GET、SET、EXISTS、PEXPIRE、DEL 及相应键权限；按目标 Redis 的 ACL/TLS/故障切换条件另行验证。
+
+### Jobs 协调键与已移除任务
+
+默认逻辑前缀是 `vext:<namespace>:job:`，实际键带 Redis Cluster 哈希标签：
+
+```text
+{<sha256 of logical-prefix + NUL + job-name>}:<logical-prefix><encoded-job-name>:last
+{<same hash>}:<logical-prefix><encoded-job-name>:running
+```
+
+last 仅保存最近已消费的计划点，没有 TTL；running 是可续租的运行所有权。完成或租约到期不会删除 last，因此旧任务可能留下标记，但不是执行历史。按普通 `vext:...*` 前缀 SCAN 可能找不到实际键，应包含前置哈希标签；Redis Cluster 需逐主节点扫描，生产避免 KEYS。
+
+只有确认所有旧副本与相关任务已停止后，才通过项目运维流程清理精确旧键；框架没有内置历史或清理命令。不要删除仍在使用的协调状态。改任务名、namespace 或 keyPrefix 会创建新身份，混合部署可能两边都运行；删除状态也会丢失去重证据，不能保证业务恰好一次。
 
 ## 文档站发布
 

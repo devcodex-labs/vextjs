@@ -530,7 +530,9 @@ services:
 
 ## Jobs and Cluster
 
-Jobs is Cron-only, with one default SDK Job per selected file. Trusted built-in Cluster uses Master IPC without Redis and Redis when jobs.redis is configured. Both modes require the actual Master handshake, appReady, matching effective manifests and activation ACKs; HTTP ready is separate from JobsActive. Rolling replacement verifies the candidate, obtains the old generation's closed-admission receipt or actual exit, then commits its slot and activates the replacement. Old committed ownership remains until settlement or actual exit; drain cannot force-stop handlers. Independent processes/containers/hosts explicitly share Redis. Namespace comes from package/profile/mode. Per-job leaseTtl overrides the global TTL; LeaseLost permanently quarantines all admissions in that Worker, and reconnect cannot revive them. Business side effects still need idempotency. See [Jobs](/guide/jobs).
+Jobs is Cron-only, with one default Job per selected file. One built-in Cluster needs no Redis and automatically uses Master IPC; explicit jobs.redis selects Redis arbitration. Both modes require necessary initialization, matching manifests and Master activation. Only an activated Worker registers future timers. Master reports overall readiness after valid acknowledgements, without another global release after all ACKs.
+
+Rolling replacement checks the candidate and closes old admissions before activating the new Worker. Same-name in-flight tasks remain protected from overlap; drain does not prove the old handler stopped. Independent applications explicitly share Jobs Redis when they need common coordination. Per-task leaseTtl overrides the global TTL. Lease loss closes all new Worker admissions, requests cancellation and shuts down/replaces it; reconnect cannot revive eligibility. Business side effects still need idempotency. See [Jobs](/guide/jobs).
 
 ## FAQ
 

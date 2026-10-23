@@ -883,7 +883,63 @@ Model registrations in multiple apps within one process have owners: equivalent 
 
 ## Deploy scheduled jobs
 
-Scheduled jobs automatically start after HTTP application readiness, sharing its services and shutdown lifecycle. Active jobs in built-in Cluster require `jobs.redis`; other replicas also need shared Redis and matching schedule definitions. Namespace is automatic from package name, profile and runtime mode; ordinary deployments need no override. Redis failures skip triggers without fallback. Restart registers only future points. See [Jobs](/guide/jobs).
+Jobs waits for future scheduled points after necessary initialization. A single process and one built-in Cluster need no Redis; built-in Workers require Master activation, with overall readiness reported after activation acknowledgements. Independent processes, containers or hosts explicitly share a Jobs Redis target and effective prefix when they need common execution qualifications. Keep task names, Cron, effective timezones and TTL consistent. Unavailable Redis never causes independent Local execution, and recovery does not replay missed points. See [Jobs](/guide/jobs#cluster-and-multiple-replicas).
+
+### Jobs with a supplied client or Redis Cluster
+
+Prefer jobs.redis.url for normal use, so Jobs manages the connection. If your application directly declares ioredis and needs a supplied compatible client, create a lazy instance in static configuration, then register caller-owned cleanup in a plugin. Configuration is settled before setup; do not replace app.config.jobs in a plugin. Bootstrap providers cannot return client instances as JSON-like patches.
+
+```typescript
+// src/config/production.ts — merge into existing configuration
+import { Redis } from "ioredis";
+
+const url = process.env.VEXT_REDIS_URL;
+if (!url) throw new Error("Set VEXT_REDIS_URL");
+const client = new Redis(url, { lazyConnect: true });
+client.on("error", (error) => {
+  console.error("Jobs Redis connection error", error.name);
+});
+
+export default {
+  jobs: { redis: { client, namespace: "billing-production" } },
+};
+```
+
+```typescript
+// src/plugins/jobs-redis.ts
+import { definePlugin } from "vextjs";
+import { Redis, Cluster } from "ioredis";
+
+export default definePlugin({
+  name: "jobs-redis",
+  setup(app) {
+    const client = app.config.jobs?.redis?.client;
+    if (!(client instanceof Redis) && !(client instanceof Cluster)) {
+      throw new Error("Configure a managed Jobs Redis client");
+    }
+    app.onClose(() => {
+      client.disconnect();
+    });
+  },
+});
+```
+
+For sharded Redis Cluster, import ioredis Cluster in configuration and use your actual node list to construct that client instead of Redis; keep the same cleanup lifecycle. Application Cluster and Redis Cluster are different concepts. Clients need compatible ping/eval; callers own authentication, TLS, error handling and close. Do not set an ioredis keyPrefix that transforms script keys again; use jobs.redis.namespace/keyPrefix for isolation.
+
+Initialization probes PING/EVAL; runtime also needs TIME, GET, SET, EXISTS, PEXPIRE, DEL and suitable key permissions. Successful connection is not evidence for every ACL/TLS/failover scenario; test the real target. Jobs closes URL-owned connections but never closes supplied clients. See the [Jobs API](/api/jobs#redis-configuration).
+
+### Jobs coordination keys and retired tasks
+
+The logical prefix defaults to `vext:<namespace>:job:`. Actual keys include a Redis Cluster hash tag:
+
+```text
+{<sha256 of logical-prefix + NUL + job-name>}:<logical-prefix><encoded-job-name>:last
+{<same hash>}:<logical-prefix><encoded-job-name>:running
+```
+
+last stores only the most recently consumed point without TTL; running is renewable ownership. Completion or lease expiry does not delete last, so retired tasks may leave markers, not execution history. A plain vext:...\* SCAN may miss the tagged keys; include the leading hash tag. Redis Cluster requires scans on each primary; avoid production KEYS.
+
+Clean only exact old keys through your operations process after all old replicas/tasks have stopped. There is no built-in history or cleanup command. Never delete live coordination state. Changing name/namespace/keyPrefix creates a new identity and mixed deployments may run both versions. Deleting state loses deduplication evidence and cannot preserve exactly-once business effects.
 
 ## Publish the documentation site
 

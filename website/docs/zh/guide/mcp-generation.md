@@ -173,7 +173,7 @@ MCP 遇到这种明显的根对象混用会要求补充或改正输入；项目�
 ## 生成后仍需验证的集成边界
 
 - 定时任务 Recipe 只生成显式 Cron 定义，一文件一个有限默认Job，业务数据由handler调用Service查询；不生成interval、队列或payload schema。使用createTestJobScheduler测试计划规则，再按实际部署分别验证内置Cluster或共享Redis协调。
-- 定时任务等待必要onReady成功及任务整体就绪后运行。单个内置Cluster无需Redis，独立应用副本需要共同协调时显式共享Jobs Redis；任务级leaseTtl优先于全局。静态检查不能证明实际就绪或执行，处理器仍需协作取消和业务幂等。
+- 定时任务等待必要 onReady 成功；内置 Cluster 的 Worker 还需通过清单检查并获得 Master 激活后才注册 Timer。Master 收齐激活确认后报告整体就绪，不承诺所有 Worker 同时放行。单个内置 Cluster 无需 Redis，独立应用需要共同协调时显式共享 Jobs Redis；任务级 leaseTtl 优先于全局。静态检查不能证明实际就绪或执行，handler 仍需协作取消和业务幂等。
 - API 字段级 `{ type: "boolean" }`、`{ enum: ["draft", "published"] }` 要与真实运行校验一致，不能转换成带有 type/enum 子字段的对象。整个请求位置仍是 DSL 字段表；完整根 JSON Schema 不可与它混淆。
 - 若生成登录、编辑或图片页面，宿主仍需按业务验证退出/401 的状态清理、保存成功但刷新失败的反馈、SSR 图片早于 hydration 失败等场景；这些是消费者验收责任，不是 Recipe 自动提供的行为。
 - 构建成功后才消费实际生成的 API client；源码不能凭空导入未生成文件。真实消费者包含 TS/JS、HTTP、OpenAPI、客户端类型与浏览器，不能用静态候选通过替代这些证据。

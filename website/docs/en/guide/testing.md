@@ -679,7 +679,7 @@ For external MongoDB integration, prepare an isolated database and verification 
 
 ## Testing Jobs
 
-Ordinary `createTestApp()` does not schedule `src/jobs`. Supply definitions and an initial `now` to `createTestJobScheduler()`, advance with `tick(Date)`, and close in teardown. It verifies future points, overlap skipping and failure behavior without real timers. Multi-replica coordination also needs real Redis integration tests. See [Jobs API](/api/jobs).
+Ordinary `createTestApp()` does not scan or schedule project Jobs. Supply definitions and an initial `now` to `createTestJobScheduler()`, advance with `tick(Date)`, and close in finally/teardown. It verifies future points, overlap skipping and failure without real timers. Built-in IPC requires real Master/Worker tests; independent applications sharing Redis require real Redis integration tests. The helper cannot replace either deployment check. See the [guide example](/guide/jobs#testing-and-acceptance) and [testing API](/api/testing-api#createtestjobscheduler).
 
 ## Next step
 

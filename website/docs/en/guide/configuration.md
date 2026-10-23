@@ -1068,7 +1068,7 @@ See the [Cluster guide](/guide/cluster) for CPU detection, proxy/NAT limits of s
 
 ### Jobs configuration
 
-`config.jobs` configures application-started cron / interval jobs. Enabled by default, timers register future points only after plugins, services and readiness complete. Active jobs in built-in Cluster require Redis. Test helpers use supplied definitions without automatically scheduling files. Docs has a separate Job source directory configuration; verify it when customizing jobs.dir.
+`config.jobs` configures application-started Cron tasks and defaults to enabled. Necessary initialization precedes future scheduled points; built-in Workers also require Master activation. One built-in Cluster uses Master IPC without Redis. Independent applications explicitly configure shared Jobs Redis when they need coordination. Test helpers take supplied definitions without scanning task files. With project Docs enabled, the Jobs source defaults on and inherits `jobs.dir/include/exclude` individually; explicit Docs overrides affect only documentation selection.
 
 ```ts
 export default {
@@ -1076,7 +1076,7 @@ export default {
     enabled: true,
     dir: "jobs",
     timezone: "UTC",
-    // Cluster / replicas require shared Redis; namespace is automatic.
+    // One built-in Cluster needs no Redis; independent apps may share Jobs Redis.
     // redis: { url: process.env.VEXT_REDIS_URL },
   },
 };

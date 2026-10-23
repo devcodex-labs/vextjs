@@ -281,7 +281,7 @@ export default definePlugin({
 
 ## Job 文档源
 
-启用 `openapi.docs.code.jobs` 后，Vext Docs 可以包含 Job 条目。Job 不是 HTTP 端点，因此这些条目与 OpenAPI operations 分开展示。默认继承 `jobs.dir/include/exclude`，显式文档字段可分别覆盖；关闭的定义仍可展示。详情包含调度单位、时区、开关与静态解析状态，未知字段不会被当成默认值。文档列表不证明任务正在运行。配置与展示边界详见[定时任务 Jobs](/zh/guide/jobs#查看任务文档)。
+应用开启项目文档后，Jobs 来源默认启用，直接在 `/docs` 查看，无需重复设置 `openapi.docs.code.jobs: true`。Job 不是 HTTP 端点，条目与 OpenAPI operations 分开展示。扫描范围逐字段继承 `jobs.dir/include/exclude`；显式文档字段只覆盖对应扫描项，不改变 Runtime 发现或执行资格。关闭来源不停止任务，禁用定义仍可展示。未知值保留未知，静态条目不证明任务已启动或执行。配置与展示边界见[定时任务 Jobs](/zh/guide/jobs#查看任务文档)。
 
 ## 文档配置
 

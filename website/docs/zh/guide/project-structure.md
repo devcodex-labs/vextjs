@@ -373,7 +373,7 @@ export default class UserService {
 
 ### `src/jobs/` — 任务目录 {#jobs}
 
-定时任务默认放在 `src/jobs/**`，可用 `config.jobs.dir` 自定义目录。`vext start` / `vext dev` 在应用就绪后自动注册未来触发点；测试 helper 使用显式传入的定义。详见[定时任务 Jobs](/zh/guide/jobs)。
+Cron 定时任务默认放在 `src/jobs/**`，可用 `config.jobs.dir` 选择相对 src 的目录。每个选中文件只有一个默认 Job。`vext start` / `vext dev` 在必要初始化与相应部署激活条件满足后调度未来点；测试 helper 使用显式定义，不扫描目录。详见[定时任务 Jobs](/zh/guide/jobs)。
 
 ### `src/utils/` — 公共函数
 

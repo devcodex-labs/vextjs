@@ -25,7 +25,267 @@ import {
   metadataForSource,
   ruleRecordsForEntry,
 } from "../website/scripts/generate-machine-artifacts.mjs";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { verifyJobsDocumentation } from "../scripts/validation/documentation-jobs-contract.mjs";
 await loadDocumentationParser();
+
+const repository = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
+const jobsDocErrors = (file, source) =>
+  verifyJobsDocumentation({
+    root: repository,
+    documents: new Map([[file, source]]),
+  });
+
+test("Jobs documentation follows the real public types and current cross-page contract", () => {
+  assert.deepEqual(verifyJobsDocumentation({ root: repository }), []);
+});
+
+test("Guide and API field regressions are checked independently against source types", () => {
+  for (const locale of ["zh", "en"])
+    for (const role of ["guide", "api"]) {
+      const file = `website/docs/${locale}/${role}/jobs.md`;
+      const source = readFileSync(path.join(repository, file), "utf8");
+      assert.deepEqual(jobsDocErrors(file, source), []);
+      for (const field of [
+        "leaseTtl",
+        "jobs.include",
+        "jobs.redis.keyPrefix",
+        "signal",
+        "docs.summary",
+      ]) {
+        const damaged = source
+          .split("\n")
+          .filter(
+            (line) =>
+              !new RegExp(
+                "^\\|\\s*`" + field.replaceAll(".", "\\.") + "`\\s*\\|",
+              ).test(line),
+          )
+          .join("\n");
+        assert.notEqual(damaged, source, `${file} contains ${field}`);
+        assert.match(
+          jobsDocErrors(file, damaged).join("\n"),
+          /field table differs/,
+        );
+      }
+    }
+});
+
+test("Jobs default and TTL constraints cannot drift while field names stay unchanged", () => {
+  for (const role of ["guide", "api"]) {
+    const file = `website/docs/en/${role}/jobs.md`;
+    const source = readFileSync(path.join(repository, file), "utf8");
+    for (const field of [
+      "jobs.enabled",
+      "jobs.dir",
+      "jobs.timezone",
+      "leaseTtl",
+      "jobs.redis.leaseTtl",
+    ]) {
+      const damaged = source
+        .split("\n")
+        .map((line) =>
+          line.startsWith("| `" + field + "`")
+            ? line.replace(/true|jobs\"|UTC|30000/g, "WRONG_DEFAULT")
+            : line,
+        )
+        .join("\n");
+      assert.notEqual(damaged, source);
+      assert.match(jobsDocErrors(file, damaged).join("\n"), /default for/);
+    }
+    const damaged = source
+      .split("\n")
+      .map((line) =>
+        /^\| `(?:leaseTtl|jobs\.redis\.leaseTtl)`/.test(line)
+          ? line.replaceAll("1000", "1")
+          : line,
+      )
+      .join("\n");
+    assert.match(jobsDocErrors(file, damaged).join("\n"), /minimum .* differs/);
+  }
+});
+
+test("Jobs guards cover CLI and MCP prose without banning valid interval terminology", () => {
+  for (const page of ["configuration", "deployment", "cli", "mcp-generation"])
+    for (const locale of ["zh", "en"]) {
+      const file = `website/docs/${locale}/guide/${page}.md`;
+      assert.match(
+        jobsDocErrors(file, "Jobs supports interval scheduling.").join("\n"),
+        /Cron-only/,
+      );
+      assert.match(
+        jobsDocErrors(file, "定时任务支持 interval 调度。").join("\n"),
+        /Cron-only/,
+      );
+      assert.deepEqual(
+        jobsDocErrors(
+          file,
+          "Jobs does not support interval. Cache supports interval; Jobs uses Cron.",
+        ),
+        [],
+      );
+      assert.match(
+        jobsDocErrors(
+          file,
+          "Jobs uses cron / interval and rejects queue options.",
+        ).join("\n"),
+        /Cron-only/,
+      );
+      assert.deepEqual(
+        jobsDocErrors(
+          file,
+          "Jobs rejects cron / interval; use an explicit Cron expression.",
+        ),
+        [],
+      );
+      assert.match(
+        jobsDocErrors(file, "Jobs uses cron / interval definitions.").join(
+          "\n",
+        ),
+        /Cron-only/,
+      );
+      assert.match(
+        jobsDocErrors(
+          file,
+          "Active jobs in built-in Cluster require Redis.",
+        ).join("\n"),
+        /does not require Redis/,
+      );
+      assert.deepEqual(
+        jobsDocErrors(
+          file,
+          "Jobs rejects interval. A built-in Cluster does not require Redis. Cache heartbeat interval and Redis clock offset interval are separate concepts.",
+        ),
+        [],
+      );
+    }
+  assert.match(
+    jobsDocErrors(
+      "website/docs/zh/guide/cluster.md",
+      "Jobs 任务整体就绪后才允许执行。",
+    ).join("\n"),
+    /Worker activation/,
+  );
+});
+
+test("SDK examples reject legacy fields and multiple aliased Job declarations, while helpers and explicit negative examples remain legal", () => {
+  const file = "website/docs/zh/guide/cli.md";
+  const fenced = (code, info = "typescript") =>
+    "```" + info + "\n" + code + "\n```\n";
+  const head = 'import {defineJob as task} from "vextjs";\n';
+  const one = 'export default task({cron:"* * * * *",handler(){}});';
+  assert.deepEqual(
+    jobsDocErrors(
+      file,
+      fenced(head + one + "\nexport function helper(){return 1;}"),
+    ),
+    [],
+  );
+  assert.match(
+    jobsDocErrors(
+      file,
+      fenced(head + "export default task({interval:1000,handler(){}});"),
+    ).join("\n"),
+    /unsupported Job field interval/,
+  );
+  assert.match(
+    jobsDocErrors(
+      file,
+      fenced(
+        head +
+          one +
+          '\nfunction unused(){return task({cron:"* * * * *",handler(){}});}',
+      ),
+    ).join("\n"),
+    /one default SDK Job/,
+  );
+  assert.match(
+    jobsDocErrors(
+      file,
+      fenced(
+        head +
+          '// src/jobs/task.ts\nexport const named=task({cron:"* * * * *",handler(){}});',
+      ),
+    ).join("\n"),
+    /default export/,
+  );
+  assert.deepEqual(
+    jobsDocErrors(
+      file,
+      fenced(
+        head + "export default task({interval:1000,handler(){}});",
+        "typescript invalid",
+      ),
+    ),
+    [],
+  );
+  assert.deepEqual(
+    jobsDocErrors(
+      file,
+      fenced(
+        'const {defineJob}=require("vextjs");module.exports=defineJob({cron:"* * * * *",handler(){}});',
+        "javascript",
+      ),
+    ),
+    [],
+  );
+  assert.deepEqual(
+    jobsDocErrors(
+      file,
+      fenced(
+        head +
+          'const jobs={a:task({cron:"* * * * *",handler(){}}),b:task({cron:"* * * * *",handler(){}})};',
+      ),
+    ),
+    [],
+  );
+});
+
+test("package/source warning policy is independent of stable and next metadata and preserves real version commands", () => {
+  for (const locale of ["zh", "en"])
+    for (const page of ["quick-start", "cli"]) {
+      const file = `website/docs/${locale}/guide/${page}.md`;
+      for (const channel of ["stable", "next"]) {
+        const documents = new Map([
+          [
+            file,
+            "# CLI\n\nRun npm ls vextjs and npm run build; start the source project.\n",
+          ],
+          ["website/version-channels.json", JSON.stringify({ channel })],
+        ]);
+        assert.deepEqual(
+          verifyJobsDocumentation({ root: repository, documents }),
+          [],
+        );
+        documents.set(
+          file,
+          "# CLI\n\n:::tip Renamed\nThe repository source may not yet be published to npm.\n:::\n",
+        );
+        assert.match(
+          verifyJobsDocumentation({ root: repository, documents }).join("\n"),
+          /permanent package\/source/,
+        );
+      }
+      assert.match(
+        jobsDocErrors(
+          file,
+          "# CLI\n\n本页按仓库源码编写，部分功能尚未发布。\n",
+        ).join("\n"),
+        /permanent package\/source/,
+      );
+      assert.deepEqual(
+        jobsDocErrors(
+          file,
+          "npm run build 默认检查类型；JavaScript 项目可以直接启动源码。",
+        ),
+        [],
+      );
+    }
+});
 
 function entry(locale, file, source = "") {
   const route = documentationRouteForSource(`${locale}/${file}`);

@@ -190,6 +190,8 @@ Plug-ins can also declare `onReady(app)` and `onClose(app)` directly. `plugin-lo
 - `onReady(app)`: Executed after HTTP starts listening, suitable for warming up cache, checking external dependencies, and printing startup information.
 - `onClose(app)`: Executed during graceful shutdown. All shutdown hooks clean up resources in last-registration-first-execution (LIFO) order.
 
+With enabled Jobs, a necessary onReady failure rejects and cleans up startup so handlers cannot use unready dependencies. Without enabled Jobs, existing logged isolation remains. Observational app:ready callbacks are separate from necessary initialization. See [Jobs](/guide/jobs#overlap-failure-and-shutdown).
+
 The setup mutation facade is also revoked after successful setup. Do not call setters or `extend` through a retained setup parameter in a later task. Registered callbacks can read the app or use captured clients. Rollback covers managed framework state only; it does not undo network writes or close an external resource whose hook was never registered. A timeout cannot forcibly stop arbitrary JavaScript or I/O. Application shutdown has its own overall deadline.
 
 ## Plug-in capabilities
