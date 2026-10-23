@@ -1,5 +1,5 @@
 import path from "node:path";
-import micromatch from "micromatch";
+import micromatch from "../safe-micromatch.js";
 import fg from "../safe-glob.js";
 import { resolveProjectRolePath } from "../project/layout.js";
 

@@ -180,14 +180,16 @@ Vext now pins `monsqlize@3.3.3` (with `schema-dsl@3.0.5`):
 - schema-dsl 3.0.5 type-checks `type` together with `enum`, which may reject
   values previously accepted by mistake.
 
-### Known advisory without a fix
+### Glob matching dependencies
 
-`npm audit --omit=dev` still reports `braces` (GHSA-vfj7-8cjw-p6xm) through
-`micromatch` and `fast-glob`. No patched release exists. Vext uses these
-packages only for build-time and startup file discovery over developer-owned
-patterns (project sources, `jobs.include`/`exclude`, deploy manifests), never
-for request input, and its `safe-micromatch`/`safe-glob` wrappers enforce a
-pattern budget. The pins will move when upstream ships a fix.
+Vext replaced `fast-glob` and `micromatch` with `tinyglobby@0.2.17` and
+`picomatch@4.0.7`, which removes the vulnerable `braces` package
+(GHSA-vfj7-8cjw-p6xm) from the production tree; `npm audit --omit=dev` reports
+no high-severity advisories. Framework file discovery keeps fast-glob semantics
+(brace and range expansion, negation, dotfiles, ignore lists, `./` prefixes,
+symlink handling) and the same pattern budget. Applications that imported
+`fast-glob` or `micromatch` through Vext's transitive dependencies must declare
+them directly.
 
 ---
 

@@ -12,7 +12,7 @@
  *
  * Mock 策略：
  *   - MonSQLize 类：mock connect / close / collection / db / model / model(name, def)
- *   - fast-glob：mock 文件扫描结果
+ *   - tinyglobby（safe-glob 底层）：mock 文件扫描结果
  *   - dynamic import：mock model 文件和 shared 包的 import
  *   - fs.existsSync：控制 models/ 目录存在性
  *
@@ -1619,8 +1619,9 @@ describe("loadModels", () => {
       };
     });
 
-    vi.doMock("fast-glob", () => ({
-      default: mockFastGlob,
+    vi.doMock("tinyglobby", () => ({
+      glob: mockFastGlob,
+      globSync: vi.fn().mockReturnValue([]),
     }));
 
     // Mock monsqlize 包 — model-loader 中 getModelClass() 通过

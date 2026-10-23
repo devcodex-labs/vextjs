@@ -20,7 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Adds the bundled `vext mcp` stdio server, shared MCP assistant contracts, and
   create-only ChangeSet drafts.
 - Updates `monsqlize` to 3.3.3, `schema-dsl` to 3.0.5, `route-core` to 0.0.8,
-  and `@modelcontextprotocol/server` to 2.3.1; narrows `engines.node` to
+  and `@modelcontextprotocol/server` to 2.3.1; replaces `fast-glob`/`micromatch`
+  with `tinyglobby`/`picomatch` to drop the vulnerable `braces` package; narrows `engines.node` to
   `^20.19.0 || >=22.12.0`. Upgrade notes are in [MIGRATION.md](./MIGRATION.md)
   (2.0 → 2.1).
 - Hardens frontend CSS Modules/assets/locales, build and dev artifact
