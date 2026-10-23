@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add scheduled Jobs: one default `defineJob({ cron, timezone?, handler })` export per file under `src/jobs`, Croner-based cron with per-job or global IANA timezones, automatic Local / built-in Master IPC / optional Redis lease coordination (`jobs.redis`, per-job `leaseTtl`), Docs/MCP metadata, and `createTestJobScheduler` for deterministic tests. See `MIGRATION.md` (2.0 → 2.1).
 - Add real Chromium consumer checks for CSS Modules, asset imports, CSR mounting, navigation errors, locale switching, freshness isolation, and no-hydration pages; require them in CI.
 - Expose typed `plugin.setupTimeout` and request `locale` contracts.
 - Add the bundled `vext mcp` stdio server with the fixed 7 Tools / 11 Resources / 4 Prompts protocol surface, bounded project inspection, built-in Vext knowledge search, and a real MCP stdio verification script.
@@ -24,7 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Diagnose the deprecated, unused frontend adapter resolver and round-robin `sticky: "ip"`; use explicit client/server build settings and external load-balancer affinity. Removal is reserved for the next breaking release.
 - Update `esbuild` to `0.28.2`, `flex-rate-limit` to `2.2.5`, and `response-cache-kit` to `1.2.2`.
-- Retain `schema-dsl@3.0.4` and `monsqlize@3.3.0`, the latest stable versions verified on 2026-09-09.
+- Update `monsqlize` to `3.3.3`, `schema-dsl` to `3.0.5`, and `route-core` to `0.0.8`; allow the paired `cursorValueNormalizerVersion` MonSQLize option. MonSQLize 3.3.2+ rebuilds query cache keys and versions Change Stream checkpoints; see `MIGRATION.md`.
+- Update `@modelcontextprotocol/server` to `2.3.1`, clearing its three high-severity production advisories.
 - Add `import-meta-resolve@4.2.0` for consumer-relative ESM package resolution.
 - Add `jsonc-parser@3.3.1` for compile-input fingerprints and shared JSONC tooling. Update `sharp` to `0.35.5`, `hono` to `4.13.7`, and Vitest/coverage to the maintained `4.1.11` fixes.
 

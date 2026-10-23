@@ -138,6 +138,58 @@ dependency hoisting. Existing project directories are not moved, renamed, or
 deleted, and `vext typegen` continues to own only `src/types/generated/`.
 Runtime configuration for both frontend and backend remains in `src/config/`.
 
+## Migrating from 2.0 to 2.1
+
+These notes cover the next 2.1 minor release; they are a source candidate until
+it is published.
+
+### Scheduled Jobs are enabled by default
+
+Vext now scans `src/jobs` at startup and expects every selected file to
+default-export a `defineJob({ cron, timezone?, handler })` declaration. An
+existing `src/jobs` directory that holds other modules (queue workers, helpers)
+fails startup. Choose one:
+
+- rename that directory;
+- point `jobs.dir` at the real Job directory (or narrow it with
+  `jobs.include` / `jobs.exclude`);
+- set `jobs: { enabled: false }` in `src/config/default.ts`.
+
+Multi-instance deployments that must run each occurrence once configure
+`jobs.redis`; tests can use `createTestJobScheduler`.
+
+### Node.js engines
+
+`engines.node` is now `^20.19.0 || >=22.12.0`. Node 18, 20.0–20.18 and
+22.0–22.11 are no longer supported.
+
+### MonSQLize 3.3.x behavior
+
+Vext now pins `monsqlize@3.3.3` (with `schema-dsl@3.0.5`):
+
+- **Cold cache.** Query, aggregate, totals and bookmark cache keys are rebuilt;
+  plan for refills and call `prewarmBookmarks()` where needed. No Redis flush or
+  data migration is required.
+- **`cursorValueNormalizerVersion`.** A custom `cursorValueNormalizer` needs a
+  stable, non-empty `cursorValueNormalizerVersion`; otherwise page/bookmark
+  caches are bypassed and prewarming rejects with `INVALID_ARGUMENT`.
+- **Pagination projections.** Pipeline pagination rejects `$slice`,
+  `$elemMatch` and positional projections with `INVALID_OPERATION`.
+- **Change Stream checkpoints v2.** New sync checkpoints and idempotency
+  markers use a v2 format. Before downgrading, stop sync, drain work and
+  preserve the checkpoint store; older versions cannot read the new envelope.
+- schema-dsl 3.0.5 type-checks `type` together with `enum`, which may reject
+  values previously accepted by mistake.
+
+### Known advisory without a fix
+
+`npm audit --omit=dev` still reports `braces` (GHSA-vfj7-8cjw-p6xm) through
+`micromatch` and `fast-glob`. No patched release exists. Vext uses these
+packages only for build-time and startup file discovery over developer-owned
+patterns (project sources, `jobs.include`/`exclude`, deploy manifests), never
+for request input, and its `safe-micromatch`/`safe-glob` wrappers enforce a
+pattern budget. The pins will move when upstream ships a fix.
+
 ---
 
 ## Historical: migrating to vextjs v1
