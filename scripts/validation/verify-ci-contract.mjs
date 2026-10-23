@@ -315,6 +315,7 @@ requireTokens(
     "ref: ${{ needs.freeze-candidate.outputs.consumer-commit }}",
     "token: ${{ secrets.VEXTJS_TEST_TOKEN || secrets.VEXTJS_GH_PAGES_TOKEN }}",
     "persist-credentials: false",
+    "working-directory: vext-source\n        run: npm ci --ignore-scripts --no-audit --no-fund",
     "actions/download-artifact@v8",
     "run-external-consumer-cell.mjs",
     "vextjs-external-cell-${{ matrix.os }}-node${{ matrix.node-version }}",

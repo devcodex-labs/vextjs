@@ -276,6 +276,15 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node-version }}
+          cache: "npm"
+          cache-dependency-path: vext-source/package-lock.json
+
+      # Validation scripts (e.g. verify-packed-install.mjs) import dev-only
+      # packages such as @modelcontextprotocol/client; the candidate itself is
+      # still installed only from the frozen tarball inside the consumer.
+      - name: Install release source validation dependencies
+        working-directory: vext-source
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Download immutable candidate
         uses: actions/download-artifact@v8
