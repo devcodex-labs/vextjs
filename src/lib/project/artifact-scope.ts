@@ -19,6 +19,21 @@ export interface ArtifactChange {
   after: Buffer | null;
 }
 
+/**
+ * Digest of a text file with CRLF line endings normalized to LF, or null when
+ * the bytes are binary (contain NUL) or contain no CRLF. Git checkouts with
+ * `core.autocrlf`/`text=auto` on Windows rewrite committed generated files to
+ * CRLF; such a file is the same output, not an external edit.
+ */
+export function lineEndingNormalizedDigest(
+  bytes: Buffer | null,
+): string | null {
+  if (bytes === null || bytes.includes(0)) return null;
+  const text = bytes.toString("latin1");
+  if (!text.includes("\r\n")) return null;
+  return artifactDigest(Buffer.from(text.replaceAll("\r\n", "\n"), "latin1"));
+}
+
 export function artifactFileKey(file: string): string {
   return process.platform === "win32" ? file.toLowerCase() : file;
 }
@@ -81,14 +96,16 @@ export function prepareArtifactScope(
   for (const relative of new Set([...previous.keys(), ...next.keys()])) {
     const before = readArtifactFile(root, relative, undefined, true);
     const actual = digestOrNull(before);
+    const normalized = lineEndingNormalizedDigest(before);
     const recorded = previous.get(relative)?.sha256;
     const desired = next.get(relative)?.sha256 ?? null;
-    if (
-      before !== null &&
-      (recorded === undefined ? actual !== desired : actual !== recorded)
-    )
+    const expected = recorded === undefined ? desired : recorded;
+    if (before !== null && actual !== expected && normalized !== expected)
       conflict(relative);
-    if (actual === desired) continue;
+    // A CRLF checkout of the exact desired output is kept as-is (no rewrite
+    // churn); the manifest still records the producer's LF digest.
+    if (actual === desired || (desired !== null && normalized === desired))
+      continue;
     const after = desired === null ? null : contents.get(relative);
     if (after === undefined) conflict(relative);
     changes.push({ path: relative, before, after });
