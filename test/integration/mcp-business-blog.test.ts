@@ -11,12 +11,15 @@ import {
   createBusinessConsumer,
   repository,
 } from "../helpers/mcp-business-consumer.js";
+import {
+  startTestMongo,
+  TEST_MONGO_STARTUP_TIMEOUT,
+  type TestMongo,
+} from "../helpers/mongo-memory.js";
 
 const databaseName = `vext_mcp_${randomUUID().replaceAll("-", "")}`;
-const uri = new URL(
-  process.env.VEXT_TEST_MONGODB_URI ?? "mongodb://127.0.0.1:27017",
-);
-uri.pathname = `/${databaseName}`;
+let mongo: TestMongo | undefined;
+let uri: URL;
 const adminToken = `test-${randomUUID()}`;
 let consumer: Awaited<ReturnType<typeof createBusinessConsumer>> | undefined;
 let runtime: BootstrapResult | undefined;
@@ -56,6 +59,9 @@ const input = (slug: string) => ({
 });
 
 beforeAll(async () => {
+  mongo = await startTestMongo();
+  uri = new URL(mongo.uri);
+  uri.pathname = `/${databaseName}`;
   database = new MongoClient(uri.toString(), {
     serverSelectionTimeoutMS: 3000,
   });
@@ -233,7 +239,7 @@ beforeAll(async () => {
     url,
     owner: "mcp-business-blog.test.ts",
   });
-}, 120_000);
+}, 120_000 + TEST_MONGO_STARTUP_TIMEOUT);
 
 afterAll(async () => {
   const errors: unknown[] = [];
@@ -278,6 +284,9 @@ afterAll(async () => {
   });
   await cleanup(async () => {
     await database?.close();
+  });
+  await cleanup(async () => {
+    await mongo?.stop();
   });
   if (priorBuilt === undefined) delete process.env.VEXT_BUILT;
   else process.env.VEXT_BUILT = priorBuilt;

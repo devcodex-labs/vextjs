@@ -7,7 +7,7 @@
 # 流水线结构：
 #   1. lint + format + typecheck（快速门禁，Node 20 / 22）
 #   2. unit tests（无外部依赖，Node 20 / 22）
-#   3. integration tests（真实 MongoDB/Redis + mock，Node 20 / 22）
+#   3. integration tests（MongoDB memory server + 真实 Redis + mock，Node 20 / 22）
 #   4. e2e tests（真实 HTTP 服务器，仅 Node 22）
 #   5. coverage report（仅 Node 22，保存 GitHub Actions artifact）
 #   6. package / docs contracts（Node 22）
@@ -154,7 +154,7 @@ jobs:
         run: npx vitest run test/unit --reporter=verbose
 
   # ────────────────────────────────────────────────────────────
-  # 3. Integration Tests（真实 MongoDB/Redis + mock）
+  # 3. Integration Tests（MongoDB memory server + 真实 Redis + mock）
   # ────────────────────────────────────────────────────────────
   integration-tests:
     name: Integration Tests (Node ${{ matrix.node-version }})
@@ -167,15 +167,6 @@ jobs:
         node-version: [20, 22]
 
     services:
-      mongodb:
-        image: mongo:7
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --eval 'db.adminCommand(\"ping\")'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
       redis:
         image: redis:7-alpine
         ports:
@@ -199,13 +190,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Cache MongoDB memory server binary
+        uses: actions/cache@v6
+        with:
+          path: .cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}-${{ runner.arch }}-8.2.6
+
       - name: Build (required for cluster integration tests)
         run: npm run build
 
       - name: Run integration tests
         run: npx vitest run test/integration --reporter=verbose
         env:
-          VEXT_TEST_MONGODB_URI: mongodb://127.0.0.1:27017/vextjs_ci
           VEXT_TEST_REDIS_URL: redis://127.0.0.1:6379
 
   # ────────────────────────────────────────────────────────────
@@ -284,15 +280,6 @@ jobs:
       contents: read
 
     services:
-      mongodb:
-        image: mongo:7
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --eval 'db.adminCommand(\"ping\")'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
       redis:
         image: redis:7-alpine
         ports:
@@ -316,6 +303,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Cache MongoDB memory server binary
+        uses: actions/cache@v6
+        with:
+          path: .cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}-${{ runner.arch }}-8.2.6
+
       - name: Build (required for dist-linked coverage fixtures)
         run: npm run build
 
@@ -324,7 +317,6 @@ jobs:
         # fixtures; bound parallelism to keep runtime deadlines predictable.
         run: npm run test:cov -- --maxWorkers=2
         env:
-          VEXT_TEST_MONGODB_URI: mongodb://127.0.0.1:27017/vextjs_ci_cov
           VEXT_TEST_REDIS_URL: redis://127.0.0.1:6379
 
       - name: Upload coverage artifact

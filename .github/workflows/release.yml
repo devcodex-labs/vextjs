@@ -87,6 +87,12 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Cache MongoDB memory server binary
+        uses: actions/cache@v6
+        with:
+          path: .cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}-${{ runner.arch }}-8.2.6
+
       - name: Unit tests
         run: npx vitest run test/unit --reporter=verbose
 

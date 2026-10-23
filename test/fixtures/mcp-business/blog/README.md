@@ -38,7 +38,7 @@ scripts/seeds/blog.ts              # 显式、幂等、可并发的数据库 see
 
 ## 配置与业务约定
 
-- 测试需要已有 MongoDB；`VEXT_TEST_MONGODB_URI` 可指定目标，默认本地 27017。每轮使用唯一 `vext_mcp_<UUID>` 数据库并在结束后定向删除。不会清空已有数据库。
+- 测试不需要预先启动 MongoDB：默认由 `mongodb-memory-server-core` 在测试进程内启动固定版本的 mongod（二进制缓存于 `.cache/mongodb-binaries`，可用 `MONGOMS_DOWNLOAD_DIR` 覆盖），结束后停止。仅在显式设置 `VEXT_TEST_MONGODB_URI` 时改为连接该已有服务。每轮使用唯一 `vext_mcp_<UUID>` 数据库并在结束后定向删除，不会清空已有数据库。
 - 管理 token 由宿主生成并放在该临时项目的配置中。公开页面不携带 token，管理页初始不读取草稿。管理 API 使用 `Authorization: Bearer ...`，未配置返回 503，凭据错误返回 401。
 - Redis 不是这个博客场景的前置条件。响应缓存使用当前内存实现，TTL 为 **300 毫秒**。公开内容最多短暂陈旧；不承诺多节点撤稿即时强一致。
 - 请求 `validate` 使用 DSL 字段表；单个字段可以使用 JSON Schema。完整根 JSON Schema 用在响应 schema。JSON boolean、只读字段和数组元素在校验前置中间件检查，避免 coercion 接受错误业务类型。
