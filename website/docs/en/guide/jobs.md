@@ -2,7 +2,7 @@
 
 Jobs runs Cron tasks with your application, such as cleaning expired data, producing reports or synchronizing business data. A Job owns the schedule and calls a Service for business work. Starting the application discovers Jobs and waits for future scheduled points.
 
-Jobs is enabled by default. One application process and one built-in Cluster do not need Redis. Configure shared Jobs Redis when independent applications need a common coordination domain. Jobs provides no queue, automatic retry, downtime catch-up or immediate startup execution.
+Jobs is enabled by default. One application process and one built-in Cluster do not need Redis. Configure shared Jobs Redis when independent applications need a common coordination domain. Jobs provides no queue, automatic retry, downtime catch-up, immediate startup execution or manual trigger (run-now).
 
 ## Create your first task
 
@@ -82,7 +82,7 @@ Checking `signal` once at entry only cancels work that has not started. Long han
 | `docs`        | `object`   | No       | Absent                              | Documentation metadata below; no scheduling effect                                             |
 | `enabled`     | `boolean`  | No       | `true`                              | Per-task switch; disabled modules are still imported and definitions/names validated           |
 | `cron`        | `string`   | Yes      | None                                | Explicit five/six/seven-field expression or supported macro; no implicit schedule              |
-| `timezone`    | `string`   | No       | jobs.timezone or UTC                | Task business timezone, as a valid IANA timezone                                               |
+| `timezone`    | `string`   | No       | jobs.timezone or UTC                | Task business timezone accepted by `Intl.DateTimeFormat`; IANA names recommended               |
 | `leaseTtl`    | `number`   | No       | jobs.redis.leaseTtl or `30000`      | Redis lease in milliseconds, a safe integer at least `1000`; unused but validated in Local/IPC |
 | `handler`     | `function` | Yes      | None                                | Sync/async business entry; return value is not stored; errors are logged without retry         |
 
@@ -214,14 +214,14 @@ export default {
 
 <a id="jobs-options"></a>
 
-| Field           | Type       | Default                            | Purpose                                                                       |
-| --------------- | ---------- | ---------------------------------- | ----------------------------------------------------------------------------- |
-| `jobs.enabled`  | `boolean`  | `true`                             | Disable all discovery and scheduling; configuration structure still validates |
-| `jobs.dir`      | `string`   | `"jobs"`                           | Recursive task directory relative to src; cannot escape the project boundary  |
-| `jobs.include`  | `string[]` | `["**/*.{ts,js,mjs,cjs,mts,cts}"]` | Replace include globs; account for emitted extensions; [] selects nothing     |
-| `jobs.exclude`  | `string[]` | `[]`                               | Additional excludes; cannot re-enable built-in ignored files                  |
-| `jobs.timezone` | `string`   | `"UTC"`                            | Valid shared IANA timezone, overridden per task                               |
-| `jobs.redis`    | `object`   | Absent                             | Explicit shared Redis coordination; otherwise deployment selects Local/IPC    |
+| Field           | Type       | Default                            | Purpose                                                                                         |
+| --------------- | ---------- | ---------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `jobs.enabled`  | `boolean`  | `true`                             | Disable all discovery and scheduling; configuration structure still validates                   |
+| `jobs.dir`      | `string`   | `"jobs"`                           | Recursive task directory relative to src; cannot escape the project boundary                    |
+| `jobs.include`  | `string[]` | `["**/*.{ts,js,mjs,cjs,mts,cts}"]` | Replace include globs; account for emitted extensions; [] selects nothing                       |
+| `jobs.exclude`  | `string[]` | `[]`                               | Additional excludes; cannot re-enable built-in ignored files                                    |
+| `jobs.timezone` | `string`   | `"UTC"`                            | Shared timezone accepted by `Intl.DateTimeFormat` (IANA names recommended), overridden per task |
+| `jobs.redis`    | `object`   | Absent                             | Explicit shared Redis coordination; otherwise deployment selects Local/IPC                      |
 
 A full **configuration fragment** can look like this; merge into existing config and normally set only values that differ from defaults:
 
@@ -414,15 +414,16 @@ Startup logs include discovered/enabled/disabled counts and mode. Execution logs
 
 ## Troubleshooting
 
-| Symptom                                        | Checks and action                                                                                                            |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| No tasks discovered                            | Check jobs.enabled, the src-relative directory, include/exclude and actual emitted extensions                                |
-| Tasks found but not running                    | Check per-task switch, Cron/timezone, next future point, necessary initialization and activation errors                      |
-| One built-in Cluster appears to need Redis     | Jobs does not require it; check explicit jobs.redis or whether there are independent applications                            |
-| Independent replicas execute duplicates        | Check shared Redis/effective prefix, stable task names, profile/mode and mixed old definitions                               |
-| Long task misses some points                   | Same-name overlap skips points; TTL renews and is not a handler deadline                                                     |
-| Worker remains ineligible after Redis recovery | A Worker that lost a lease needs shutdown/replacement or restart; reconnection alone cannot revive it                        |
-| Static Docs/MCP reports unknown                | Use a recognizable default definition and check dependencies/dynamic fields; unknown proves neither live failure nor success |
-| Changes still use old task logic               | Check completion of development cold restart; rebuild and replace production processes                                       |
+| Symptom                                        | Checks and action                                                                                                                          |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| No tasks discovered                            | Check jobs.enabled, the src-relative directory, include/exclude and actual emitted extensions                                              |
+| Tasks found but not running                    | Check per-task switch, Cron/timezone, next future point, necessary initialization and activation errors                                    |
+| One built-in Cluster appears to need Redis     | Jobs does not require it; check explicit jobs.redis or whether there are independent applications                                          |
+| Independent replicas execute duplicates        | Check shared Redis/effective prefix, stable task names, profile/mode and mixed old definitions                                             |
+| Long task misses some points                   | Same-name overlap skips points; TTL renews and is not a handler deadline                                                                   |
+| Worker remains ineligible after Redis recovery | A Worker that lost a lease needs shutdown/replacement or restart; reconnection alone cannot revive it                                      |
+| Static Docs/MCP reports unknown                | Use a recognizable default definition and check dependencies/dynamic fields; unknown proves neither live failure nor success               |
+| Changes still use old task logic               | Check completion of development cold restart; rebuild and replace production processes                                                     |
+| Need to run a task manually                    | Run-now is not supported; keep the handler thin and call a Service method, then invoke that Service directly from an admin route or script |
 
 Continue with the [API](/api/jobs), [execution contract](/specification/jobs), [deployment](/guide/deployment) and [testing](/guide/testing#testing-jobs).

@@ -63,7 +63,7 @@ interface VextJobDocsConfig {
 | `docs`        | `VextJobDocsConfig` | No       | Absent                                             | Metadata object, not null/array; see [documentation source](#documentation-source)                                          |
 | `enabled`     | `boolean`           | No       | `true`                                             | false disables scheduling, while import, definition and name checks remain                                                  |
 | `cron`        | `string`            | Yes      | None                                               | Valid nonempty five/six/seven-field Cron or supported macro; reject Date, ISO dates and interval                            |
-| `timezone`    | `string`            | No       | jobs.timezone or UTC                               | Nonempty valid IANA timezone; Job.timezone > jobs.timezone > UTC                                                            |
+| `timezone`    | `string`            | No       | jobs.timezone or UTC                               | Nonempty timezone accepted by `Intl.DateTimeFormat`, IANA names recommended; Job.timezone > jobs.timezone > UTC             |
 | `leaseTtl`    | `number`            | No       | jobs.redis.leaseTtl or `30000`                     | Safe integer milliseconds at least `1000`; Job.leaseTtl > jobs.redis.leaseTtl > 30000 ms; unused but validated in Local/IPC |
 | `handler`     | `VextJobHandler`    | Yes      | None                                               | Function returning any value or Promise; no result storage or automatic retry                                               |
 
@@ -103,7 +103,7 @@ Configure jobs in existing `src/config/default.ts` or the selected profile, usin
 | `jobs.dir`      | `string`   | `"jobs"`                           | Project directory relative to src; no absolute path, .. or escape; maps into the compiled root, such as dist/jobs                   |
 | `jobs.include`  | `string[]` | `["**/*.{ts,js,mjs,cjs,mts,cts}"]` | Replaces include; matches actual files; [] selects nothing, without emitted-extension rewriting                                     |
 | `jobs.exclude`  | `string[]` | `[]`                               | Additional ignores; cannot re-enable underscore filenames, declarations or test/spec modules; underscore directories remain allowed |
-| `jobs.timezone` | `string`   | `"UTC"`                            | Valid IANA timezone, overridden per task                                                                                            |
+| `jobs.timezone` | `string`   | `"UTC"`                            | Timezone accepted by `Intl.DateTimeFormat`, IANA names recommended; overridden per task                                             |
 | `jobs.redis`    | `object`   | Absent                             | Object explicitly enables Redis coordination; no Jobs connection with no enabled tasks                                              |
 
 Unknown fields are rejected. Directory/array structure remains valid even with global disable; import differences between global and per-task switches are described above.

@@ -2,6 +2,8 @@
 
 This page defines observable guarantees, prerequisites and limits. Use the [guide](/guide/jobs) for integration and the [API](/api/jobs) for precise fields.
 
+## Runtime and execution guarantees
+
 <a id="vext-job-001"></a>
 
 ### VEXT-JOB-001 [MUST] Application startup

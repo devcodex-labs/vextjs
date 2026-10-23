@@ -63,7 +63,7 @@ interface VextJobDocsConfig {
 | `docs`        | `VextJobDocsConfig` | 否   | 无                               | 文档元数据对象，不能是 null 或数组；字段见[任务文档配置](#任务文档配置)                            |
 | `enabled`     | `boolean`           | 否   | `true`                           | false 不调度，但模块仍导入，定义及名称仍校验                                                       |
 | `cron`        | `string`            | 是   | 无                               | 合法非空 5/6/7 字段 Cron 或支持的宏；Date、ISO 日期、interval 拒绝                                 |
-| `timezone`    | `string`            | 否   | `jobs.timezone` 或 `UTC`         | 非空有效 IANA 时区，Job.timezone > jobs.timezone > UTC                                             |
+| `timezone`    | `string`            | 否   | `jobs.timezone` 或 `UTC`         | 非空且被 `Intl.DateTimeFormat` 接受的时区，推荐 IANA 名称；Job.timezone > jobs.timezone > UTC      |
 | `leaseTtl`    | `number`            | 否   | `jobs.redis.leaseTtl` 或 `30000` | 安全整数毫秒且至少 `1000`；Job.leaseTtl > jobs.redis.leaseTtl > 30000 ms；Local/IPC 不使用但仍校验 |
 | `handler`     | `VextJobHandler`    | 是   | 无                               | 函数，可返回任意值或 Promise；结果不保存，异常记录，无自动重试                                     |
 
@@ -103,7 +103,7 @@ interface VextJobDocsConfig {
 | `jobs.dir`      | `string`   | `"jobs"`                           | 相对 src 的项目目录；禁止绝对路径、`..` 或越界；生产映射到构建根，例如 dist/jobs    |
 | `jobs.include`  | `string[]` | `["**/*.{ts,js,mjs,cjs,mts,cts}"]` | 替换默认包含规则，匹配实际文件；[] 无任务，不转换编译扩展                           |
 | `jobs.exclude`  | `string[]` | `[]`                               | 追加内置忽略；不能重新纳入下划线文件名、声明和 test/spec 模块，下划线目录本身不忽略 |
-| `jobs.timezone` | `string`   | `"UTC"`                            | 有效 IANA 时区，被单任务覆盖                                                        |
+| `jobs.timezone` | `string`   | `"UTC"`                            | `Intl.DateTimeFormat` 可接受的时区，推荐 IANA 名称；被单任务覆盖                    |
 | `jobs.redis`    | `object`   | 不配置                             | 配置对象显式启用 Redis 协调；无启用任务不建立 Jobs Redis 连接                       |
 
 未知配置字段拒绝。目录和数组等结构在全局关闭时仍须合法；全局关闭和单任务关闭的导入差异见上文。
