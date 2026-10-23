@@ -15,12 +15,12 @@ function input(overrides: Record<string, unknown> = {}) {
         'import docsVersions from "./version-channels.json"; docsVersions.stable; docsVersions.next; docsVersions.channel;',
       readme: "npm install vextjs",
       cli: {
-        en: `docs v${next}; output vextjs v${stable}`,
-        zh: `docs v${next}; output vextjs v${stable}`,
+        en: `vext --version; output vextjs v${stable}`,
+        zh: `vext --version; 输出 vextjs v${stable}`,
       },
       quickStart: {
-        en: `docs v${next}; stable v${stable}; npm install vextjs`,
-        zh: `docs v${next}; stable v${stable}; npm install vextjs`,
+        en: "npm install vextjs; npx vextjs create app",
+        zh: "npm install vextjs; npx vextjs create app",
       },
     },
     ...overrides,
@@ -30,6 +30,41 @@ function input(overrides: Record<string, unknown> = {}) {
 describe("version channel contract", () => {
   it("allows an unreleased source candidate without advertising it as stable", () => {
     expect(validateVersionContract(input()).errors).toEqual([]);
+  });
+
+  it.each(["stable", "next"])(
+    "accepts version-agnostic Quick Starts and CLI output without a source banner on %s",
+    (channel) => {
+      const current = input({
+        channels: {
+          stable: channel === "stable" ? "2.0.0" : "1.0.2",
+          next: "2.0.0",
+          channel,
+        },
+      });
+      for (const locale of ["en", "zh"] as const) {
+        current.files.cli[locale] =
+          `vext --version; vextjs v${current.channels.stable}`;
+        expect(current.files.quickStart[locale]).not.toMatch(/v\d+\.\d+\.\d+/);
+        if (channel === "next")
+          expect(current.files.cli[locale]).not.toContain("v2.0.0");
+      }
+      expect(validateVersionContract(current).errors).toEqual([]);
+    },
+  );
+
+  it("still rejects an incorrect published command output in either locale", () => {
+    for (const locale of ["en", "zh"] as const) {
+      const current = input();
+      current.files.cli[locale] = "vext --version; vextjs v0.0.0";
+      expect(
+        validateVersionContract(current).errors.map(
+          (error) => error.description,
+        ),
+      ).toContain(
+        `${locale} CLI page identifies the published stable command output`,
+      );
+    }
   });
 
   it("keeps the current next state fail-closed for a tag release", () => {
@@ -49,12 +84,8 @@ describe("version channel contract", () => {
       release: true,
     });
     current.files.cli = {
-      en: `docs v${version}; output vextjs v${version}`,
-      zh: `docs v${version}; output vextjs v${version}`,
-    };
-    current.files.quickStart = {
-      en: `docs v${version}; stable v${version}; npm install vextjs`,
-      zh: `docs v${version}; stable v${version}; npm install vextjs`,
+      en: `vext --version; output vextjs v${version}`,
+      zh: `vext --version; 输出 vextjs v${version}`,
     };
     expect(validateVersionContract(current).errors).toEqual([]);
   });
@@ -70,12 +101,8 @@ describe("version channel contract", () => {
       release: true,
     });
     current.files.cli = {
-      en: `docs v${version}; output vextjs v${stable}`,
-      zh: `docs v${version}; output vextjs v${stable}`,
-    };
-    current.files.quickStart = {
-      en: `docs v${version}; stable v${stable}; npm install vextjs`,
-      zh: `docs v${version}; stable v${stable}; npm install vextjs`,
+      en: `vext --version; output vextjs v${stable}`,
+      zh: `vext --version; 输出 vextjs v${stable}`,
     };
 
     expect(validateVersionContract(current).errors).toEqual([]);
@@ -104,7 +131,7 @@ describe("version channel contract", () => {
     expect(
       validateVersionContract(current).errors.map((error) => error.description),
     ).toContain(
-      "en Quick Start identifies release versions without pinning general install commands",
+      "en Quick Start keeps general install commands version-agnostic",
     );
   });
 
@@ -114,7 +141,7 @@ describe("version channel contract", () => {
     expect(
       validateVersionContract(current).errors.map((error) => error.description),
     ).toContain(
-      "en Quick Start identifies release versions without pinning general install commands",
+      "en Quick Start keeps general install commands version-agnostic",
     );
   });
 

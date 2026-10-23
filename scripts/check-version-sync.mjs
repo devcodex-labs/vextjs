@@ -111,23 +111,19 @@ export function validateVersionContract(input) {
     const cli = files?.cli?.[locale];
     addCheck(
       checks,
-      typeof cli === "string" &&
-        cli.includes(`vextjs v${stable}`) &&
-        cli.includes(`v${next}`),
-      `${locale} CLI page identifies stable output and the next docs version`,
+      typeof cli === "string" && cli.includes(`vextjs v${stable}`),
+      `${locale} CLI page identifies the published stable command output`,
     );
 
     const quickStart = files?.quickStart?.[locale];
     addCheck(
       checks,
       typeof quickStart === "string" &&
-        quickStart.includes(`v${stable}`) &&
-        quickStart.includes(`v${next}`) &&
         /\bnpm\s+install\s+vextjs\b/u.test(quickStart) &&
         !/\b(?:npx\s+vextjs|npm\s+(?:install|i)\s+vextjs)@[^\s`"'<>]+/u.test(
           quickStart,
         ),
-      `${locale} Quick Start identifies release versions without pinning general install commands`,
+      `${locale} Quick Start keeps general install commands version-agnostic`,
     );
   }
 
