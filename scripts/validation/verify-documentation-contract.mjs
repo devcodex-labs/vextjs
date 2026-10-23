@@ -1388,7 +1388,7 @@ function verifyFrontendSeoAndNoHydrationDocumentationContract() {
   // require package/source warnings in stable or candidate channels.
   for (const locale of ["en", "zh"])
     requireTokens(`website/docs/${locale}/guide/cli.md`, [
-      `vextjs v${packageVersion}`,
+      `vextjs v${versionChannels.stable}`,
     ]);
 }
 
