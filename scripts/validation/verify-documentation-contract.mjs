@@ -66,6 +66,10 @@ const stableReleaseDocumentation =
   versionChannels.stable === packageVersion &&
   versionChannels.next === packageVersion &&
   versionChannels.channel === "stable";
+// The 2.0.0 major notes are historical once any stable v2 release is public.
+const v2StableReleasePublished = /^([2-9]|[1-9]\d+)\.\d+\.\d+$/u.test(
+  String(versionChannels.stable),
+);
 const requiredCapabilityIds = [
   "framework-seo",
   "whole-page-no-hydration",
@@ -1555,7 +1559,7 @@ function verifyV2MigrationAndDatabaseDocumentationContract() {
     "examples/crud-api",
     "src/types/generated",
   ];
-  if (stableReleaseDocumentation) {
+  if (v2StableReleasePublished) {
     requireTokens("MIGRATION.md", ["stable 2.0.0 release"]);
     requireTokens("CHANGELOG.md", [
       "## [2.0.0] -",
@@ -1849,7 +1853,7 @@ function verifyExampleAndMetadata() {
 
 function verifyReadmePublicEntryContract() {
   requireTokens("package.json", [
-    '"version": "2.0.0"',
+    `"version": "${packageVersion}"`,
     '"description": "AI-first full-stack Node.js framework',
     "typed contracts, OpenAPI, and machine-readable docs",
   ]);
@@ -1881,7 +1885,7 @@ function verifyReadmePublicEntryContract() {
     "React Fast Refresh",
     "Production lifecycle",
     "not an Edge runtime adapter",
-    stableReleaseDocumentation
+    v2StableReleasePublished
       ? "## 2.0.0 highlights"
       : "## 2.0.0 candidate highlights",
     "Framework-level SEO",

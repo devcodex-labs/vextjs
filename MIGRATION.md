@@ -140,8 +140,7 @@ Runtime configuration for both frontend and backend remains in `src/config/`.
 
 ## Migrating from 2.0 to 2.1
 
-These notes cover the next 2.1 minor release; they are a source candidate until
-it is published.
+These notes cover the 2.1.0 minor release (see `changelogs/v2.1.0.md`).
 
 ### Scheduled Jobs are enabled by default
 
