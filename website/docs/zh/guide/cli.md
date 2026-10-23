@@ -863,7 +863,7 @@ monorepo 通过实际 workspace 成员、共享包声明、package exports/sourc
 ```bash
 # 查看版本
 vext --version
-# 当前包的示例输出: vextjs v2.0.0；以实际安装版本为准
+# 当前包的示例输出: vextjs v2.1.0；以实际安装版本为准
 
 # 查看帮助
 vext --help
