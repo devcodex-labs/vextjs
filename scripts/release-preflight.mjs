@@ -10,6 +10,7 @@ import {
   resolveDocsVerification,
 } from "../website/scripts/docs-rollout.mjs";
 import {
+  readFrozenFrameworkBuildId,
   verifyReleaseCandidateReceipt,
   verifyReleaseCandidateSourceInputs,
 } from "./validation/freeze-release-candidate.mjs";
@@ -246,6 +247,20 @@ function run(label, command, args, cwd = root, env = {}) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
+// The final rebuild must be byte-identical to the frozen tarball, including the
+// framework buildId recorded in dist/.implementation.json.
+let frameworkBuildEnv = {};
+if (finalMode) {
+  try {
+    frameworkBuildEnv = {
+      VEXT_FRAMEWORK_BUILD_ID: readFrozenFrameworkBuildId(frozenVextTarball),
+    };
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
 const npm = "npm";
 const checks = [
   ...(finalMode
@@ -266,7 +281,7 @@ const checks = [
   ["lint", npm, ["run", "lint"]],
   ["typecheck", npm, ["run", "typecheck"]],
   ["public type contract tests", npm, ["run", "test:types"]],
-  ["ESM/CJS build", npm, ["run", "build"]],
+  ["ESM/CJS build", npm, ["run", "build"], root, frameworkBuildEnv],
   ["compiled response serializer", npm, ["run", "verify:response-serializer"]],
   ["unit tests", npm, ["run", "test:unit"]],
   ["integration tests", npm, ["run", "test:int"]],
@@ -284,7 +299,8 @@ const checks = [
   ],
 ];
 
-for (const [label, command, args] of checks) run(label, command, args);
+for (const [label, command, args, cwd, env] of checks)
+  run(label, command, args, cwd, env);
 
 if (finalMode && candidateReceiptVerification) {
   try {

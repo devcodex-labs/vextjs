@@ -23,6 +23,7 @@ import {
   inspectBuildInputs,
   publishImplementationManifest,
   completeImplementationBuild,
+  resolveFrameworkBuildId,
 } from "./implementation-manifest.mjs";
 
 const root = realpathSync(
@@ -195,7 +196,7 @@ if (watch) {
   process.once("SIGINT", () => stop());
   process.once("SIGTERM", () => stop());
 } else {
-  const buildId = randomUUID();
+  const buildId = resolveFrameworkBuildId();
   const before = inspectBuildInputs(root);
   try {
     if (cjsOnly) {

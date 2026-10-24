@@ -9,6 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
+import { gunzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import { resolveValidationCommand } from "./resolve-command.mjs";
 
@@ -463,6 +464,47 @@ export function verifyReleaseCandidateReceipt({
   };
 }
 
+const FRAMEWORK_MANIFEST_ENTRY = "package/dist/.implementation.json";
+
+/** Reads the framework buildId recorded inside the frozen candidate tarball. */
+export function readFrozenFrameworkBuildId(artifactPath) {
+  let archive;
+  try {
+    archive = gunzipSync(readFileSync(artifactPath));
+  } catch {
+    fail("frozen tarball", "is not a readable gzip tarball");
+  }
+  const field = (header, start, end) =>
+    header.subarray(start, end).toString("utf8").replace(/\0.*$/su, "");
+  for (let offset = 0; offset + 512 <= archive.length; ) {
+    const header = archive.subarray(offset, offset + 512);
+    if (header.every((byte) => byte === 0)) break;
+    const size = Number.parseInt(field(header, 124, 136).trim() || "0", 8);
+    if (!Number.isSafeInteger(size) || size < 0) {
+      fail("frozen tarball", "contains an invalid tar header");
+    }
+    const prefix = field(header, 345, 500);
+    const name = field(header, 0, 100);
+    const entry = prefix ? `${prefix}/${name}` : name;
+    if (entry === FRAMEWORK_MANIFEST_ENTRY) {
+      let manifest;
+      try {
+        manifest = JSON.parse(
+          archive.subarray(offset + 512, offset + 512 + size).toString("utf8"),
+        );
+      } catch {
+        fail(FRAMEWORK_MANIFEST_ENTRY, "is not valid JSON");
+      }
+      if (!isRecord(manifest) || typeof manifest.buildId !== "string") {
+        fail(FRAMEWORK_MANIFEST_ENTRY, "does not record a buildId");
+      }
+      return manifest.buildId;
+    }
+    offset += 512 + Math.ceil(size / 512) * 512;
+  }
+  fail("frozen tarball", `does not contain ${FRAMEWORK_MANIFEST_ENTRY}`);
+}
+
 export function verifyReleaseCandidateSourceInputs({ rootDir, receipt }) {
   // The candidate was frozen from a fully clean tree. Final preflight checks may
   // leave package-excluded scratch files behind, so require tracked sources to
@@ -498,7 +540,7 @@ function readCliOptions(argv) {
   return options;
 }
 
-function freezeReleaseCandidate({ rootDir, outputDir, taskId }) {
+export function freezeReleaseCandidate({ rootDir, outputDir, taskId }) {
   if (!taskId?.trim()) fail("taskId", "is required");
   const resolvedOutputDir = path.resolve(outputDir);
   const relation = path.relative(rootDir, resolvedOutputDir);

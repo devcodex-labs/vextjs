@@ -13,6 +13,22 @@ import {
 } from "../src/lib/project/implementation-fingerprint.mjs";
 
 export const IMPLEMENTATION_MANIFEST = ".implementation.json";
+export const FRAMEWORK_BUILD_ID_ENV = "VEXT_FRAMEWORK_BUILD_ID";
+const BUILD_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
+
+/**
+ * One-shot builds normally use a fresh random buildId. Release final preflight
+ * pins the frozen candidate's buildId so its rebuilt dist is byte-identical to
+ * the tarball that will be published.
+ */
+export function resolveFrameworkBuildId(env = process.env) {
+  const pinned = env[FRAMEWORK_BUILD_ID_ENV];
+  if (pinned === undefined || pinned === "") return randomUUID();
+  if (!BUILD_ID_PATTERN.test(pinned))
+    throw new Error(`${FRAMEWORK_BUILD_ID_ENV} must be a lowercase UUID.`);
+  return pinned;
+}
 export const BUILD_INPUT_FILES = [
   "package.json",
   "package-lock.json",
