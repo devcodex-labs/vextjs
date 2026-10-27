@@ -42,7 +42,7 @@ const ecosystemLinks = [
   {
     mark: "GH",
     name: "GitHub Org",
-    description: "Explore the vextjs organization",
+    description: "Explore the devcodex-labs organization",
     href: "https://github.com/devcodex-labs",
   },
 ];
@@ -111,9 +111,7 @@ function VextConsoleTypewriter() {
     let disposed = false;
 
     const getConsoles = () =>
-      Array.from(
-        document.querySelectorAll<HTMLElement>(".vext-console__body"),
-      );
+      Array.from(document.querySelectorAll<HTMLElement>(".vext-console__body"));
 
     const clearTimers = () => {
       timers.forEach((timer) => window.clearTimeout(timer));
@@ -145,7 +143,9 @@ function VextConsoleTypewriter() {
 
     const getConsoleLines = (consoleBody: HTMLElement) =>
       Array.from(
-        consoleBody.querySelectorAll<HTMLElement>(":scope > .vext-console__line"),
+        consoleBody.querySelectorAll<HTMLElement>(
+          ":scope > .vext-console__line",
+        ),
       );
 
     const getTypeTarget = (consoleBody: HTMLElement) =>
@@ -185,10 +185,13 @@ function VextConsoleTypewriter() {
       }
 
       lines[index].dataset.vextTerminalState = "active";
-      schedule(() => {
-        lines[index].dataset.vextTerminalState = "visible";
-        revealOutput(consoleBody, lines, index + 1, loop);
-      }, loop ? 190 : 150);
+      schedule(
+        () => {
+          lines[index].dataset.vextTerminalState = "visible";
+          revealOutput(consoleBody, lines, index + 1, loop);
+        },
+        loop ? 190 : 150,
+      );
     };
 
     const typeCommand = (consoleBody: HTMLElement, loop: boolean) => {

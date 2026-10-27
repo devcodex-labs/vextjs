@@ -31,7 +31,9 @@ const docsSiteUrl = trimTrailingSlash(
 const docsRollout = resolveDocsRollout();
 const docsVerification = resolveDocsVerification();
 const docsHomeUrl = `${docsSiteUrl}/`;
-const docsOgImage = `${docsSiteUrl}/og-card.svg`;
+const docsOgImage = `${docsSiteUrl}/og-card.png`;
+const docsOgImageAlt =
+  "VextJS: Build AI-assisted APIs and server-rendered React pages in one Node.js application.";
 
 type SidebarGroup = Sidebar[string][number];
 
@@ -645,7 +647,13 @@ const siteConfig: UserConfig = {
     ],
     ["meta", { property: "og:url", content: docsHomeUrl }],
     ["meta", { property: "og:image", content: docsOgImage }],
+    ["meta", { property: "og:image:width", content: "1200" }],
+    ["meta", { property: "og:image:height", content: "630" }],
+    ["meta", { property: "og:image:type", content: "image/png" }],
+    ["meta", { property: "og:image:alt", content: docsOgImageAlt }],
     ["meta", { name: "twitter:card", content: "summary_large_image" }],
+    ["meta", { name: "twitter:image", content: docsOgImage }],
+    ["meta", { name: "twitter:image:alt", content: docsOgImageAlt }],
   ],
   plugins: [
     pluginSitemap({

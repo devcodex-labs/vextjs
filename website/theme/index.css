@@ -99,10 +99,30 @@ body {
   z-index: 1;
   opacity: 0.58;
   background-image:
-    repeating-linear-gradient(90deg, transparent 0 68px, rgba(144, 245, 228, 0.06) 68px 69px, transparent 69px 140px),
-    repeating-linear-gradient(180deg, transparent 0 28px, rgba(94, 233, 135, 0.05) 28px 29px, transparent 29px 120px),
-    linear-gradient(120deg, transparent 12%, rgba(18, 214, 198, 0.1) 28%, transparent 44%, rgba(245, 189, 79, 0.08) 72%, transparent 88%);
-  background-size: 280px 180px, 220px 220px, 100% 100%;
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 68px,
+      rgba(144, 245, 228, 0.06) 68px 69px,
+      transparent 69px 140px
+    ),
+    repeating-linear-gradient(
+      180deg,
+      transparent 0 28px,
+      rgba(94, 233, 135, 0.05) 28px 29px,
+      transparent 29px 120px
+    ),
+    linear-gradient(
+      120deg,
+      transparent 12%,
+      rgba(18, 214, 198, 0.1) 28%,
+      transparent 44%,
+      rgba(245, 189, 79, 0.08) 72%,
+      transparent 88%
+    );
+  background-size:
+    280px 180px,
+    220px 220px,
+    100% 100%;
   mix-blend-mode: screen;
   animation: vext-data-pan 24s linear infinite;
 }
@@ -110,7 +130,12 @@ body {
 .vext-motion-field::before {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, transparent 0 42%, rgba(18, 214, 198, 0.18) 50%, transparent 58% 100%);
+  background: linear-gradient(
+    180deg,
+    transparent 0 42%,
+    rgba(18, 214, 198, 0.18) 50%,
+    transparent 58% 100%
+  );
   content: "";
   transform: translateY(-62%);
   animation: vext-field-sweep 8s ease-in-out infinite;
@@ -120,8 +145,18 @@ body {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(90deg, transparent 0 18%, rgba(144, 245, 228, 0.12) 23%, transparent 31% 100%),
-    linear-gradient(180deg, transparent 0 62%, rgba(94, 233, 135, 0.09) 68%, transparent 76% 100%);
+    linear-gradient(
+      90deg,
+      transparent 0 18%,
+      rgba(144, 245, 228, 0.12) 23%,
+      transparent 31% 100%
+    ),
+    linear-gradient(
+      180deg,
+      transparent 0 62%,
+      rgba(94, 233, 135, 0.09) 68%,
+      transparent 76% 100%
+    );
   content: "";
   transform: translate(-42%, -22%);
   animation: vext-field-cross 11s linear infinite;
@@ -131,10 +166,30 @@ body {
   z-index: 3;
   opacity: 0;
   background:
-    linear-gradient(90deg, transparent calc(var(--vext-pointer-x) - 1px), rgba(236, 255, 251, 0.54) var(--vext-pointer-x), transparent calc(var(--vext-pointer-x) + 1px)),
-    linear-gradient(180deg, transparent calc(var(--vext-pointer-y) - 1px), rgba(236, 255, 251, 0.44) var(--vext-pointer-y), transparent calc(var(--vext-pointer-y) + 1px)),
-    linear-gradient(90deg, transparent calc(var(--vext-pointer-x) - 260px), rgba(18, 214, 198, 0.2) var(--vext-pointer-x), transparent calc(var(--vext-pointer-x) + 260px)),
-    linear-gradient(180deg, transparent calc(var(--vext-pointer-y) - 220px), rgba(94, 233, 135, 0.16) var(--vext-pointer-y), transparent calc(var(--vext-pointer-y) + 220px));
+    linear-gradient(
+      90deg,
+      transparent calc(var(--vext-pointer-x) - 1px),
+      rgba(236, 255, 251, 0.54) var(--vext-pointer-x),
+      transparent calc(var(--vext-pointer-x) + 1px)
+    ),
+    linear-gradient(
+      180deg,
+      transparent calc(var(--vext-pointer-y) - 1px),
+      rgba(236, 255, 251, 0.44) var(--vext-pointer-y),
+      transparent calc(var(--vext-pointer-y) + 1px)
+    ),
+    linear-gradient(
+      90deg,
+      transparent calc(var(--vext-pointer-x) - 260px),
+      rgba(18, 214, 198, 0.2) var(--vext-pointer-x),
+      transparent calc(var(--vext-pointer-x) + 260px)
+    ),
+    linear-gradient(
+      180deg,
+      transparent calc(var(--vext-pointer-y) - 220px),
+      rgba(94, 233, 135, 0.16) var(--vext-pointer-y),
+      transparent calc(var(--vext-pointer-y) + 220px)
+    );
   mix-blend-mode: screen;
   transition: opacity 180ms ease;
 }
@@ -276,7 +331,11 @@ button[class*="search"] {
   border-radius: 8px;
   background:
     linear-gradient(180deg, rgba(19, 30, 37, 0.98), rgba(7, 16, 19, 0.98)),
-    repeating-linear-gradient(90deg, rgba(144, 245, 228, 0.04) 0 1px, transparent 1px 58px);
+    repeating-linear-gradient(
+      90deg,
+      rgba(144, 245, 228, 0.04) 0 1px,
+      transparent 1px 58px
+    );
   box-shadow: 0 26px 88px rgba(0, 0, 0, 0.42);
   opacity: 0;
   pointer-events: none;
@@ -313,7 +372,11 @@ button[class*="search"] {
   border-radius: 8px;
   background:
     linear-gradient(135deg, rgba(18, 214, 198, 0.24), rgba(94, 233, 135, 0.12)),
-    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 7px);
+    repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.08) 0 1px,
+      transparent 1px 7px
+    );
   color: #dffff8;
   font-size: 12px;
   font-weight: 820;
@@ -412,7 +475,8 @@ button[class*="search"] {
   -webkit-line-clamp: 2;
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"])
+  .rp-hover-group {
   right: -48px;
   left: auto;
   display: grid;
@@ -425,22 +489,33 @@ button[class*="search"] {
   border-radius: 8px;
   background:
     linear-gradient(180deg, rgba(23, 32, 40, 0.98), rgba(8, 18, 22, 0.98)),
-    repeating-linear-gradient(90deg, rgba(144, 245, 228, 0.04) 0 1px, transparent 1px 58px);
+    repeating-linear-gradient(
+      90deg,
+      rgba(144, 245, 228, 0.04) 0 1px,
+      transparent 1px 58px
+    );
   box-shadow: 0 28px 90px rgba(0, 0, 0, 0.42);
   transform: none;
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group::before {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"])
+  .rp-hover-group::before {
   position: absolute;
   top: 72px;
   right: 20px;
   left: 20px;
   height: 1px;
-  background: linear-gradient(90deg, rgba(18, 214, 198, 0.1), rgba(144, 245, 228, 0.28), rgba(245, 189, 79, 0.16));
+  background: linear-gradient(
+    90deg,
+    rgba(18, 214, 198, 0.1),
+    rgba(144, 245, 228, 0.28),
+    rgba(245, 189, 79, 0.16)
+  );
   content: "";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group__item {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"])
+  .rp-hover-group__item {
   height: auto;
   min-height: 76px;
   padding: 0 !important;
@@ -455,14 +530,16 @@ button[class*="search"] {
     transform 160ms ease;
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group__item:hover {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"])
+  .rp-hover-group__item:hover {
   border-color: rgba(94, 233, 135, 0.32);
   background: rgba(12, 36, 42, 0.82);
   opacity: 1;
   transform: translateY(-1px);
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group__item[data-depth="0"] {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"])
+  .rp-hover-group__item[data-depth="0"] {
   grid-column: 1 / -1;
   min-height: 54px;
   margin-bottom: 14px;
@@ -470,7 +547,8 @@ button[class*="search"] {
   background: transparent;
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group__item__link {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"])
+  .rp-hover-group__item__link {
   display: grid;
   height: 100%;
   grid-template-columns: 42px minmax(0, 1fr);
@@ -482,7 +560,8 @@ button[class*="search"] {
   text-align: left;
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group__item__link::before {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"])
+  .rp-hover-group__item__link::before {
   display: inline-flex;
   width: 42px;
   height: 42px;
@@ -493,14 +572,19 @@ button[class*="search"] {
   border-radius: 8px;
   background:
     linear-gradient(135deg, rgba(18, 214, 198, 0.24), rgba(94, 233, 135, 0.12)),
-    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0 1px, transparent 1px 7px);
+    repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.08) 0 1px,
+      transparent 1px 7px
+    );
   color: #dffff8;
   font-size: 12px;
   font-weight: 800;
   content: "VX";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group__item__link::after {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"])
+  .rp-hover-group__item__link::after {
   grid-column: 2;
   margin: 4px 0 0;
   color: var(--rp-c-text-3);
@@ -510,70 +594,91 @@ button[class*="search"] {
   content: "High-performance API runtime";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group__item[data-depth="0"] .rp-hover-group__item__link {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"])
+  .rp-hover-group__item[data-depth="0"]
+  .rp-hover-group__item__link {
   grid-template-columns: 48px minmax(0, 1fr);
   padding: 0;
   font-size: 18px;
   font-weight: 800;
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group__item[data-depth="0"] .rp-hover-group__item__link::before {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"])
+  .rp-hover-group__item[data-depth="0"]
+  .rp-hover-group__item__link::before {
   width: 48px;
   height: 48px;
   content: "VX";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group__item[data-depth="0"] .rp-hover-group__item__link::after {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"])
+  .rp-hover-group__item[data-depth="0"]
+  .rp-hover-group__item__link::after {
   color: var(--vext-muted);
   content: "Docs, packages and integration surface";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group__item[data-depth="1"] .rp-hover-group__item__link {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"])
+  .rp-hover-group__item[data-depth="1"]
+  .rp-hover-group__item__link {
   font-size: 15px;
   font-weight: 760;
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) a[href="https://devcodex-labs.github.io/schema-dsl/"]::before {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"])
+  a[href="https://devcodex-labs.github.io/schema-dsl/"]::before {
   content: "S";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) a[href="https://devcodex-labs.github.io/schema-dsl/"]::after {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"])
+  a[href="https://devcodex-labs.github.io/schema-dsl/"]::after {
   content: "Schema declaration and validation semantics";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) a[href="https://devcodex-labs.github.io/monSQLize/"]::before {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"])
+  a[href="https://devcodex-labs.github.io/monSQLize/"]::before {
   content: "M";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) a[href="https://devcodex-labs.github.io/monSQLize/"]::after {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"])
+  a[href="https://devcodex-labs.github.io/monSQLize/"]::after {
   content: "MongoDB modeling for service projects";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) a[href="https://devcodex-labs.github.io/flex-rate-limit/"]::before {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"])
+  a[href="https://devcodex-labs.github.io/flex-rate-limit/"]::before {
   content: "FR";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) a[href="https://devcodex-labs.github.io/flex-rate-limit/"]::after {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"])
+  a[href="https://devcodex-labs.github.io/flex-rate-limit/"]::after {
   content: "Flexible rate limiting for APIs";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) a[href="https://devcodex-labs.github.io/permission-core/"]::before {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"])
+  a[href="https://devcodex-labs.github.io/permission-core/"]::before {
   content: "PC";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) a[href="https://devcodex-labs.github.io/permission-core/"]::after {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"])
+  a[href="https://devcodex-labs.github.io/permission-core/"]::after {
   content: "Permission primitives for application guards";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group__item[data-depth="1"] a[href="https://github.com/devcodex-labs"]::before {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"])
+  .rp-hover-group__item[data-depth="1"]
+  a[href="https://github.com/devcodex-labs"]::before {
   content: "GH";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) .rp-hover-group__item[data-depth="1"] a[href="https://github.com/devcodex-labs"]::after {
-  content: "Explore the vextjs organization";
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"])
+  .rp-hover-group__item[data-depth="1"]
+  a[href="https://github.com/devcodex-labs"]::after {
+  content: "Explore the devcodex-labs organization";
 }
 
-.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"]) a[target="_blank"]::after {
+.rp-nav-menu__item:has(a[href="https://github.com/devcodex-labs/vextjs"])
+  a[target="_blank"]::after {
   display: block;
 }
 
@@ -726,7 +831,11 @@ main[class*="doc"] th {
   border-color: rgba(144, 245, 228, 0.16);
   background:
     linear-gradient(180deg, rgba(23, 45, 51, 0.96), rgba(12, 29, 34, 0.96)),
-    repeating-linear-gradient(90deg, rgba(144, 245, 228, 0.05) 0 1px, transparent 1px 42px);
+    repeating-linear-gradient(
+      90deg,
+      rgba(144, 245, 228, 0.05) 0 1px,
+      transparent 1px 42px
+    );
   color: var(--rp-c-text-1);
 }
 
@@ -753,7 +862,11 @@ main[class*="doc"] pre {
   border: 1px solid rgba(144, 245, 228, 0.28);
   background:
     linear-gradient(180deg, rgba(5, 20, 24, 0.99), rgba(3, 12, 15, 0.99)),
-    repeating-linear-gradient(90deg, rgba(144, 245, 228, 0.035) 0 1px, transparent 1px 44px);
+    repeating-linear-gradient(
+      90deg,
+      rgba(144, 245, 228, 0.035) 0 1px,
+      transparent 1px 44px
+    );
   box-shadow:
     inset 0 1px 0 rgba(217, 255, 247, 0.1),
     0 22px 60px rgba(0, 0, 0, 0.22);
@@ -804,7 +917,11 @@ main[class*="doc"] .rp-callout {
   border: 1px solid rgba(144, 245, 228, 0.2);
   background:
     linear-gradient(135deg, rgba(10, 30, 36, 0.97), rgba(6, 18, 22, 0.98)),
-    repeating-linear-gradient(90deg, rgba(144, 245, 228, 0.035) 0 1px, transparent 1px 46px);
+    repeating-linear-gradient(
+      90deg,
+      rgba(144, 245, 228, 0.035) 0 1px,
+      transparent 1px 46px
+    );
   box-shadow:
     inset 0 1px 0 rgba(217, 255, 247, 0.07),
     0 16px 44px rgba(0, 0, 0, 0.18);
@@ -817,7 +934,11 @@ main[class*="doc"] .rp-callout--tip {
   border-color: rgba(94, 233, 135, 0.28);
   background:
     linear-gradient(135deg, rgba(9, 34, 31, 0.97), rgba(6, 18, 22, 0.98)),
-    repeating-linear-gradient(90deg, rgba(94, 233, 135, 0.04) 0 1px, transparent 1px 46px);
+    repeating-linear-gradient(
+      90deg,
+      rgba(94, 233, 135, 0.04) 0 1px,
+      transparent 1px 46px
+    );
 }
 
 .rp-doc .rp-callout--warning,
@@ -826,7 +947,11 @@ main[class*="doc"] .rp-callout--warning {
   border-color: rgba(245, 189, 79, 0.32);
   background:
     linear-gradient(135deg, rgba(43, 33, 16, 0.97), rgba(8, 18, 20, 0.98)),
-    repeating-linear-gradient(90deg, rgba(245, 189, 79, 0.04) 0 1px, transparent 1px 46px);
+    repeating-linear-gradient(
+      90deg,
+      rgba(245, 189, 79, 0.04) 0 1px,
+      transparent 1px 46px
+    );
 }
 
 .rp-doc .rp-callout--info,
@@ -852,9 +977,23 @@ main[class*="doc"] .rp-callout__title {
   overflow: hidden;
   background:
     linear-gradient(180deg, rgba(7, 16, 19, 0.5), #071013 58%, #050b0e),
-    linear-gradient(120deg, rgba(18, 214, 198, 0.08), transparent 35%, rgba(245, 189, 79, 0.07) 72%, transparent),
-    repeating-linear-gradient(90deg, rgba(144, 245, 228, 0.045) 0 1px, transparent 1px 80px),
-    repeating-linear-gradient(0deg, rgba(144, 245, 228, 0.035) 0 1px, transparent 1px 80px),
+    linear-gradient(
+      120deg,
+      rgba(18, 214, 198, 0.08),
+      transparent 35%,
+      rgba(245, 189, 79, 0.07) 72%,
+      transparent
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(144, 245, 228, 0.045) 0 1px,
+      transparent 1px 80px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      rgba(144, 245, 228, 0.035) 0 1px,
+      transparent 1px 80px
+    ),
     #071013;
   color: var(--vext-ink);
 }
@@ -866,7 +1005,11 @@ main[class*="doc"] .rp-callout__title {
   content: "";
   background:
     linear-gradient(90deg, transparent, rgba(18, 214, 198, 0.08), transparent),
-    repeating-linear-gradient(180deg, transparent 0 22px, rgba(144, 245, 228, 0.035) 22px 23px);
+    repeating-linear-gradient(
+      180deg,
+      transparent 0 22px,
+      rgba(144, 245, 228, 0.035) 22px 23px
+    );
   opacity: 0.66;
   transform: translateX(-20%);
   animation: vext-scan 14s linear infinite;
@@ -896,11 +1039,17 @@ main[class*="doc"] .rp-callout__title {
 
 @keyframes vext-data-pan {
   from {
-    background-position: 0 0, 0 0, 0 0;
+    background-position:
+      0 0,
+      0 0,
+      0 0;
   }
 
   to {
-    background-position: 280px 120px, -220px 160px, 0 0;
+    background-position:
+      280px 120px,
+      -220px 160px,
+      0 0;
   }
 }
 
@@ -1115,7 +1264,12 @@ main[class*="doc"] .rp-callout__title {
   position: absolute;
   inset: -30% auto -30% -42%;
   width: 36%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.42), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.42),
+    transparent
+  );
   content: "";
   transform: translateX(-110%) skewX(-16deg);
 }
@@ -1174,7 +1328,11 @@ main[class*="doc"] .rp-callout__title {
   overflow: hidden;
   border: 1px solid rgba(144, 245, 228, 0.22);
   border-radius: 8px;
-  background: linear-gradient(180deg, rgba(13, 29, 35, 0.98), rgba(5, 13, 16, 0.98));
+  background: linear-gradient(
+    180deg,
+    rgba(13, 29, 35, 0.98),
+    rgba(5, 13, 16, 0.98)
+  );
   box-shadow: 0 22px 70px rgba(0, 0, 0, 0.38);
 }
 
@@ -1182,7 +1340,12 @@ main[class*="doc"] .rp-callout__title {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(180deg, transparent, rgba(144, 245, 228, 0.12), transparent);
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(144, 245, 228, 0.12),
+    transparent
+  );
   content: "";
   opacity: 0.42;
   transform: translateY(-100%);
@@ -1242,13 +1405,15 @@ main[class*="doc"] .rp-callout__title {
     text-shadow 180ms ease;
 }
 
-.vext-console__body[data-vext-terminal="playing"] > .vext-console__line[data-vext-terminal-state="hidden"] {
+.vext-console__body[data-vext-terminal="playing"]
+  > .vext-console__line[data-vext-terminal-state="hidden"] {
   opacity: 0.24;
   transform: translateY(5px);
   filter: blur(1px);
 }
 
-.vext-console__body[data-vext-terminal="playing"] > .vext-console__line[data-vext-terminal-state="active"] {
+.vext-console__body[data-vext-terminal="playing"]
+  > .vext-console__line[data-vext-terminal-state="active"] {
   opacity: 1;
   transform: translateY(0);
   filter: none;
@@ -1407,7 +1572,13 @@ main[class*="doc"] .rp-callout__title {
   right: 12%;
   left: 12%;
   height: 1px;
-  background: linear-gradient(90deg, rgba(18, 214, 198, 0), rgba(18, 214, 198, 0.64), rgba(245, 189, 79, 0.56), rgba(18, 214, 198, 0));
+  background: linear-gradient(
+    90deg,
+    rgba(18, 214, 198, 0),
+    rgba(18, 214, 198, 0.64),
+    rgba(245, 189, 79, 0.56),
+    rgba(18, 214, 198, 0)
+  );
   content: "";
 }
 
@@ -1419,7 +1590,11 @@ main[class*="doc"] .rp-callout__title {
   border-radius: 8px;
   background:
     linear-gradient(180deg, rgba(13, 29, 35, 0.92), rgba(7, 16, 19, 0.88)),
-    repeating-linear-gradient(90deg, rgba(144, 245, 228, 0.045) 0 1px, transparent 1px 44px);
+    repeating-linear-gradient(
+      90deg,
+      rgba(144, 245, 228, 0.045) 0 1px,
+      transparent 1px 44px
+    );
   transition:
     border-color 160ms ease,
     transform 160ms ease,
@@ -1448,7 +1623,11 @@ main[class*="doc"] .rp-callout__title {
   border-color: rgba(144, 245, 228, 0.36);
   background:
     linear-gradient(180deg, rgba(14, 42, 48, 0.96), rgba(7, 16, 19, 0.92)),
-    repeating-linear-gradient(90deg, rgba(144, 245, 228, 0.055) 0 1px, transparent 1px 44px);
+    repeating-linear-gradient(
+      90deg,
+      rgba(144, 245, 228, 0.055) 0 1px,
+      transparent 1px 44px
+    );
   transform: translateY(-2px);
 }
 
@@ -1674,7 +1853,11 @@ main[class*="doc"] .rp-callout__title {
   border-top: 1px solid rgba(144, 245, 228, 0.15);
   background:
     linear-gradient(180deg, rgba(7, 16, 19, 0.72), rgba(5, 11, 14, 0.98)),
-    repeating-linear-gradient(90deg, rgba(144, 245, 228, 0.035) 0 1px, transparent 1px 72px);
+    repeating-linear-gradient(
+      90deg,
+      rgba(144, 245, 228, 0.035) 0 1px,
+      transparent 1px 72px
+    );
 }
 
 .vext-footer__inner {

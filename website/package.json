@@ -8,7 +8,8 @@
     "dev:pilot": "node scripts/run-docs.mjs dev --rollout=zh-routing-pilot",
     "build": "node scripts/run-docs.mjs build",
     "build:publish": "node scripts/run-docs.mjs publish",
-    "preview": "rspress preview"
+    "preview": "rspress preview",
+    "og-card": "node scripts/build-og-card.mjs"
   },
   "dependencies": {
     "@rspress/core": "^2.0.19",

@@ -8,9 +8,9 @@
   <circle cx="196" cy="278" r="12" fill="#12D6C6"/>
   <circle cx="268" cy="142" r="12" fill="#5EE987"/>
   <text x="330" y="195" fill="#F4FFFC" font-family="Inter, Arial, sans-serif" font-size="92" font-weight="800">VextJS</text>
-  <text x="335" y="262" fill="#B7D0CC" font-family="Inter, Arial, sans-serif" font-size="32" font-weight="500">Adapter-first Node.js API framework</text>
-  <text x="130" y="398" fill="#F4FFFC" font-family="Inter, Arial, sans-serif" font-size="42" font-weight="750">Native fast path. Five adapters. Production ready.</text>
-  <text x="132" y="462" fill="#9FBAB6" font-family="Inter, Arial, sans-serif" font-size="28">CLI / Validation / OpenAPI / Cluster / Graceful Shutdown</text>
+  <text x="335" y="262" fill="#B7D0CC" font-family="Inter, Arial, sans-serif" font-size="32" font-weight="500">AI-first full-stack Node.js framework</text>
+  <text x="130" y="390" fill="#F4FFFC" font-family="Inter, Arial, sans-serif" font-size="40" font-weight="750">Build AI-assisted APIs and server-rendered</text>
+  <text x="130" y="444" fill="#F4FFFC" font-family="Inter, Arial, sans-serif" font-size="40" font-weight="750">React pages in one Node.js application.</text>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
       <stop stop-color="#071013"/>
