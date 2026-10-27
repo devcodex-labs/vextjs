@@ -151,7 +151,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.3.1",
-    "cache-hub": "^2.2.4",
+    "cache-hub": "^2.2.5",
     "croner": "^10.0.1",
     "esbuild": "0.28.2",
     "fast-json-stringify": "7.0.1",
@@ -208,19 +208,19 @@
     "@types/picomatch": "4.0.3",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
-    "@vitest/coverage-v8": "4.1.11",
+    "@vitest/coverage-v8": "4.1.12",
     "autocannon": "8.0.0",
     "eslint": "10.2.1",
     "express": "5.2.1",
-    "fastify": "5.12.5",
-    "hono": "4.13.7",
+    "fastify": "5.12.7",
+    "hono": "4.13.14",
     "koa": "3.2.1",
     "mongodb-memory-server-core": "11.2.0",
     "playwright-core": "1.64.0",
     "prettier": "3.8.1",
     "typescript": "5.9.3",
     "typescript-eslint": "8.59.0",
-    "vitest": "4.1.11"
+    "vitest": "4.1.12"
   },
   "overrides": {
     "autocannon@8.0.0": {

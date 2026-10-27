@@ -1,4 +1,5 @@
-import { statSync, type Stats } from "node:fs";
+import { createHash } from "node:crypto";
+import { readFileSync, statSync, type Stats } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { isPathInside } from "../path-boundary.js";
@@ -6,7 +7,7 @@ import { resolveProjectRolePath } from "../project/layout.js";
 import { isTemporaryModuleFileName } from "../project/source-roles.js";
 import { classifyChange, type ClassifierOptions } from "./change-classifier.js";
 
-/** 仅用于发现变更；编译缓存另以源码字节 SHA256 判断 freshness。 */
+/** 仅用于发现变更；stamp 含 stat + 内容指纹，避免 polling 同长度漏报。编译缓存另以完整源码 SHA256 判断 freshness。 */
 export type WatchSnapshot = ReadonlyMap<string, string>;
 
 export interface WatchTarget {
@@ -34,6 +35,18 @@ const ROOT_COLD_FILES = new Set([
 export function isMissingWatchPath(error: unknown): boolean {
   const code = (error as NodeJS.ErrnoException).code;
   return code === "ENOENT" || code === "ENOTDIR";
+}
+
+function contentFingerprint(file: string): string {
+  try {
+    return createHash("sha256")
+      .update(readFileSync(file))
+      .digest("hex")
+      .slice(0, 16);
+  } catch (error) {
+    if (isMissingWatchPath(error)) return "";
+    throw error;
+  }
 }
 
 function optionalStat(file: string): Stats | undefined {
@@ -120,7 +133,7 @@ export async function readWatchSnapshot(
     if (!stat?.isFile()) return;
     snapshot.set(
       relative(root, file).replaceAll("\\", "/"),
-      `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`,
+      `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}:${contentFingerprint(file)}`,
     );
   };
   const walk = async (directory: WatchDirectory): Promise<void> => {
